@@ -9,13 +9,17 @@
     "react": "19.2.1",
     "lucide-react": "0.453.0",
     "drizzle-orm": "0.45.2",
-    "mysql2": "3.24.3"
+    "mysql2": "3.20.0",
+    "@frontmind/module-ui": "workspace:*",
+    "express": "^4.21.2",
+    "@frontmind/module-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.7.0",
     "typescript": "5.9.3",
     "@types/react": "^19.2.1",
-    "vitest": "2.1.9"
+    "vitest": "2.1.9",
+    "@types/express": "^4.17.21"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -27,11 +31,12 @@
       "types": "./dist/server/index.d.ts",
       "import": "./dist/server/index.js"
     },
-    "./client": "./dist/client/ContentProductionConfirmation.js",
+    "./client": "./dist/client/ContentProductionWorkspace.js",
     "./contracts/*": "./dist/contracts/*.js",
     "./schema": {
       "types": "./dist/schema/index.d.ts",
       "import": "./dist/schema/index.js"
-    }
+    },
+    "./client/*": "./dist/client/*.js"
   }
 }
