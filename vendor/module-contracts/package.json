@@ -1,6 +1,7 @@
 {
   "name": "@frontmind/module-contracts",
   "version": "1.0.0",
+  "private": false,
   "type": "module",
   "exports": {
     ".": {
@@ -18,6 +19,52 @@
     "./url": {
       "types": "./src/url.ts",
       "import": "./dist/url.js"
+    },
+    "./task-attachment-package": {
+      "types": "./src/task-attachment-package.ts",
+      "import": "./dist/task-attachment-package.js"
+    },
+    "./upstream-prompt-budget": {
+      "types": "./src/upstream-prompt-budget.ts",
+      "import": "./dist/upstream-prompt-budget.js"
+    },
+    "./agent-profile": {
+      "types": "./src/agent-profile.ts",
+      "import": "./dist/agent-profile.js"
+    },
+    "./provider-output": {
+      "types": "./src/provider-output.ts",
+      "import": "./dist/provider-output.js"
+    },
+    "./provider-diagnostics": {
+      "types": "./src/provider-diagnostics.ts",
+      "import": "./dist/provider-diagnostics.js"
+    },
+    "./content-production": {
+      "types": "./src/content-production.ts",
+      "import": "./dist/content-production.js"
+    },
+    "./chat-dispatch": {
+      "types": "./src/chat-dispatch.ts",
+      "import": "./dist/chat-dispatch.js"
+    },
+    "./provider-files": {
+      "types": "./src/provider-files.ts",
+      "import": "./dist/provider-files.js"
+    },
+    "./managed-runtime": {
+      "types": "./src/managed-runtime.ts",
+      "import": "./dist/managed-runtime.js"
     }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "zod": "4.1.12"
   }
 }

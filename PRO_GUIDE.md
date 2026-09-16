@@ -1,12 +1,12 @@
-# Pro handoff guide: Content
+# Pro development guide
 
-Use the exact public projection commit supplied by `frontmind-module-delivery`. Return a ZIP with `handoff.json`, `HANDOFF.md`, and complete changed files under `files/module/` or `files/standalone/`. Put explicit deletions in `handoff.json`; absent files are not deletions. Do not include `.git`, credentials, environment files, caches, customer data, private Core code, or deployment targets.
+Start from the exact live commit supplied with your source ZIP, not an assumed repository HEAD. Preserve the module's current behavior and implement the requested code changes.
 
-## Current boundary
+- module/client contains the real module UI; standalone/main.tsx mounts it in local preview and the live build.
+- Put business dependencies in module/package.json. Root package.json contains only shell/build dependencies. Include the updated pnpm-lock.yaml when dependencies change.
+- Do not implement product login, tenants, account management or the general agent. Private runtime supplies the fixed development workspace; main later injects real user/workspace context.
+- Optional cross-module connections are injected by the main workspace. Independent inputs always remain available.
+- Do not modify vendor/, credentials, deployment mapping, Core implementations or test runtime data.
+- Run pnpm typecheck, pnpm test and pnpm build. State which checks actually ran. Local preview is not proof of provider execution.
 
-- Projection path: `modules/content` in the private main repository.
-- Production/application baseline: `332d5ef072104283601682a3aca165a127c14e2c`.
-- Public repository and subdomain are not created by this source projection.
-- Cross-module imports, authentication, provider credentials, persistence adapters, and deployment remain host-owned unless a file is explicitly present in this projection.
-
-Describe dependencies and actual checks in `HANDOFF.md`. A ZIP is reviewed and merged in an isolated worktree; it does not automatically publish production or create external infrastructure.
+Return handoff.json, HANDOFF.md and files/ containing complete changed files at repository-relative paths. handoff.json contains formatVersion:1, module:"content", the full baseCommit, mode:"changes", and an explicit delete list. Missing files are never treated as deletions. HANDOFF.md describes behavior, dependency changes, validations and limitations.

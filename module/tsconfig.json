@@ -9,12 +9,18 @@
     "jsx": "react-jsx",
     "rootDir": ".",
     "outDir": "dist",
-    "declaration": true
+    "declaration": true,
+    "lib": [
+      "ES2023",
+      "DOM"
+    ]
   },
   "include": [
     "contracts/**/*.ts",
     "server/**/*.ts",
-    "client/**/*.tsx"
+    "client/**/*.tsx",
+    "client/**/*.ts",
+    "worker/**/*.ts"
   ],
   "exclude": [
     "workflows/**"
