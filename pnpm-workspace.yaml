@@ -1,0 +1,4 @@
+packages:
+  - module
+  - standalone
+  - vendor/*
