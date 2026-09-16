@@ -1,0 +1,1212 @@
+.agent-workbench-shell {
+  --workbench-gutter: 32px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  color: #20232b;
+  background: #fff;
+}
+/* V2.3 workspace top bar: business group name + module tabs on one line. */
+.agent-workbench-topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 0 0 64px;
+  height: 64px;
+  min-height: 64px;
+  padding: 0;
+  border-bottom: 1px solid #e7ebef;
+  background: #fff;
+}
+.agent-workbench-topbar__canvas {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  min-height: 0;
+  margin-inline: auto;
+  padding: 0 var(--workbench-gutter);
+  box-sizing: border-box;
+}
+.agent-workbench-topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+}
+.agent-workbench-topbar__group {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 22px;
+  border-right: 1px solid #dfe3e8;
+  color: #242833;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+}
+.agent-workbench-topbar__module {
+  color: #344054;
+  font-weight: 600;
+}
+.agent-workbench-topbar__project {
+  min-width: 0;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #101828;
+  font-weight: 600;
+}
+.agent-workbench-topbar__sep {
+  color: #d0d5dd;
+}
+.agent-workbench-topbar__heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.agent-workbench-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+.agent-workbench-topbar__actions .knowledge-workspace-actions {
+  margin-left: 0;
+}
+.agent-workbench-topbar__actions button,
+.agent-workbench-topbar__actions a {
+  min-height: var(--fm-control-height, 40px);
+  font-size: 14px;
+}
+/* A persistent outcome card and the conversation own separate scroll areas. */
+.agent-workbench-task-status {
+  font-size: 12px;
+  color: #595959;
+  margin-bottom: 8px;
+}
+.agent-workbench-shell__layout {
+  position: relative;
+  display: grid;
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) 16px var(--agent-aux-width, 28.5714%);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 16px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+.agent-workbench-shell__layout.is-single-pane {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+.agent-workbench-shell__layout.has-outcomes.is-fixed-auxiliary {
+  grid-template-columns: minmax(0, 1fr) var(--agent-aux-width, 348px);
+  /* The main scroll/editor owns its inset. Reserve only the outside right
+     gutter here so titles align with the top bar instead of adding 16px. */
+  padding: 0 var(--workbench-gutter) 24px 0;
+}
+.agent-workbench-shell__layout.is-fixed-auxiliary
+  > .agent-workbench-shell__auxiliary {
+  margin-top: 26px;
+  height: calc(100% - 26px);
+}
+/* Resource workspaces browse full-width in a centered, capped canvas. */
+.agent-workbench-shell__layout.is-workspace {
+  /* Keep the resource viewport in the bounded grid row. A block wrapper
+     lets its flex child grow to catalog height and clips the page before
+     the main-content scroll owner can overflow. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 0;
+}
+.agent-workbench-shell__layout.is-workspace
+  .agent-workbench-shell__main-content.is-scrollable {
+  padding: 0;
+}
+.agent-workbench-shell.layout-workspace .agent-workbench-shell__main-content {
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.agent-workspace-frame {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 26px var(--workbench-gutter) 30px;
+  min-width: 0;
+  min-height: max-content;
+}
+/* Resource pages already scroll in main-content. A second auto scroller with
+   overscroll containment consumes wheel gestures even when it has no overflow. */
+.user-brand-dashboard.operator-mode
+  .agent-workspace-frame
+  .dashboard-module-content {
+  flex: 0 0 auto;
+  overflow: visible;
+  overscroll-behavior: auto;
+}
+.agent-workbench-shell__main,
+.agent-workbench-shell__auxiliary {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.agent-workbench-shell__auxiliary {
+  align-self: stretch;
+  height: 100%;
+  max-height: 100%;
+  min-height: 96px;
+  width: 100%;
+  border: 1px solid #e7ebef;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgb(24 24 27 / 3%);
+  overflow-wrap: anywhere;
+}
+.agent-workbench-shell__auxiliary .knowledge-node-workspace__empty {
+  min-height: 0;
+  padding: 24px 12px;
+}
+.agent-workbench-shell__auxiliary .knowledge-node-workspace__header {
+  flex-wrap: wrap;
+}
+.agent-workbench-shell__auxiliary .knowledge-node-workspace__header > div {
+  flex: 1 0 96px;
+}
+.agent-workbench-shell__main-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.agent-workbench-shell__main-content.is-scrollable {
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 26px var(--workbench-gutter) 30px;
+}
+.agent-workbench-shell__main-content.has-native-scroll {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.agent-workbench-shell__main-content.has-native-scroll > * {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.agent-workbench-shell__main-content > .page-shell {
+  width: 100%;
+  padding: 0;
+}
+.agent-workbench-shell__composer {
+  flex-shrink: 0;
+}
+.agent-workbench-shell__auxiliary-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 16px;
+}
+/* Native editors retain their own scroll controller inside the shared panel. */
+.agent-workbench-shell__auxiliary-content.has-native-scroll {
+  overflow: hidden;
+  padding: 0;
+}
+.agent-workbench-shell__auxiliary-content.has-native-scroll > * {
+  min-height: 0;
+  flex: 1;
+}
+.agent-workbench-shell__resize {
+  position: relative;
+  width: 16px;
+  z-index: 2;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+.agent-workbench-shell__resize:after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 1px;
+  background: transparent;
+}
+.agent-workbench-shell__resize:focus {
+  outline: none;
+}
+.agent-workbench-shell__resize:hover:after,
+.agent-workbench-shell__resize:focus-visible:after {
+  top: 50%;
+  bottom: auto;
+  left: 6px;
+  width: 3px;
+  height: 40px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: #b8b0bd;
+}
+
+.agent-workbench-subagents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid #eaecf0;
+  flex-shrink: 0;
+}
+/* Business sub navigation now lives in the top bar (V2.3 module tabs). */
+.agent-workbench-subagents--bar {
+  flex-wrap: nowrap;
+  flex-shrink: 1;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border-bottom: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  align-self: center;
+}
+.agent-workbench-subagents--bar::-webkit-scrollbar {
+  display: none;
+}
+.agent-workbench-subagents--bar button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #737c8a;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.agent-workbench-subagents--bar button.is-active {
+  color: var(--subagent-color);
+  background: color-mix(in srgb, var(--subagent-color) 7%, white);
+  font-weight: 500;
+}
+.agent-workbench-subagents--bar button:focus-visible {
+  outline: 2px solid var(--subagent-color);
+  outline-offset: -2px;
+}
+.agent-workbench-subagents--bar button:hover:not(:disabled) {
+  color: var(--subagent-color);
+  background: #f7f7f8;
+}
+.agent-workbench-subagents--bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar) button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--subagent-color) 26%, white);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--subagent-color);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar) button svg {
+  flex-shrink: 0;
+}
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar)
+  button.is-active,
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar) button:hover {
+  background: color-mix(in srgb, var(--subagent-color) 7%, white);
+  border-color: color-mix(in srgb, var(--subagent-color) 14%, white);
+}
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar)
+  button:focus-visible {
+  outline: 2px solid var(--subagent-color);
+  outline-offset: 2px;
+}
+.agent-workbench-subagents:not(.agent-workbench-subagents--bar)
+  button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.business-workspace-inspector {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.business-workspace-inspector h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 18px;
+}
+.business-workspace-inspector p {
+  color: #595959;
+}
+.business-workspace-inspector dl {
+  margin: 0;
+  display: grid;
+  gap: 20px;
+}
+.business-workspace-inspector dt {
+  font-size: 12px;
+  color: #595959;
+  margin-bottom: 5px;
+}
+.business-workspace-inspector dd {
+  font-size: 14px;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+.business-inspector-action {
+  display: inline-flex;
+  margin-top: 20px;
+  color: #491060;
+  border: 0;
+  background: #f4eef7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.workbench-flow {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+/* Compact business summary strip shown instead of the auxiliary panel on
+ * resource (browsing) workspaces. */
+.workbench-resource-summary {
+  border: 1px solid #e7ebef;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px 18px;
+}
+.workbench-resource-summary .business-workspace-inspector h2 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.workbench-resource-summary .business-workspace-inspector dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
+}
+.workbench-resource-summary .business-workspace-inspector dt {
+  margin: 0;
+}
+.workbench-resource-summary .business-inspector-action {
+  margin-top: 12px;
+}
+.workbench-flow-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: #9b2c2c;
+  padding: 12px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+}
+.workbench-operation-records {
+  display: grid;
+  gap: 8px;
+  color: #595959;
+  font-size: 13px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.workbench-operation-records li {
+  border-bottom: 1px solid #eaecf0;
+  padding: 8px 0;
+}
+.workbench-operation-records a {
+  color: #491060;
+}
+.workbench-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.workbench-conversation__chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.workbench-conversation__chat > * {
+  flex: 1;
+  min-height: 0;
+}
+.user-brand-dashboard.operator-mode .workbench-main {
+  overflow: hidden;
+}
+/* Resource routes (publishing/media and monitoring lists) render below the
+   project workbench shell and own a page-sized document scroll. Keep the
+   shell clipped for conversational panes, but let these route pages grow
+   beyond the viewport instead of trapping the lower rows behind overflow. */
+.user-brand-dashboard.operator-mode .workbench-main:has(.publishing-page),
+.user-brand-dashboard.operator-mode
+  .workbench-main:has(.monitoring-reference-page) {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+@media (max-width: 1023px) {
+  .user-brand-dashboard.operator-mode .agent-workbench-shell {
+    padding-top: max(48px, env(safe-area-inset-top));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-workbench-shell * {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
+.workbench-conversation__history-popover {
+  width: min(360px, calc(100vw - 32px));
+  padding: 8px;
+}
+.workbench-conversation__history-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 8px 8px;
+  color: var(--muted-foreground, #656571);
+  font-size: 11px;
+  font-weight: 500;
+}
+.workbench-conversation__history-search {
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 7px 8px;
+  border: 1px solid #e7e7eb;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  outline: none;
+}
+.workbench-conversation__history-search:focus {
+  border-color: var(--ring, #7545a0);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--ring, #7545a0) 18%, transparent);
+}
+.workbench-conversation__history-item {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 2px;
+  border-radius: 7px;
+}
+.workbench-conversation__history-item:hover,
+.workbench-conversation__history-item[aria-selected="true"] {
+  background: color-mix(in srgb, var(--foreground, #24242a) 6%, white);
+}
+.workbench-conversation__history-item > button:first-child {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  gap: 9px;
+  padding: 9px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.workbench-conversation__history-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+.workbench-conversation__history-copy strong,
+.workbench-conversation__history-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workbench-conversation__history-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+.workbench-conversation__history-copy small {
+  color: var(--muted-foreground, #656571);
+  font-size: 10px;
+}
+.workbench-conversation__history-delete {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground, #656571);
+  cursor: pointer;
+}
+.workbench-conversation__history-delete:hover {
+  color: #b42318;
+  background: #b4231814;
+}
+.workbench-conversation__history-empty {
+  padding: 18px 8px;
+  color: var(--muted-foreground, #656571);
+  font-size: 12px;
+  text-align: center;
+}
+.workbench-history-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 4px 8px;
+  padding: 8px 10px;
+  border: 1px solid #e4e4e8;
+  border-radius: 8px;
+  color: #595959;
+}
+.workbench-history-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: #20232b;
+}
+.workbench-history-list {
+  max-height: 360px;
+  overflow: auto;
+}
+.workbench-conversation__history-copy strong {
+  font-size: 14px;
+}
+.workbench-conversation__history-copy small {
+  font-size: 12px;
+}
+.workbench-source {
+  margin: 0;
+  font-size: 13px;
+  color: #595959;
+}
+.workbench-source a {
+  color: #491060;
+  text-decoration: underline;
+}
+.enterprise-qa-unlock {
+  max-width: 720px;
+  margin: 28px auto 0;
+  padding: 8px 0;
+  font-size: 16px;
+  line-height: 28px;
+}
+.enterprise-qa-unlock h2 {
+  font-size: 20px;
+  font-weight: 600;
+  margin: 20px 0 28px;
+  line-height: 1.6;
+}
+.enterprise-qa-unlock-steps {
+  list-style: none;
+  margin: 0 0 32px;
+  padding: 0;
+  display: grid;
+  gap: 22px;
+}
+.enterprise-qa-unlock-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.enterprise-qa-unlock-steps li > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  height: 28px;
+  border: 1px solid #e8e3ec;
+  border-radius: 50%;
+  font-size: 13px;
+  color: #491060;
+}
+.enterprise-qa-unlock-steps small {
+  display: block;
+  font-size: 13px;
+  color: #595959;
+  line-height: 24px;
+  margin-top: 3px;
+}
+.enterprise-qa-source {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.enterprise-qa-source h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 20px;
+}
+.enterprise-qa-source dl {
+  display: grid;
+  gap: 20px;
+}
+.enterprise-qa-source dt {
+  font-size: 12px;
+  color: #595959;
+  margin-bottom: 4px;
+}
+.enterprise-qa-source dd {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.enterprise-qa-source p {
+  font-size: 12px;
+  color: #595959;
+  margin-top: 20px;
+}
+.enterprise-qa-source p.enterprise-qa-source__newer {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid
+    color-mix(in srgb, var(--module-accent, #5e6174) 22%, #e7ebef);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--module-accent, #5e6174) 6%, #fff);
+  color: color-mix(in srgb, var(--module-accent, #5e6174) 78%, #20232b);
+  line-height: 1.55;
+}
+.general-agent-welcome {
+  padding-top: clamp(20px, 9vh, 90px);
+}
+.general-agent-welcome [data-testid="chat-messages-viewport"] {
+  flex: 0 1 auto;
+}
+.general-welcome-heading {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 8px 12px 6px;
+  text-align: center;
+}
+.general-welcome-heading img {
+  width: 124px;
+  height: auto;
+  margin: 0 auto 25px;
+}
+.general-welcome-heading h3 {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.03em;
+  color: #20232b;
+  margin: 0;
+}
+.general-welcome-heading p {
+  font-size: 14px;
+  line-height: 24px;
+  color: #595959;
+  margin: 14px 0 0;
+}
+.knowledge-composer > div {
+  max-width: 800px !important;
+}
+.is-welcome-composer {
+  width: 100%;
+  max-width: 840px;
+  margin: 0 auto;
+}
+.is-welcome-composer textarea {
+  min-height: 96px !important;
+}
+.general-task-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+.general-task-suggestions button {
+  border: 1px solid #e6e6eb;
+  background: #fff;
+  border-radius: 18px;
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #595959;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.general-task-suggestions button:hover {
+  background: #f6f2f8;
+  border-color: #cbbbd6;
+  color: #491060;
+}
+.knowledge-composer .bg-card\/90 {
+  background: #fff;
+  box-shadow: 0 4px 24px #24242a08;
+  border-color: #dcdce2;
+}
+.knowledge-composer .bg-card\/90:focus-within {
+  box-shadow: 0 4px 24px #4910600c;
+  border-color: #b8a4c7;
+}
+.chat-back-to-latest {
+  position: absolute;
+  right: 24px;
+  bottom: 136px;
+  z-index: 10;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: #fff;
+  border: 1px solid #e4e4e8;
+  border-radius: 20px;
+  box-shadow: 0 2px 10px #20232b0a;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #595959;
+  cursor: pointer;
+}
+@media (max-width: 899px) {
+  .agent-workbench-shell__layout.has-outcomes {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: clamp(96px, 30%, 260px) minmax(0, 1fr);
+    row-gap: 12px;
+    padding: 0 0 max(12px, env(safe-area-inset-bottom));
+  }
+  .agent-workbench-shell__layout.has-outcomes.is-fixed-auxiliary {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 0 max(12px, env(safe-area-inset-bottom));
+  }
+  .agent-workbench-shell__auxiliary {
+    grid-column: 1;
+    grid-row: 1;
+    width: calc(100% - 2 * var(--workbench-gutter));
+    margin: 16px var(--workbench-gutter) 0;
+    height: calc(100% - 16px);
+    max-height: 260px;
+    border-radius: 12px;
+  }
+  .agent-workbench-shell__layout.is-fixed-auxiliary
+    > .agent-workbench-shell__auxiliary {
+    margin-top: 16px;
+    height: calc(100% - 16px);
+  }
+  .agent-workbench-shell__auxiliary:has(.knowledge-node-workspace__empty)
+    :is(.knowledge-workbench-auxiliary, .knowledge-node-workspace) {
+    height: auto;
+  }
+  .agent-workbench-shell__auxiliary .knowledge-node-workspace__empty {
+    flex: 0 0 auto;
+  }
+  .agent-workbench-shell__auxiliary:has(.knowledge-node-workspace__empty)
+    .agent-workbench-shell__auxiliary-content {
+    overflow-y: auto;
+  }
+  .agent-workbench-shell__layout.has-outcomes .agent-workbench-shell__main {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .layout-knowledge
+    .agent-workbench-shell__layout:has(.knowledge-node-workspace__empty) {
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .layout-knowledge
+    .agent-workbench-shell__layout:has(.knowledge-node-workspace__empty)
+    > .agent-workbench-shell__auxiliary {
+    display: none;
+  }
+  .layout-knowledge
+    .agent-workbench-shell__layout:has(.knowledge-node-workspace__empty)
+    > .agent-workbench-shell__main {
+    grid-row: 1;
+  }
+  .agent-workbench-shell__resize {
+    display: none;
+  }
+  .general-agent-welcome {
+    padding-top: 28px;
+  }
+  .general-welcome-heading h3 {
+    font-size: 26px;
+  }
+  .general-welcome-heading img {
+    width: 112px;
+    margin-bottom: 20px;
+  }
+  .general-welcome-heading p {
+    font-size: 13px;
+  }
+  .general-task-suggestions {
+    gap: 6px;
+  }
+  .general-task-suggestions button {
+    font-size: 12px;
+    padding: 6px 11px;
+  }
+}
+
+.agent-workbench-shell__main {
+  position: relative;
+}
+.workbench-back-to-latest {
+  position: absolute;
+  bottom: 20px;
+  right: 24px;
+  z-index: 5;
+  padding: 8px 14px;
+  background: #fff;
+  border: 1px solid #eaecf0;
+  border-radius: 24px;
+  box-shadow: 0 2px 12px #20232b10;
+  font-size: 12px;
+  color: #595959;
+  cursor: pointer;
+}
+
+/* A common task panel for every Agent, including the general assistant. */
+.workbench-panel-tabs {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid #eaecf0;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+.workbench-panel-tabs button {
+  padding: 0 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #595959;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.workbench-panel-tabs button[aria-selected="true"] {
+  color: var(--module-accent, #20232b);
+  border-bottom-color: var(--module-accent, #20232b);
+}
+.workbench-panel-tabs button:hover:not(:disabled) {
+  color: var(--module-accent, #20232b);
+}
+.workbench-panel-tabs button:focus-visible {
+  outline: 2px solid var(--module-accent, #20232b);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.workbench-panel-tabs button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+.workbench-task-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.workbench-task-panel [role="tabpanel"] {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.workbench-business-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+.workbench-business-records {
+  border-top: 1px solid #eaecf0;
+  padding-top: 16px;
+}
+.workbench-business-records > summary {
+  width: fit-content;
+  cursor: pointer;
+  color: #595959;
+  font-size: 13px;
+  line-height: 24px;
+}
+.workbench-business-records[open] > summary {
+  margin-bottom: 16px;
+}
+.workbench-output-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.workbench-output-list button {
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: #000;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.workbench-output-list button:hover {
+  background: #fafafa;
+  border-color: #cec4d4;
+}
+.workbench-panel-empty {
+  margin: 12px 0;
+  color: #595959;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.workbench-resource-heading,
+.workbench-restored-summary {
+  margin: 0 0 20px;
+  padding: 0 0 16px;
+  border-bottom: 1px solid #e7ebef;
+}
+.workbench-resource-heading h1,
+.workbench-restored-summary h2 {
+  margin: 0;
+  color: #20232b;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 34px;
+}
+.workbench-resource-heading p,
+.workbench-restored-summary li {
+  margin: 4px 0 0;
+  color: #667085;
+  font-size: 14px;
+  line-height: 22px;
+}
+.workbench-restored-summary ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.general-agent-welcome {
+  padding-top: clamp(24px, 11vh, 120px);
+}
+.general-welcome-heading h3 {
+  font-size: clamp(26px, 2.4vw, 36px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  color: #000;
+}
+.general-task-suggestions button {
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #303038;
+}
+@media (max-width: 1279px) {
+  .agent-workbench-shell {
+    --workbench-gutter: 24px;
+  }
+}
+@media (max-width: 639px) {
+  .agent-workbench-shell {
+    --workbench-gutter: 16px;
+  }
+  .agent-workbench-topbar__canvas {
+    gap: 8px;
+  }
+  .agent-workbench-topbar__inner {
+    gap: 12px;
+  }
+  .agent-workbench-topbar__group {
+    padding-right: 12px;
+  }
+}
+
+.workbench-output-list small {
+  display: block;
+  margin-top: 4px;
+  color: #595959;
+  font-size: 12px;
+}
+
+.agent-workbench-shell {
+  --foreground: #20232b;
+  --muted-foreground: #667085;
+  font-size: 16px;
+  line-height: 28px;
+}
+.agent-workbench-shell__main-content.is-scrollable > * {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+.agent-workbench-shell.module-content-production
+  .agent-workbench-shell__main-content.is-scrollable
+  > .cp-main-flow:not(.has-conversation) {
+  /* The task picker is a full workbench entry surface, like the monitoring
+     picker. Keep the 960px reading measure for conversations, but do not
+     compress the four task choices into a narrower column. */
+  max-width: 1280px;
+}
+.agent-workbench-shell__main-content.is-scrollable > .agent-workspace-frame {
+  max-width: 1280px;
+}
+.agent-workbench-shell__auxiliary {
+  font-size: 13px;
+  line-height: 20px;
+}
+.agent-workbench-shell table {
+  font-size: 14px;
+  line-height: 22px;
+}
+.agent-workbench-shell label,
+.agent-workbench-shell th {
+  color: #20232b;
+}
+.agent-workbench-shell input:not([type="checkbox"]):not([type="radio"]),
+.agent-workbench-shell select,
+.agent-workbench-shell textarea,
+.agent-workbench-shell .workbench-history-search,
+.agent-workbench-shell .knowledge-composer .bg-card\/90 {
+  border-color: #d0d5dd;
+}
+
+.agent-workbench-shell
+  [data-testid="chat-messages-viewport"]:has(> .workbench-reading-column) {
+  padding: 26px var(--workbench-gutter) 30px;
+}
+.workbench-reading-column {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+.agent-workbench-shell .knowledge-composer {
+  width: 100%;
+  max-width: none;
+  padding: 16px var(--workbench-gutter) 24px;
+}
+.agent-workbench-shell.module-general .knowledge-composer {
+  border-top: 0;
+}
+.agent-workbench-shell .knowledge-composer > div {
+  max-width: 960px !important;
+  margin-inline: auto;
+}
+.agent-workbench-shell .chat-message-content {
+  color: #20232b;
+  font-size: 16px;
+  line-height: 28px;
+}
+.agent-workbench-shell .chat-message-content button[title="复制内容"] {
+  font-size: 11px;
+  line-height: 20px;
+  margin-top: 8px;
+}
+.agent-workbench-shell .chat-message-content button[title="复制内容"] svg {
+  width: 14px;
+  height: 14px;
+}
+@media (max-width: 1023px) {
+  .agent-workbench-shell
+    [data-testid="chat-messages-viewport"]:has(> .workbench-reading-column) {
+    padding: 20px var(--workbench-gutter);
+  }
+  .agent-workbench-shell .knowledge-composer {
+    padding: 12px var(--workbench-gutter) 16px;
+  }
+}
+
+.agent-workbench-shell .knowledge-composer .general-runtime-trigger {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #000;
+}
+.agent-workbench-shell
+  .knowledge-composer
+  .general-runtime-trigger:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+@media (max-width: 639px) {
+  .agent-workbench-shell .agent-composer-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  .agent-workbench-shell .agent-composer-textarea {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+    padding-inline: 4px;
+  }
+  .agent-workbench-shell .agent-composer-attachments {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .agent-workbench-shell .agent-composer-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
+.agent-workbench-shell
+  [data-testid="chat-messages-viewport"]
+  > .workbench-reading-column {
+  padding: 0;
+}
+.agent-workbench-shell .knowledge-composer textarea {
+  padding-block: 8px;
+}
+
+.agent-workbench-shell__main-content.is-scrollable,
+.agent-workbench-shell [data-testid="chat-messages-viewport"] {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable both-edges;
+}

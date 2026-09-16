@@ -1,5 +1,5 @@
-import { useOperatorPortalClassName } from "./operator-theme";
-import { cn } from "../../lib/utils";
+import { useOperatorPortalClassName } from "./operator-theme.js";
+import { cn } from "../../lib/utils.js";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import * as React from "react";
