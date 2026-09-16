@@ -19,3 +19,7 @@ Local preview uses synthetic fixtures and labels them as preview data. It does n
 Business code and dependencies belong in module/. The independent entry, root Vite settings and root shell dependencies also participate in the development-domain build. Only module/ synchronizes into the private main repository. vendor/ is a reviewed version from main; request shared changes there.
 
 Open the development domain through the configured browser gateway; no product login or tenant selection belongs in this standalone shell. Gateway credentials and deployment settings are supplied privately and never committed here.
+
+## Capability and handoff guide
+
+Read [CAPABILITIES.md](CAPABILITIES.md) for source coverage, checks actually performed, known limitations and provider operations that remain unverified. Use [PRO_GUIDE.md](PRO_GUIDE.md) for the exact-baseline ZIP format. Repository main can be newer than the deployed image; export the current `/api/version` baseline before each Pro round.
