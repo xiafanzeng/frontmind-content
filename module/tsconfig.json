@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "rootDir": ".",
+    "outDir": "dist",
+    "declaration": true
+  },
+  "include": [
+    "contracts/**/*.ts",
+    "server/**/*.ts",
+    "client/**/*.tsx"
+  ],
+  "exclude": [
+    "workflows/**"
+  ]
+}

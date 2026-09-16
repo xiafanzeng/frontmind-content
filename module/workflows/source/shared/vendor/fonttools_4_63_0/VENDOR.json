@@ -1,0 +1,21 @@
+{
+  "name": "fonttools",
+  "version": "4.63.0",
+  "source": "PyPI wheel installed with pip and reduced to platform-neutral Python sources",
+  "upstream": "https://github.com/fonttools/fonttools",
+  "license": "MIT",
+  "excluded_from_wheel": [
+    "compiled extension modules",
+    "generated C sources",
+    "bytecode caches",
+    "console entry points and distribution metadata"
+  ],
+  "licenses": [
+    {
+      "file": "licenses/LICENSE"
+    },
+    {
+      "file": "licenses/LICENSE.external"
+    }
+  ]
+}

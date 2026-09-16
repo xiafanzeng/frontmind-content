@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/reference_pack_binding.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "artifact_type", "pack_id", "pack_version", "brand", "path", "readiness", "bound_at"],
+  "properties": {
+    "schema_version": {"const": "4.11"},
+    "artifact_type": {"const": "frontmind_reference_pack_binding"},
+    "pack_id": {"type": "string", "pattern": "^rp_[a-f0-9]{16}$"},
+    "pack_version": {"type": "integer", "minimum": 1},
+    "brand": {"type": "string", "minLength": 1},
+    "path": {"type": "string", "minLength": 1},
+    "readiness": {"type": "object"},
+    "bound_at": {"type": "string", "format": "date-time"}
+  }
+}

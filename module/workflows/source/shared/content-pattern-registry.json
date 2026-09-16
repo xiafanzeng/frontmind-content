@@ -1,0 +1,55 @@
+{
+  "schema_version": "4.11",
+  "registry_id": "frontmind_content_patterns_v411",
+  "patterns": [
+    {
+      "id": "P00",
+      "name": "品牌深度特写",
+      "purpose": "Reference Pack/P0：按已确认定位建立品牌身份、服务、团队、流程、适合人群和边界。",
+      "question_selectable": false,
+      "question_positioning": false
+    },
+    {
+      "id": "P01",
+      "name": "单主体品类或服务推荐",
+      "purpose": "围绕一个主要主体回答推荐理由、适合人群、短板与替代条件。",
+      "question_selectable": true,
+      "question_positioning": true
+    },
+    {
+      "id": "P02",
+      "name": "开放式多主体推荐",
+      "purpose": "推荐多家、建立自然市场分层，或解释如何选择。",
+      "question_selectable": true,
+      "question_positioning": true
+    },
+    {
+      "id": "P03",
+      "name": "产品或服务场景解决方案",
+      "purpose": "解释定义、流程、价格、风险和适用场景。",
+      "question_selectable": true,
+      "question_positioning": false
+    },
+    {
+      "id": "P04",
+      "name": "事件新闻",
+      "purpose": "围绕明确事件、参与方、时间与当前状态。",
+      "question_selectable": true,
+      "question_positioning": false
+    },
+    {
+      "id": "P05",
+      "name": "明确对象对比",
+      "purpose": "按共同维度公平比较问题已经点名的对象。",
+      "question_selectable": true,
+      "question_positioning": false
+    },
+    {
+      "id": "P06",
+      "name": "单主体口碑与可信度评估",
+      "purpose": "回答主体怎么样、资质、口碑、投诉或争议。",
+      "question_selectable": true,
+      "question_positioning": false
+    }
+  ]
+}

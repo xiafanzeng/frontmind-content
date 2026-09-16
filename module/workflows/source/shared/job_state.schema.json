@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/job_state.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "workflow_version",
+    "job_id",
+    "job_kind",
+    "stage",
+    "status",
+    "revision",
+    "created_at",
+    "updated_at",
+    "reference_pack",
+    "question",
+    "selected_pattern_id",
+    "selected_example_route",
+    "p0_route",
+    "current_pause",
+    "pending_action",
+    "metadata",
+    "decisions",
+    "flags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "4.11"
+    },
+    "artifact_type": {
+      "const": "frontmind_content_job_state"
+    },
+    "workflow_version": {
+      "const": "4.11"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "job_kind": {
+      "enum": [
+        "reference_pack",
+        "reference_pack_refresh",
+        "p0",
+        "article"
+      ]
+    },
+    "stage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "awaiting_reference_pack_route",
+        "awaiting_reference_pack_input",
+        "awaiting_question_research_inputs",
+        "running_reference_material_intake",
+        "running_positioning_competitive_tiering",
+        "running_positioning_brand_placement",
+        "running_positioning_positioning_polish",
+        "running_positioning_choice_map",
+        "running_positioning_direction_generation",
+        "running_positioning_direction_critique",
+        "awaiting_core_positioning_direction",
+        "running_core_positioning_synthesis",
+        "running_core_positioning_critique",
+        "awaiting_core_positioning_confirmation",
+        "running_reference_pack_assembly",
+        "positioning_ready",
+        "awaiting_p0_route",
+        "running_p0_example_discovery",
+        "awaiting_p0_example_confirmation",
+        "running_p0_blueprint",
+        "awaiting_p0_blueprint_confirmation",
+        "running_p0_production",
+        "running_reference_pack_p0_commit",
+        "p0_ready",
+        "awaiting_response_brief",
+        "running_answer_analysis",
+        "awaiting_pattern_confirmation",
+        "awaiting_example_confirmation",
+        "running_question_positioning",
+        "awaiting_question_positioning_confirmation",
+        "running_article_blueprint",
+        "awaiting_blueprint_confirmation",
+        "running_article_production",
+        "completed",
+        "awaiting_competitor_selection"
+      ]
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reference_pack": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "question": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "selected_pattern_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "P00",
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06"
+      ]
+    },
+    "selected_example_route": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "p0_route": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        null,
+        "create",
+        "import"
+      ]
+    },
+    "current_pause": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "pending_action": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "metadata": {
+      "type": "object"
+    },
+    "decisions": {
+      "type": "object"
+    },
+    "flags": {
+      "type": "object"
+    }
+  }
+}

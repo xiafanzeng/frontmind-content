@@ -1,0 +1,57 @@
+{
+  "schema_version": "4.11",
+  "artifact_type": "frontmind_v411_synthetic_acceptance_fixture",
+  "fixture_only": true,
+  "brand": "澄川综合医疗中心医学美容科",
+  "cases": [
+    {
+      "case_id": "q01",
+      "question_id": "q000001",
+      "question": "澄川医美各项目医生推荐有哪些？",
+      "pattern_id": "P02",
+      "question_positioning": true
+    },
+    {
+      "case_id": "q02",
+      "question_id": "q000002",
+      "question": "澄川医美医生都有证吗、资历如何、擅长什么？",
+      "pattern_id": "P06",
+      "question_positioning": false
+    },
+    {
+      "case_id": "q03",
+      "question_id": "q000003",
+      "question": "本地正规医美整形机构推荐有哪些？",
+      "pattern_id": "P02",
+      "question_positioning": true
+    },
+    {
+      "case_id": "q04",
+      "question_id": "q000004",
+      "question": "澄川综合医疗中心医学美容科怎么样？",
+      "pattern_id": "P06",
+      "question_positioning": false
+    },
+    {
+      "case_id": "q05",
+      "question_id": "q000005",
+      "question": "澄川医美与星环医美、青禾医美、壹方医美对比怎么选？",
+      "pattern_id": "P05",
+      "question_positioning": false
+    },
+    {
+      "case_id": "q06",
+      "question_id": "q000006",
+      "question": "本地打玻尿酸机构推荐有哪些？",
+      "pattern_id": "P02",
+      "question_positioning": true
+    },
+    {
+      "case_id": "q07",
+      "question_id": "q000007",
+      "question": "本地做腰腹吸脂医院推荐有哪些？",
+      "pattern_id": "P02",
+      "question_positioning": true
+    }
+  ]
+}

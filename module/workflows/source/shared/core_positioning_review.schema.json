@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/core_positioning_review.schema.json",
+  "title": "FrontMind 4.11 core positioning critic result",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "artifact_type", "review_status", "checks", "critique_notes", "rewrite_summary", "revised_core_positioning"],
+  "properties": {
+    "schema_version": {"const": "4.11"},
+    "artifact_type": {"const": "frontmind_core_positioning_review"},
+    "review_status": {"const": "passed"},
+    "checks": {
+      "type": "object", "additionalProperties": false,
+      "required": ["brand_replacement", "abstract_capability", "decisive_consequence", "owner_readability", "competitor_fairness", "strategic_tradeoff", "report_tone", "selected_direction_integrity"],
+      "properties": {
+        "brand_replacement": {"const": true},
+        "abstract_capability": {"const": true},
+        "decisive_consequence": {"const": true},
+        "owner_readability": {"const": true},
+        "competitor_fairness": {"const": true},
+        "strategic_tradeoff": {"const": true},
+        "report_tone": {"const": true},
+        "selected_direction_integrity": {"const": true}
+      }
+    },
+    "critique_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "rewrite_summary": {"type": "string", "minLength": 1},
+    "revised_core_positioning": {"$ref": "core_positioning.schema.json"}
+  }
+}

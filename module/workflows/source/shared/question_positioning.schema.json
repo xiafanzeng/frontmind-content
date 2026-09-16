@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/question_positioning.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "artifact_type", "pattern_id", "question", "brand", "natural_analysis", "material_adjustments"],
+  "properties": {
+    "schema_version": {"const": "4.11"}, "artifact_type": {"const": "frontmind_question_positioning"},
+    "pattern_id": {"enum": ["P01", "P02"]}, "question": {"type": "string", "minLength": 1}, "brand": {"type": "string", "minLength": 1},
+    "natural_analysis": {"type": "string", "minLength": 1}, "material_adjustments": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "candidate_scope": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+  }
+}

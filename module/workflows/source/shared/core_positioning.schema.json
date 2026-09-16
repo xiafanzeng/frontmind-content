@@ -1,0 +1,436 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/core_positioning.schema.json",
+  "title": "FrontMind 4.11 core positioning and confirmed competitor comparison",
+  "description": "Canonical public positioning paragraph and confirmed competitor comparison. Research provenance and uncertainty remain internal. Historical complete objects remain readable; public rendering has only two content sections.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "4.11"
+    },
+    "artifact_type": {
+      "const": "frontmind_core_positioning"
+    },
+    "brand": {
+      "type": "string",
+      "minLength": 1
+    },
+    "primary_direction": {
+      "type": "string"
+    },
+    "secondary_direction": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "core_positioning_paragraph": {
+      "type": "string",
+      "description": "Natural customer → relevant capability or service approach → user benefit narrative. Usually 100–180 Chinese characters, without a length gate. No operational list, brand-shortcomings list or routine disclaimer ending; necessary scope belongs in the customer/capability statement.",
+      "minLength": 1
+    },
+    "strategic_conclusion": {
+      "type": "array",
+      "description": "Legacy strategic notes with no mandatory paragraph count.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "target_customers": {
+      "type": "string"
+    },
+    "competitive_routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "market_tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "competitive_choice_map.schema.json#/$defs/market_tier"
+      }
+    },
+    "tier_order_reason": {
+      "type": "string"
+    },
+    "brand_placement": {
+      "$ref": "competitive_choice_map.schema.json#/$defs/brand_placement"
+    },
+    "decisive_consequence_chain": {
+      "$ref": "#/$defs/chain"
+    },
+    "user_choice_value": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Compatibility summary; not a separate public confirmation-page section."
+    },
+    "combination_value": {
+      "type": "string",
+      "description": "Why the brand's combination of relevant strengths matters to the user's choice; not limited to combining primary and secondary positioning directions."
+    },
+    "supporting_proof": {
+      "type": "array",
+      "description": "Supporting material or observations expressed as natural-language strings. No minimum count or claim of semantic verification.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "secondary_combination_value": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "brand_shortcomings": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "alternatives_better_when": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "strategic_tradeoffs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "operating_commitments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "material_adjustments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enhancement_options": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string"
+      }
+    },
+    "p0_usage": {
+      "type": "string"
+    },
+    "writing_guidance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "opening",
+        "support",
+        "main_services",
+        "supporting_content",
+        "avoid_amplification",
+        "p01_p02_translation",
+        "p03_p06_background_use"
+      ],
+      "properties": {
+        "opening": {
+          "type": "string"
+        },
+        "support": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "main_services": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "supporting_content": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "avoid_amplification": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "p01_p02_translation": {
+          "type": "string"
+        },
+        "p03_p06_background_use": {
+          "type": "string"
+        }
+      }
+    },
+    "advantage_explanation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Public comparison of confirmed alternatives: known value, meaningful differences and suitable needs. Factual cost, wait or delivery tradeoffs appear only when they affect the choice. No research-status commentary or role explanations; rank only when supported, otherwise compare in parallel."
+    },
+    "applicability_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "comparison_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "brand_category",
+        "comparison_targets",
+        "peer_examples",
+        "mode",
+        "scope_statement",
+        "confirmed",
+        "revision"
+      ],
+      "properties": {
+        "brand_category": {
+          "type": "string"
+        },
+        "comparison_targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "category",
+              "kind",
+              "research_notes",
+              "source_urls"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "brand",
+                  "category",
+                  "alternative"
+                ]
+              },
+              "research_notes": {
+                "type": "string"
+              },
+              "source_urls": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "relation_to_brand": {
+                "enum": [
+                  "same_type",
+                  "different_type",
+                  "unknown"
+                ]
+              },
+              "suggested_role": {
+                "enum": [
+                  "comparison_target",
+                  "peer_example",
+                  "excluded"
+                ]
+              }
+            }
+          },
+          "minItems": 1
+        },
+        "peer_examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "category",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "category": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "brand",
+                  "category",
+                  "alternative"
+                ]
+              },
+              "relation_to_brand": {
+                "enum": [
+                  "same_type",
+                  "different_type",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        },
+        "mode": {
+          "enum": [
+            "between_types",
+            "within_type",
+            "mixed",
+            "unspecified"
+          ]
+        },
+        "scope_statement": {
+          "type": "string"
+        },
+        "confirmed": {
+          "const": true
+        },
+        "revision": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_scenario",
+        "possible_failure_or_high_cost_event",
+        "required_capabilities",
+        "brand_response",
+        "alternative_response",
+        "response_difference",
+        "user_consequence",
+        "choice_implication"
+      ],
+      "properties": {
+        "decision_scenario": {
+          "type": "string"
+        },
+        "possible_failure_or_high_cost_event": {
+          "type": "string"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "brand_response": {
+          "type": "string"
+        },
+        "alternative_response": {
+          "type": "string"
+        },
+        "response_difference": {
+          "type": "string"
+        },
+        "user_consequence": {
+          "type": "string"
+        },
+        "choice_implication": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "brand"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "primary_direction",
+        "secondary_direction",
+        "core_positioning_paragraph",
+        "strategic_conclusion",
+        "target_customers",
+        "competitive_routes",
+        "market_tiers",
+        "tier_order_reason",
+        "brand_placement",
+        "decisive_consequence_chain",
+        "user_choice_value",
+        "secondary_combination_value",
+        "brand_shortcomings",
+        "alternatives_better_when",
+        "strategic_tradeoffs",
+        "operating_commitments",
+        "material_adjustments",
+        "enhancement_options",
+        "p0_usage",
+        "writing_guidance"
+      ]
+    },
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "user_choice_value",
+        "core_positioning_paragraph",
+        "advantage_explanation"
+      ]
+    },
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "primary_direction",
+        "secondary_direction",
+        "core_positioning_paragraph",
+        "strategic_conclusion",
+        "target_customers",
+        "competitive_routes",
+        "decisive_consequence_chain",
+        "user_choice_value",
+        "secondary_combination_value",
+        "brand_shortcomings",
+        "alternatives_better_when",
+        "strategic_tradeoffs",
+        "operating_commitments",
+        "material_adjustments",
+        "enhancement_options",
+        "p0_usage",
+        "writing_guidance"
+      ]
+    }
+  ]
+}

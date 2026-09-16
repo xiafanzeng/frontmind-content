@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/reference_pack.schema.json",
+  "title": "FrontMind Reference Pack 4.1 root index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "profile", "pack_id", "pack_version",
+    "parent_pack_version", "brand_name", "created_at", "updated_at",
+    "readiness", "canonical_paths"
+  ],
+  "properties": {
+    "schema_version": {"const": "4.1"},
+    "profile": {"const": "frontmind-content-reference-pack"},
+    "pack_id": {"type": "string", "pattern": "^rp_[a-f0-9]{16}$"},
+    "pack_version": {"type": "integer", "minimum": 1},
+    "parent_pack_version": {"type": ["integer", "null"], "minimum": 1},
+    "brand_name": {"type": "string", "minLength": 1, "maxLength": 200},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["materials_ready", "brand_market_research_ready", "positioning_ready", "p0_ready", "question_ready"],
+      "properties": {
+        "materials_ready": {"type": "boolean"},
+        "brand_market_research_ready": {"type": "boolean"},
+        "positioning_ready": {"type": "boolean"},
+        "p0_ready": {"type": "boolean"},
+        "question_ready": {"type": "object", "additionalProperties": {"type": "boolean"}}
+      }
+    },
+    "canonical_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["materials", "brand_market", "question_research", "registries", "strategy", "p0"],
+      "properties": {
+        "materials": {"const": "materials/"},
+        "brand_market": {"const": "research/brand_market/"},
+        "question_research": {"const": "research/question_research/"},
+        "registries": {"const": "registries/"},
+        "strategy": {"const": "strategy/"},
+        "p0": {"const": "p0/"}
+      }
+    }
+  }
+}

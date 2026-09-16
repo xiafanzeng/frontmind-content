@@ -1,0 +1,44 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+runtime_ok() {
+  "$1" -B -c 'import openpyxl, docx, lxml, pypdf' >/dev/null 2>&1
+}
+
+choose_python() {
+  if [ "${FRONTMIND_PYTHON:-}" ]; then
+    if runtime_ok "$FRONTMIND_PYTHON"; then
+      printf '%s\n' "$FRONTMIND_PYTHON"
+      return 0
+    fi
+    printf '%s\n' "FRONTMIND_PYTHON does not provide the required document modules." >&2
+    return 1
+  fi
+
+  codex_python="$HOME/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+  for candidate in "$codex_python" python3 python; do
+    if command -v "$candidate" >/dev/null 2>&1 && runtime_ok "$candidate"; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "No existing Python 3 runtime provides openpyxl, python-docx, lxml, and pypdf." >&2
+  printf '%s\n' "FrontMind will not install packages or create an approval pause during a Job." >&2
+  return 1
+}
+
+PYTHON=$(choose_python)
+
+if [ "$#" -eq 0 ]; then
+  set -- start
+fi
+
+if [ "${1:-}" = "preflight" ]; then
+  shift
+  exec "$PYTHON" -B "$ROOT/scripts/check_runtime_dependencies.py" "$@"
+fi
+
+exec "$PYTHON" -B "$ROOT/scripts/frontmind_workflow.py" "$@"

@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/core_positioning_directions.schema.json",
+  "title": "FrontMind 4.11 dynamic positioning directions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "brand",
+    "choice_map_path",
+    "routing",
+    "routing_reason",
+    "directions",
+    "recommended_direction_key",
+    "recommendation_reason"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "4.11"
+    },
+    "artifact_type": {
+      "const": "frontmind_core_positioning_directions"
+    },
+    "brand": {
+      "type": "string",
+      "minLength": 1
+    },
+    "choice_map_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "routing": {
+      "enum": [
+        "no_clear_direction",
+        "single_clear",
+        "multiple_choices"
+      ]
+    },
+    "routing_reason": {
+      "type": "string"
+    },
+    "recommended_direction_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^direction_[1-3]$"
+    },
+    "recommendation_reason": {
+      "type": "string"
+    },
+    "directions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/direction"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "routing": {
+            "const": "no_clear_direction"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "directions": {
+            "maxItems": 0
+          },
+          "recommended_direction_key": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "routing": {
+            "const": "single_clear"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "directions": {
+            "minItems": 1,
+            "maxItems": 1
+          },
+          "recommended_direction_key": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "routing": {
+            "const": "multiple_choices"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "directions": {
+            "minItems": 2,
+            "maxItems": 3
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_scenario",
+        "possible_failure_or_high_cost_event",
+        "required_capabilities",
+        "brand_response",
+        "alternative_response",
+        "response_difference",
+        "user_consequence",
+        "choice_implication"
+      ],
+      "properties": {
+        "decision_scenario": {
+          "type": "string"
+        },
+        "possible_failure_or_high_cost_event": {
+          "type": "string"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "brand_response": {
+          "type": "string"
+        },
+        "alternative_response": {
+          "type": "string"
+        },
+        "response_difference": {
+          "type": "string"
+        },
+        "user_consequence": {
+          "type": "string"
+        },
+        "choice_implication": {
+          "type": "string"
+        }
+      }
+    },
+    "direction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^direction_[1-3]$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "decision_tension": {
+          "type": "string"
+        },
+        "target_customer": {
+          "type": "string"
+        },
+        "target_scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "competitive_frame": {
+          "type": "string"
+        },
+        "decisive_consequence_chain": {
+          "$ref": "#/$defs/chain"
+        },
+        "difference_mechanism": {
+          "type": "string"
+        },
+        "core_positioning_paragraph": {
+          "type": "string",
+          "description": "Legacy direction summary without a minimum prose length or a requirement to copy all strategic details."
+        },
+        "user_choice_value": {
+          "type": "string"
+        },
+        "delivery_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "strategic_tradeoffs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "alternatives_better_when": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "material_adjustments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "enhancement_options": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          }
+        },
+        "system_judgment": {
+          "type": "string"
+        },
+        "advantage_explanation": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "key",
+            "name",
+            "decision_tension",
+            "target_customer",
+            "target_scenarios",
+            "competitive_frame",
+            "decisive_consequence_chain",
+            "difference_mechanism",
+            "core_positioning_paragraph",
+            "user_choice_value",
+            "delivery_requirements",
+            "strategic_tradeoffs",
+            "alternatives_better_when",
+            "material_adjustments",
+            "enhancement_options",
+            "system_judgment"
+          ]
+        },
+        {
+          "required": [
+            "key",
+            "name",
+            "core_positioning_paragraph",
+            "user_choice_value",
+            "advantage_explanation"
+          ]
+        }
+      ]
+    }
+  }
+}

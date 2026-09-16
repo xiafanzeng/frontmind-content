@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/positioning_direction_review.schema.json",
+  "title": "FrontMind 4.11 positioning direction critic result",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "artifact_type", "review_status", "checks", "critique_notes", "rewrite_summary", "revised_directions"],
+  "properties": {
+    "schema_version": {"const": "4.11"},
+    "artifact_type": {"const": "frontmind_positioning_direction_review"},
+    "review_status": {"const": "passed"},
+    "checks": {
+      "type": "object", "additionalProperties": false,
+      "required": ["not_generic_claim", "complete_consequence_chain", "alternatives_explicit", "user_consequence_explicit", "fair_alternative_conditions", "directions_materially_distinct", "recommendation_is_strategic"],
+      "properties": {
+        "not_generic_claim": {"const": true},
+        "complete_consequence_chain": {"const": true},
+        "alternatives_explicit": {"const": true},
+        "user_consequence_explicit": {"const": true},
+        "fair_alternative_conditions": {"const": true},
+        "directions_materially_distinct": {"const": true},
+        "recommendation_is_strategic": {"const": true}
+      }
+    },
+    "critique_notes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "rewrite_summary": {"type": "string", "minLength": 1},
+    "revised_directions": {"$ref": "core_positioning_directions.schema.json"}
+  }
+}

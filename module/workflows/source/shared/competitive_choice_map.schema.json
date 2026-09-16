@@ -1,0 +1,819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/competitive_choice_map.schema.json",
+  "title": "FrontMind 4.11 industry-neutral competitive choice map",
+  "description": "Natural competitive research; ordered tiers remain readable historical information, not a required new result.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "4.11"
+    },
+    "artifact_type": {
+      "const": "frontmind_competitive_choice_map"
+    },
+    "brand": {
+      "type": "string",
+      "minLength": 1
+    },
+    "market_scope": {
+      "type": "string"
+    },
+    "decision_context": {
+      "$ref": "#/$defs/decision_context"
+    },
+    "consequence_dimensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/consequence"
+      }
+    },
+    "choice_scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/scenario"
+      }
+    },
+    "critical_capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/capability"
+      }
+    },
+    "market_tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/market_tier"
+      }
+    },
+    "tier_order_reason": {
+      "type": "string"
+    },
+    "ranking_scope": {
+      "type": "string"
+    },
+    "brand_placement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/brand_placement"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Optional compatibility projection from the final core. Stage 1 may omit it or leave it null; it is not an independent brand judgment."
+    },
+    "alternative_routes": {
+      "type": "array",
+      "description": "Historical routes, retained when supplied by an older Pack. New natural research does not manufacture routes or ranks.",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "user_choice_tensions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/tension"
+      }
+    },
+    "decision_priority_logic": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/priority"
+      }
+    },
+    "decisive_consequence_chains": {
+      "type": "array",
+      "description": "Optional legacy brand-response analysis; not required for stage 1.",
+      "items": {
+        "$ref": "#/$defs/chain"
+      }
+    },
+    "brand_difference_mechanisms": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mechanism"
+      }
+    },
+    "positioning_opportunities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/opportunity"
+      }
+    },
+    "research_limits": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "research_markdown": {
+      "type": "string",
+      "minLength": 1
+    },
+    "brand_category": {
+      "type": "string"
+    },
+    "competitor_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "category",
+          "kind",
+          "research_notes",
+          "source_urls",
+          "suggested_role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "category": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "brand",
+              "category",
+              "alternative"
+            ]
+          },
+          "research_notes": {
+            "type": "string"
+          },
+          "source_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relation_to_brand": {
+            "enum": ["same_type", "different_type", "unknown"]
+          },
+          "suggested_role": {
+            "enum": [
+              "comparison_target",
+              "peer_example",
+              "excluded"
+            ]
+          }
+        }
+      }
+    },
+    "unresolved_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "decision_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "buyer",
+        "end_user",
+        "decision_to_make",
+        "usage_context",
+        "market_scope",
+        "alternative_types"
+      ],
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "buyer": {
+          "type": "string"
+        },
+        "end_user": {
+          "type": "string"
+        },
+        "decision_to_make": {
+          "type": "string"
+        },
+        "usage_context": {
+          "type": "string"
+        },
+        "market_scope": {
+          "type": "string"
+        },
+        "alternative_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "consequence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimension",
+        "why_users_care",
+        "relevant_scenarios",
+        "when_it_becomes_decisive"
+      ],
+      "properties": {
+        "dimension": {
+          "type": "string"
+        },
+        "why_users_care": {
+          "type": "string"
+        },
+        "relevant_scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "when_it_becomes_decisive": {
+          "type": "string"
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "user_goal",
+        "complexity_or_stakes",
+        "possible_failure",
+        "resulting_cost",
+        "relevant_alternatives"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "user_goal": {
+          "type": "string"
+        },
+        "complexity_or_stakes": {
+          "type": "string"
+        },
+        "possible_failure": {
+          "type": "string"
+        },
+        "resulting_cost": {
+          "type": "string"
+        },
+        "relevant_alternatives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability",
+        "required_in_scenario",
+        "why_it_matters",
+        "user_consequence_if_missing"
+      ],
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "required_in_scenario": {
+          "type": "string"
+        },
+        "why_it_matters": {
+          "type": "string"
+        },
+        "user_consequence_if_missing": {
+          "type": "string"
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_name",
+        "named_examples",
+        "dominant_value",
+        "routine_strengths",
+        "complex_scenario_response",
+        "failure_scenario_response",
+        "limitations",
+        "best_fit"
+      ],
+      "properties": {
+        "route_name": {
+          "type": "string"
+        },
+        "named_examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dominant_value": {
+          "type": "string"
+        },
+        "routine_strengths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "complex_scenario_response": {
+          "type": "string"
+        },
+        "failure_scenario_response": {
+          "type": "string"
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "best_fit": {
+          "type": "string"
+        },
+        "better_than_brand_when": {
+          "type": "string",
+          "description": "Legacy field name. New projections copy tier_can_move_ahead_when: a condition for the route to move ahead, not a claim that it is superior to the brand."
+        }
+      }
+    },
+    "tension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tension",
+        "why_difficult",
+        "choice_effect"
+      ],
+      "properties": {
+        "tension": {
+          "type": "string"
+        },
+        "why_difficult": {
+          "type": "string"
+        },
+        "choice_effect": {
+          "type": "string"
+        }
+      }
+    },
+    "priority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario",
+        "ordered_criteria",
+        "priority_reason",
+        "conditions_that_change_order"
+      ],
+      "properties": {
+        "scenario": {
+          "type": "string"
+        },
+        "ordered_criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "priority_reason": {
+          "type": "string"
+        },
+        "conditions_that_change_order": {
+          "type": "string"
+        }
+      }
+    },
+    "chain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_scenario",
+        "possible_failure_or_high_cost_event",
+        "required_capabilities",
+        "brand_response",
+        "alternative_response",
+        "response_difference",
+        "user_consequence",
+        "choice_implication"
+      ],
+      "properties": {
+        "decision_scenario": {
+          "type": "string"
+        },
+        "possible_failure_or_high_cost_event": {
+          "type": "string"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "brand_response": {
+          "type": "string"
+        },
+        "alternative_response": {
+          "type": "string"
+        },
+        "response_difference": {
+          "type": "string"
+        },
+        "user_consequence": {
+          "type": "string"
+        },
+        "choice_implication": {
+          "type": "string"
+        }
+      }
+    },
+    "mechanism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mechanism",
+        "visible_in",
+        "user_effect",
+        "limits"
+      ],
+      "properties": {
+        "mechanism": {
+          "type": "string"
+        },
+        "visible_in": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "user_effect": {
+          "type": "string"
+        },
+        "limits": {
+          "type": "string"
+        }
+      }
+    },
+    "opportunity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "decision_tension",
+        "target_customer",
+        "target_scenarios",
+        "competitive_frame",
+        "chain_index",
+        "difference_mechanism",
+        "user_choice_value",
+        "delivery_requirements",
+        "strategic_tradeoffs",
+        "alternatives_better_when",
+        "material_adjustments",
+        "enhancement_options",
+        "system_judgment"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "decision_tension": {
+          "type": "string"
+        },
+        "target_customer": {
+          "type": "string"
+        },
+        "target_scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "competitive_frame": {
+          "type": "string"
+        },
+        "chain_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "difference_mechanism": {
+          "type": "string"
+        },
+        "user_choice_value": {
+          "type": "string"
+        },
+        "delivery_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "strategic_tradeoffs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "alternatives_better_when": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "material_adjustments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "enhancement_options": {
+          "type": "array",
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          }
+        },
+        "system_judgment": {
+          "type": "string"
+        }
+      }
+    },
+    "market_tier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rank",
+        "name",
+        "named_examples",
+        "dominant_value",
+        "tier_strengths",
+        "tier_high_stakes_response",
+        "tier_failure_response",
+        "tier_limitations",
+        "tier_best_fit",
+        "tier_can_move_ahead_when"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "named_examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dominant_value": {
+          "type": "string"
+        },
+        "tier_strengths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "tier_high_stakes_response": {
+          "type": "string"
+        },
+        "tier_failure_response": {
+          "type": "string"
+        },
+        "tier_limitations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "tier_best_fit": {
+          "type": "string"
+        },
+        "tier_can_move_ahead_when": {
+          "type": "string"
+        }
+      }
+    },
+    "brand_placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Stage 2 brand judgment. comparisons and within_tier_comparison are optional only for older packs; new prompts/controller require both.",
+      "required": [
+        "placed_tier",
+        "placement_reason",
+        "wins_against",
+        "loses_against",
+        "placement_scenario",
+        "choice_consequence",
+        "natural_first_position",
+        "first_position_limit"
+      ],
+      "properties": {
+        "placed_tier": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Market tier rank, or null when no single tier placement is justified. A null value does not determine natural_first_position."
+        },
+        "placement_reason": {
+          "type": "string"
+        },
+        "wins_against": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "loses_against": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "comparisons": {
+          "type": "array",
+          "description": "Relevant alternatives compared in the current decision context. No fixed count or mandatory two-direction comparison pattern across industries.",
+          "items": {
+            "$ref": "#/$defs/comparison"
+          }
+        },
+        "within_tier_comparison": {
+          "type": "string",
+          "description": "Comparison with relevant peers in the same tier, or an explanation of why a within-tier comparison does not apply or cannot be established."
+        },
+        "placement_scenario": {
+          "type": "string"
+        },
+        "choice_consequence": {
+          "type": "string"
+        },
+        "natural_first_position": {
+          "type": "boolean",
+          "description": "Whether the brand is a natural first choice in the stated scenario. Independent of placed_tier; tier 1 alone never establishes this judgment."
+        },
+        "first_position_limit": {
+          "type": "string"
+        }
+      }
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "alternative",
+        "shared_strengths",
+        "brand_advantage",
+        "alternative_advantage",
+        "applies_when"
+      ],
+      "properties": {
+        "alternative": {
+          "type": "string"
+        },
+        "shared_strengths": {
+          "type": "string"
+        },
+        "brand_advantage": {
+          "type": "string"
+        },
+        "alternative_advantage": {
+          "type": "string"
+        },
+        "applies_when": {
+          "type": "string"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "url",
+        "accessed_at",
+        "use"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "accessed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "use": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "brand"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "market_scope",
+        "decision_context",
+        "consequence_dimensions",
+        "choice_scenarios",
+        "critical_capabilities",
+        "market_tiers",
+        "tier_order_reason",
+        "ranking_scope",
+        "user_choice_tensions",
+        "decision_priority_logic",
+        "research_limits",
+        "sources"
+      ]
+    },
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "research_markdown",
+        "sources"
+      ]
+    },
+    {
+      "required": [
+        "schema_version",
+        "artifact_type",
+        "brand",
+        "market_scope",
+        "decision_context",
+        "consequence_dimensions",
+        "choice_scenarios",
+        "critical_capabilities",
+        "alternative_routes",
+        "user_choice_tensions",
+        "decision_priority_logic",
+        "decisive_consequence_chains",
+        "brand_difference_mechanisms",
+        "positioning_opportunities",
+        "research_limits",
+        "sources"
+      ]
+    }
+  ]
+}

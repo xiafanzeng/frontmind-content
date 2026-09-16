@@ -1,0 +1,8 @@
+# Required Workflow v4.11 runtime for research ingestion, material extraction
+# and DOCX delivery. Provider integration uses the controller callback contract
+# and requires no provider SDK installation. Python 3.10+ is required.
+openpyxl>=3.1,<4
+xlrd>=2,<3
+python-docx>=1.1,<2
+lxml>=5,<7
+pypdf>=5,<7

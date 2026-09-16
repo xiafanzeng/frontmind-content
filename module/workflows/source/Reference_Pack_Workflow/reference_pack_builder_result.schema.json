@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/reference_pack_builder_result.schema.json",
+  "title": "FrontMind v4.11 Reference Pack 4.1 Builder result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "builder_version", "pack_path", "portable_zip_path", "portable_zip_sha256", "brand_name", "pack_id", "pack_version", "parent_pack_version", "readiness"],
+  "properties": {
+    "status": {"enum": ["created", "updated"]},
+    "builder_version": {"const": "frontmind-reference-pack-builder/4.11"},
+    "pack_path": {"type": "string", "minLength": 1},
+    "portable_zip_path": {"type": "string", "minLength": 1},
+    "portable_zip_sha256": {"$ref": "#/$defs/sha256"},
+    "brand_name": {"type": "string", "minLength": 1},
+    "pack_id": {"type": "string", "pattern": "^rp_[a-f0-9]{16}$"},
+    "pack_version": {"type": "integer", "minimum": 1},
+    "parent_pack_version": {"type": ["integer", "null"], "minimum": 1},
+    "material_count": {"type": "integer", "minimum": 0},
+    "knowledge_unit_count": {"type": "integer", "minimum": 0},
+    "claim_count": {"type": "integer", "minimum": 0},
+    "image_count": {"type": "integer", "minimum": 0},
+    "accepted_count": {"type": "integer", "minimum": 0},
+    "skipped_count": {"type": "integer", "minimum": 0},
+    "rejected_count": {"type": "integer", "minimum": 0},
+    "input_items": {"type": "array", "items": {"$ref": "#/$defs/inputItem"}},
+    "local_repairs": {"type": "array"},
+    "ingestion_actions": {"type": "array"},
+    "research_actions": {"type": "array"},
+    "question_uids": {"type": "array", "items": {"type": "string"}},
+    "material_count_added": {"type": "integer", "minimum": 0},
+    "positioning_reconfirmation_required": {"type": "boolean"},
+    "readiness": {"$ref": "#/$defs/readiness"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "inputItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_path", "status", "classification"],
+      "properties": {
+        "source_path": {"type": "string", "minLength": 1},
+        "status": {"enum": ["accepted", "skipped", "rejected"]},
+        "classification": {"enum": [
+          "input", "directory", "directory_member", "single_file", "zip", "archive_member",
+          "workflow_release_zip", "reference_pack_zip", "canonical_knowledge_base_zip",
+          "working_set_zip", "material_zip", "reference_pack_directory"
+        ]},
+        "reason": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "aliases": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["materials_ready", "brand_market_research_ready", "positioning_ready", "p0_ready", "question_ready"],
+      "properties": {
+        "materials_ready": {"type": "boolean"},
+        "brand_market_research_ready": {"type": "boolean"},
+        "positioning_ready": {"type": "boolean"},
+        "p0_ready": {"type": "boolean"},
+        "question_ready": {"type": "object", "additionalProperties": {"type": "boolean"}}
+      }
+    }
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["editorial_strategy"]}, {"required": ["strategy"]},
+      {"required": ["information_pillars"]}, {"required": ["voice"]},
+      {"required": ["title_strategy"]}
+    ]
+  }
+}

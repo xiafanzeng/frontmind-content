@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frontmind.local/schemas/positioning_user_materials.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "artifact_type", "items"],
+  "properties": {
+    "schema_version": {"const": "4.11"},
+    "artifact_type": {"const": "frontmind_positioning_user_materials"},
+    "items": {"type": "array", "maxItems": 5000, "items": {"type": "object", "additionalProperties": false, "required": ["path", "kind", "added_at"], "properties": {"path": {"type": "string", "minLength": 1}, "kind": {"enum": ["text", "file", "directory", "zip"]}, "added_at": {"type": "string", "format": "date-time"}}}}
+  }
+}
