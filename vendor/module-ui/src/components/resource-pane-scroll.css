@@ -1,0 +1,97 @@
+/* Opt-in only: monitoring and reports share sibling desktop scroll panes.
+   Every other workspace and the narrow layout keeps the original scroll owner. */
+.agent-workbench-shell.layout-workspace.has-resource-panes:has(
+    [data-resource-pane]
+  ) {
+  --resource-pane-height: 100%;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes:has(
+    [data-resource-pane]
+  )
+  .agent-workbench-shell__main-content {
+  overflow: hidden;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes:has(
+    [data-resource-pane]
+  )
+  .agent-workspace-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 30px;
+  overflow: hidden;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes
+  :is(
+    .monitoring-resource-surface,
+    .optimization-report-page,
+    .progress-report-workspace,
+    .enterprise-monitoring-workspace
+  ) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes
+  .monitoring-module:has(.resource-reading-layout),
+.agent-workbench-shell.layout-workspace.has-resource-panes
+  .monitoring-reference-page:has(.resource-reading-layout),
+.agent-workbench-shell.layout-workspace.has-resource-panes
+  .monitoring-reader-frame:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding-block: 0;
+  overflow: hidden;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes
+  .monitoring-module
+  .monitoring-reference-page
+  .fm-monitoring-workspace.resource-reading-layout,
+.agent-workbench-shell.layout-workspace.has-resource-panes .formal-report-layout {
+  display: grid;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 348px;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 24px;
+  overflow: hidden;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes :is(.resource-reading-layout, .formal-report-layout) > [data-resource-pane] {
+  position: static;
+  top: auto;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  align-self: stretch;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes [data-resource-pane="main"] {
+  scroll-padding-top: 12px;
+}
+.agent-workbench-shell.layout-workspace.has-resource-panes [data-resource-pane]:focus-visible {
+  outline: 2px solid #2867a5;
+  outline-offset: -2px;
+}
+
+.agent-workbench-shell.layout-workspace.has-resource-panes [data-resource-pane="main"] :is(.fm-monitor-hero, .fm-monitor-body) {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}

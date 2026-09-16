@@ -1,0 +1,220 @@
+import { useRef, useState } from "react";
+import { Check, Clock3, Plus, Search, Trash2 } from "lucide-react";
+import { Button } from "../components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../components/ui/popover";
+import { workbenchStatus } from "./workbench-status";
+export type WorkbenchHistoryItem = {
+  id: string;
+  title: string;
+  updatedAt: number;
+  status?: string;
+};
+export type WorkbenchTaskToolbarProps = {
+  tasks: WorkbenchHistoryItem[];
+  currentId?: string | null;
+  onNew: () => void;
+  onSelect: (id: string) => void;
+  onDelete?: (id: string) => void;
+  disabled?: boolean;
+  presentation?: "toolbar" | "sidebar" | "panel";
+  showNew?: boolean;
+  labels?: { newAction?: string; history?: string; noun?: string };
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  onNavigate?: () => void;
+  requestNavigation?: (operation: () => void) => void;
+};
+export function WorkbenchTaskToolbar({
+  tasks,
+  currentId,
+  onNew,
+  onSelect,
+  onDelete,
+  disabled = false,
+  presentation = "toolbar",
+  loading = false,
+  error,
+  onRetry,
+  onNavigate,
+  showNew = true,
+  labels,
+  requestNavigation = (operation) => operation(),
+}: WorkbenchTaskToolbarProps) {
+  const noun = labels?.noun ?? "任务";
+  const historyLabel = labels?.history ?? "任务历史";
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const list = useRef<HTMLDivElement>(null);
+  const shown = tasks.filter((task) =>
+    task.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
+  const newTaskButton = (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={disabled}
+      onClick={() =>
+        requestNavigation(() => {
+          onNew();
+          setQuery("");
+          onNavigate?.();
+        })
+      }
+    >
+      <Plus size={15} />
+      {labels?.newAction ?? "新任务"}
+    </Button>
+  );
+  const historyContent = (
+    <>
+      <div className="workbench-conversation__history-heading">
+        <span>{historyLabel}</span>
+      </div>
+      <label className="workbench-history-search">
+        <Search size={15} />
+        <input
+          aria-label={`搜索${noun}`}
+          placeholder={`搜索${noun}`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </label>
+      {loading && (
+        <p role="status" className="workbench-conversation__history-empty">
+          正在读取{noun}…
+        </p>
+      )}
+      {error && (
+        <div className="workbench-task-navigation__error" role="alert">
+          <p>{error}</p>
+          {onRetry && (
+            <button type="button" onClick={onRetry}>
+              重新读取
+            </button>
+          )}
+        </div>
+      )}
+      <div
+        ref={list}
+        role="listbox"
+        aria-label={historyLabel}
+        className="workbench-history-list"
+        onKeyDown={(event) => {
+          if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key))
+            return;
+          event.preventDefault();
+          const buttons = Array.from(
+            list.current?.querySelectorAll<HTMLButtonElement>(
+              "button[data-task-select]",
+            ) ?? [],
+          );
+          const index = buttons.indexOf(
+            document.activeElement as HTMLButtonElement,
+          );
+          buttons[
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? buttons.length - 1
+                : Math.max(
+                    0,
+                    Math.min(
+                      buttons.length - 1,
+                      index + (event.key === "ArrowDown" ? 1 : -1),
+                    ),
+                  )
+          ]?.focus();
+        }}
+      >
+        {shown.map((task) => (
+          <div
+            key={task.id}
+            role="option"
+            aria-selected={task.id === currentId}
+            className="workbench-conversation__history-item"
+          >
+            <button
+              type="button"
+              data-task-select
+              onClick={() =>
+                requestNavigation(() => {
+                  onSelect(task.id);
+                  setOpen(false);
+                  onNavigate?.();
+                })
+              }
+            >
+              <span className="workbench-conversation__history-copy">
+                <strong>{task.title}</strong>
+                <small>
+                  {new Date(task.updatedAt).toLocaleString("zh-CN", {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {task.status ? ` · ${workbenchStatus(task.status)}` : ""}
+                </small>
+              </span>
+              {task.id === currentId && <Check size={15} />}
+            </button>
+            {onDelete && (
+              <button
+                type="button"
+                className="workbench-conversation__history-delete"
+                aria-label={`删除${noun} ${task.title}`}
+                onClick={() =>
+                  requestNavigation(() => onDelete(task.id))
+                }
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!shown.length && !loading && !error && (
+          <p className="workbench-conversation__history-empty">
+            {query ? `没有匹配的${noun}` : `暂无${historyLabel}`}
+          </p>
+        )}
+      </div>
+    </>
+  );
+  if (presentation !== "toolbar") {
+    return (
+      <section
+        className="workbench-task-navigation"
+        aria-label={labels ? historyLabel : "智能体任务"}
+      >
+        {showNew && (
+          <div className="workbench-task-navigation__new">{newTaskButton}</div>
+        )}
+        {historyContent}
+      </section>
+    );
+  }
+  return (
+    <>
+      {newTaskButton}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="sm">
+            <Clock3 size={15} />
+            历史
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="workbench-conversation__history-popover"
+        >
+          {historyContent}
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}

@@ -43,3 +43,7 @@ Example handoff.json:
 Place complete changed files beneath `files/module/` or `files/standalone/` using their repository paths. Include allowed root build files and lockfile changes when needed. List removals explicitly in `delete`; represent a rename as an added file plus an explicit deletion. Exclude `.git`, environment files, credentials, dependencies, build artifacts and runtime data.
 
 The delivery skill applies the ZIP in a separate worktree, checks the code and publishes only the requested development domain. `standalone/` changes participate in that build; only `module/` business source and dependencies synchronize into main. After publication, check the actual version, changed page, refresh and persistence. A local preview or successful build is not provider acceptance. Gateway and deployment configuration comes from trusted local settings and cannot be changed by the ZIP.
+
+## Shared Dashboard presentation
+
+The standalone app uses the original Dashboard sidebar, tabs, layout, and controls from vendor/module-ui. It only filters navigation to this business module. Keep business page and style changes in module/client so source synchronization brings them back to Dashboard. standalone/ only supplies runtime adapters and independent inputs; it is not merged into production. Shared shell changes are maintained in main and sent to vendor.
