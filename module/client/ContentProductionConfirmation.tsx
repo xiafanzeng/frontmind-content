@@ -1,3 +1,4 @@
+import { useContentWorkspaceHost } from "./host";
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import type {
@@ -648,4 +649,6 @@ return function ContentProductionConfirmation({
 
 }
 
-export default createContentProductionConfirmation();
+export default createContentProductionConfirmation(function useConfirmationDraftGuard(input) {
+  useContentWorkspaceHost().useWorkspaceDraftGuard(input);
+});
