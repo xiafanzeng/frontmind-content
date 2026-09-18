@@ -1,5 +1,7 @@
 import { useId, type ReactNode } from "react";
 import "./workflow.css";
+import { OperatorActionList } from "./OperatorActionList";
+import { useModulePresentation } from "./module-presentation";
 type WorkbenchModuleId = "progress" | "brand" | "content" | "intent" | "publishing" | "extensions";
 
 export type WorkflowChoice = {
@@ -25,10 +27,12 @@ export function WorkflowQuestion({
   children,
   variant = "followup",
   module,
+  moduleColor,
   pendingId,
 }: {
   variant?: "entry" | "followup";
   module?: WorkbenchModuleId;
+  moduleColor?: string;
   pendingId?: string;
   question: string;
   description?: string;
@@ -38,11 +42,14 @@ export function WorkflowQuestion({
   children?: ReactNode;
 }) {
   const id = useId();
+  const presentation = useModulePresentation();
   return (
     <section className={`workflow-question workflow-question--${variant}`} aria-labelledby={id}>
       <h2 id={id}>{question}</h2>
       {description && <p>{description}</p>}
-      {choices && (
+      {choices && variant === "entry" ? (
+        <OperatorActionList color={moduleColor} module={module ?? presentation?.module.id ?? "brand"} items={choices.map(({ label, ...item }) => ({ ...item, title: label }))} selectedId={selected ?? undefined} pendingId={pendingId} onSelect={value => onSelect?.(value)} />
+      ) : choices && (
         <div className="workflow-choices" role="group" aria-label={question}>
           {choices.map((choice) => (
             <button

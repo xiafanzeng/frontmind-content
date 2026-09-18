@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from "react";
-import { ChartNoAxesCombined, ChevronDown, Database, PanelLeftClose, PanelLeftOpen, PenLine, Send, Sparkles, Target, Wrench } from "lucide-react";
+import { ChartNoAxesCombined, ChevronDown, Database, FolderOpen, PanelLeftClose, PanelLeftOpen, PenLine, Plus, Send, Settings, Sparkles, Target, Wrench } from "lucide-react";
 
 export type OperatorModuleNavigationItem = { id: string; label: string; color: string; active?: boolean };
 const moduleIcons = { brand: Database, intent: Target, progress: ChartNoAxesCombined, content: PenLine, publish: Send, publishing: Send, extensions: Wrench };
@@ -22,6 +22,24 @@ export function OperatorModuleNavigation({ modules, onSelect, logoSrc = new URL(
     </nav>
   </>;
 }
-export function OperatorSidebarFooter({ collapsed, onCollapse }: { collapsed: boolean; onCollapse: () => void }) {
-  return <div className="operator-sidebar-footer"><button type="button" onClick={onCollapse} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>{collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}<span>收起侧边栏</span></button></div>;
+export function OperatorSidebarFooter({ collapsed, onCollapse, workspaceLabel = "FrontMind 开发工作区", accountLabel = "FrontMind" }: { collapsed: boolean; onCollapse: () => void; workspaceLabel?: string; accountLabel?: string }) {
+  return <>
+    <div className="operator-project-group operator-project-capsule is-active">
+      <div className="operator-project-heading">
+        <button type="button" className="operator-nav-entry operator-project-entry active" aria-label="项目总览" title={`项目总览 · ${workspaceLabel}`} onClick={() => { if (collapsed) onCollapse(); }}>
+          <FolderOpen size={20} />
+          <span className="operator-project-capsule-label"><strong>项目总览</strong><small>{workspaceLabel}</small></span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+        <button type="button" className="operator-project-menu-trigger" aria-label="新建企业项目" title="新建企业项目" disabled><Plus size={18} /></button>
+      </div>
+    </div>
+    <div className="operator-account-row">
+      <button type="button" className="operator-account-identity" aria-label={accountLabel} title={accountLabel} disabled>
+        <span aria-hidden="true">{accountLabel.slice(0, 1) || "F"}</span><strong>{accountLabel}</strong>
+      </button>
+      <button type="button" className="operator-account-settings" aria-label="账号设置" title="账号设置" disabled><Settings size={18} /></button>
+    </div>
+    <div className="operator-sidebar-footer"><button type="button" onClick={onCollapse} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>{collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}<span>收起侧边栏</span></button></div>
+  </>;
 }
