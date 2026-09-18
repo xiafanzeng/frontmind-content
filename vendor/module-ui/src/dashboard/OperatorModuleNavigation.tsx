@@ -22,7 +22,7 @@ export function OperatorModuleNavigation({ modules, onSelect, logoSrc = new URL(
     </nav>
   </>;
 }
-export function OperatorSidebarFooter({ collapsed, onCollapse, workspaceLabel = "FrontMind 开发工作区", accountLabel = "FrontMind" }: { collapsed: boolean; onCollapse: () => void; workspaceLabel?: string; accountLabel?: string }) {
+export function StandaloneWorkspaceFooter({ collapsed, onCollapse, workspaceLabel = "FrontMind 开发工作区", accountLabel = "FrontMind" }: { collapsed: boolean; onCollapse: () => void; workspaceLabel?: string; accountLabel?: string }) {
   return <>
     <div className="operator-project-group operator-project-capsule is-active">
       <div className="operator-project-heading">
@@ -40,6 +40,11 @@ export function OperatorSidebarFooter({ collapsed, onCollapse, workspaceLabel = 
       </button>
       <button type="button" className="operator-account-settings" aria-label="账号设置" title="账号设置" disabled><Settings size={18} /></button>
     </div>
-    <div className="operator-sidebar-footer"><button type="button" onClick={onCollapse} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>{collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}<span>收起侧边栏</span></button></div>
+    <OperatorSidebarFooter collapsed={collapsed} onCollapse={onCollapse} />
   </>;
+}
+
+/** Production already supplies the real project/account controls above this footer. */
+export function OperatorSidebarFooter({collapsed,onCollapse}:{collapsed:boolean;onCollapse:()=>void}) {
+ return <div className="operator-sidebar-footer"><button type="button" onClick={onCollapse} aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}>{collapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}<span>收起侧边栏</span></button></div>;
 }

@@ -1,11 +1,14 @@
+import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
+import {generalExecutionSlots} from "@frontmind/module-ui/lib/general-execution-display";
+import {GeneralExecutionActivity} from "@frontmind/module-ui/components/GeneralExecutionActivity";
 import BusinessChatInput from "@frontmind/module-ui/components/BusinessChatInput";
 import type { BusinessComposerRuntime } from "@frontmind/module-ui/components/business-composer-runtime";
 import type { ContentProductionInput } from "../contracts/content-production";
-import MarkdownRenderer from "@frontmind/module-ui/components/MarkdownRenderer";
+import BusinessMessage from "@frontmind/module-ui/components/BusinessMessage";
+import FilePreview from "@frontmind/module-ui/components/FilePreview";
 import {AgentWorkbenchShell} from "@frontmind/module-ui/components/AgentWorkbenchShell";
 import {WorkbenchTaskToolbar as SharedWorkbenchTaskToolbar} from "@frontmind/module-ui/dashboard/WorkbenchTaskToolbar";
 import {BusinessWorkspaceInspector} from "@frontmind/module-ui/dashboard/BusinessWorkspaceInspector";
-import {UserRound} from "lucide-react";
 import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from "react";
 import {ContentWorkspaceHostProvider,type ContentConversation,type ContentConversationApi,type ContentHomeProps,type ContentSendOptions,type ContentWorkspaceHost,type TaskResponse} from "./host";
 import ContentProductionWorkspace from "./ContentProductionWorkspace";
@@ -69,7 +72,15 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
 function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHomeProps) {
  const runtime=useRuntime();
  const busy=Boolean(knowledgeEditingBlocked)||["running","pending"].includes(runtime.activeConversation?.status??"");
- return <div className="cp-live-dialogue"><div className="cp-live-messages">{runtime.activeConversation?.messages.map(message=><article key={message.id} className={`cp-live-message cp-live-message--${message.role}`} data-role={message.role}>{message.role==="user"&&<div className="cp-live-avatar" aria-hidden="true"><UserRound size={16}/></div>}<div className="cp-live-message-body"><div className="cp-live-text">{message.role==="user"?message.content:<MarkdownRenderer content={message.content} allowCopy={!busy}/>}</div>{message.attachments?.map(file=><small key={file.id}>{file.name}</small>)}{message.outputFiles?.filter(file=>/^\/api\/frontmind\/v2\/artifacts\/[^/]+\/content(?:\?|$)/.test(file.fileUrl)).map((file,index)=><a key={file.fileUrl} href={file.fileUrl} target="_blank" rel="noreferrer" data-workbench-output-key={`${message.id}:${index}`}>{file.fileName}</a>)}{message.generalChatDispatch&&<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}</div></article>)}</div>{conversationFooter}
+ const viewport=useRef<HTMLDivElement>(null);
+ const {showLatest,returnToLatest}=useChatReadingPosition(viewport,`${runtime.workspaceId}:${runtime.activeConversation?.id??"new"}`,`${runtime.activeConversation?.messages.map(m=>`${m.id}:${m.content.length}`).join("|")}:${runtime.activeConversation?.status}`);
+ const slots=generalExecutionSlots(runtime.activeConversation?.messages??[],runtime.activeConversation?.execution,busy);
+ return <div className="cp-live-dialogue"><div ref={viewport} className="cp-live-messages custom-scrollbar" data-testid="chat-messages-viewport"><div className="workbench-reading-column space-y-7">{runtime.activeConversation?.messages.map(message=><article key={message.id} data-role={message.role} data-reading-anchor={message.id}>
+   <GeneralExecutionActivity items={slots.before.get(message.id)} />
+   <BusinessMessage message={message} isRunning={busy} isFinalReply={!busy} />
+   <GeneralExecutionActivity items={slots.after.get(message.id)} placement="after" />
+   {message.generalChatDispatch&&<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}
+  </article>)}</div></div>{showLatest&&<button className="workbench-return-latest" onClick={returnToLatest}>回到最新</button>}{conversationFooter}
   <BusinessChatInput runtime={contentComposerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
   {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" onClick={()=>void runtime.stop().catch(()=>{})}>停止当前执行</button>}
  </div>;
@@ -117,5 +128,5 @@ const contentComposerRuntime: BusinessComposerRuntime<ContentProductionInput, ne
  chatAttachmentSizeError:file=>file.size>100*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 100 MB`:null,
  knowledgeLogoNoticeCode:"unused-content-knowledge-logo",
 };
-function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview:({file,className})=><a className={className} href={file.blobUrl} target="_blank" rel="noreferrer">{file.name}</a>,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector};return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}
+function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector};return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}
 export function ModuleWorkspace({context,client=liveContentClient}:{context:ModuleContext;client?:ContentBusinessClient}) {return <RuntimeProvider client={client} workspaceId={context.workspace.id}><InstalledWorkspace client={client}/></RuntimeProvider>}
