@@ -29,6 +29,11 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "overrides": {
+      "framer-motion>motion-dom": "12.23.21",
+      "framer-motion>motion-utils": "12.23.6",
+      "motion-dom@12.23.21>motion-utils": "12.23.6"
+    }
   }
 }

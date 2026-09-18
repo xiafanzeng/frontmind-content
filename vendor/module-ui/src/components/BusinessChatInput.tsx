@@ -1,0 +1,1508 @@
+
+
+
+/**
+ * ChatInput Component - Message input with file upload and runtime status
+ * Design: Floating glass card input area with drag-and-drop support.
+ * Features: Text input, file picker, drag & drop, upload progress,
+ *           administrator-controlled reasoning effort.
+ */
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+} from "react";
+import { Button } from "./ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "./ui/tooltip";
+
+
+
+
+
+import { Progress } from "./ui/progress";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Send,
+  Paperclip,
+  X,
+  FileText,
+  Loader2,
+  Upload,
+  Check,
+} from "lucide-react";
+import { cn } from "../lib/utils";
+import { toast } from "sonner";
+
+
+import { useComposition } from "../hooks/useComposition";
+
+
+
+
+import type { BusinessComposerRuntime, ComposerConversation, ComposerSnapshot, ComposerKnowledgeProgress } from "./business-composer-runtime";
+
+export const ENTERPRISE_QA_SUGGESTIONS = [
+  {
+    label: "有哪些服务",
+    prompt: "你们主要提供哪些产品或服务？",
+  },
+  {
+    label: "适合我吗",
+    prompt: "你们的服务适合哪些人？我该怎么判断是否适合自己？",
+  },
+  {
+    label: "有什么特点",
+    prompt: "和同类企业相比，你们有哪些值得了解的特点？",
+  },
+] as const;
+
+interface FilePreview {
+  file: File;
+  id: string;
+}
+type ComposerCoordinates = {
+  conversationId: string;
+  resetRevision: number | undefined;
+  reply: ComposerSnapshot;
+};
+type ComposerDraft = {
+  text: string;
+  files: FilePreview[];
+  coordinates: ComposerCoordinates | null;
+};
+// File bytes remain in page memory across Agent routes. Account/project scope is
+// part of every key; an attachment is never copied to another task.
+const workspaceComposerDrafts = new Map<string, ComposerDraft>();
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function LogoFileThumbnail({ file }: { file: File }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      typeof URL === "undefined" ||
+      typeof URL.createObjectURL !== "function"
+    ) {
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setSrc(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+
+  return src ? (
+    <img
+      src={src}
+      alt="待提交 Logo 预览"
+      className="h-12 w-12 flex-shrink-0 rounded-lg bg-white object-contain"
+    />
+  ) : (
+    <FileText className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+  );
+}
+
+const AMBIGUOUS_ADVANCE_PATTERN =
+  /^(继续|下一步|下一个|继续吧|请继续|next)[。！!]*$/i;
+const OFFICIAL_LOGO_MIME_TYPES = new Set([
+  "image/avif",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const OFFICIAL_LOGO_EXTENSION = /\.(?:avif|gif|jpe?g|png|webp)$/iu;
+
+function isSupportedOfficialLogoFile(file: File) {
+  const mimeType = file.type.trim().toLowerCase();
+  return (
+    OFFICIAL_LOGO_MIME_TYPES.has(mimeType) ||
+    (!mimeType && OFFICIAL_LOGO_EXTENSION.test(file.name))
+  );
+}
+
+const AGENT_COMPOSER_MAX_ROWS = 8;
+const AGENT_COMPOSER_FALLBACK_LINE_HEIGHT_PX = 24;
+const AGENT_COMPOSER_FALLBACK_PADDING_PX = 8;
+const AGENT_COMPOSER_FALLBACK_MIN_HEIGHT_PX = 44;
+
+function cssPixels(value: string, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function resizeAgentComposer(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto";
+
+  const styles = window.getComputedStyle(textarea);
+  const lineHeight = cssPixels(
+    styles.lineHeight,
+    AGENT_COMPOSER_FALLBACK_LINE_HEIGHT_PX,
+  );
+  const paddingHeight =
+    cssPixels(styles.paddingTop, AGENT_COMPOSER_FALLBACK_PADDING_PX) +
+    cssPixels(styles.paddingBottom, AGENT_COMPOSER_FALLBACK_PADDING_PX);
+  const borderHeight =
+    cssPixels(styles.borderTopWidth) + cssPixels(styles.borderBottomWidth);
+  const minHeight = cssPixels(
+    styles.minHeight,
+    AGENT_COMPOSER_FALLBACK_MIN_HEIGHT_PX,
+  );
+  const maxHeight =
+    AGENT_COMPOSER_MAX_ROWS * lineHeight + paddingHeight + borderHeight;
+  const contentHeight = textarea.scrollHeight + borderHeight;
+  const nextHeight = Math.max(minHeight, Math.min(contentHeight, maxHeight));
+
+  textarea.style.maxHeight = `${maxHeight}px`;
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = contentHeight > maxHeight ? "auto" : "hidden";
+}
+
+export default function BusinessChatInput<ContentProductionInput = unknown, ResponseLogicTaskContext = unknown, Conversation extends ComposerConversation = ComposerConversation, Observation = unknown>({
+  runtime,
+  fixedAgentProfile,
+  syncKnowledgeBaseSnapshot = false,
+  purpose,
+  contentProduction,
+  composerPrefill,
+  welcomeSuggestions = false,
+  responseLogicContext,
+  knowledgeBaseProgress,
+  knowledgeBaseResetRevision,
+  operatorWorkspace = false,
+  knowledgeEditingBlocked = false,
+  onComposerDirtyChange,
+  composerScope,
+}: {
+  runtime: BusinessComposerRuntime<ContentProductionInput, ResponseLogicTaskContext, Conversation, Observation>;
+  fixedAgentProfile?: string;
+  syncKnowledgeBaseSnapshot?: boolean;
+  purpose?: "enterprise_qa" | "content_production";
+  contentProduction?: ContentProductionInput;
+  composerPrefill?: string;
+  welcomeSuggestions?: boolean | "enterprise_qa";
+  responseLogicContext?: ResponseLogicTaskContext;
+  knowledgeBaseProgress?: ComposerKnowledgeProgress | null;
+  knowledgeBaseResetRevision?: number;
+  operatorWorkspace?: boolean;
+  knowledgeEditingBlocked?: boolean;
+  onComposerDirtyChange?: (dirty: boolean) => void;
+  /** Keeps node drafts separate from the containing task composer. */
+  composerScope?: string;
+}) {
+  const { formatKnowledgeBaseUploadBytes, chatAttachmentSizeError, knowledgeLogoNoticeCode: KNOWLEDGE_BASE_LOGO_PROVENANCE_REQUIRED_NOTICE_CODE, useConversation, currentKnowledgeBaseReplySnapshot, useSendMessage, useChatSubmission, useWorkspaceDraftGuard, captureWorkspaceRestOperation, consumePendingFrontMindBuildDraft, GeneralAgentRuntimeBadge, KnowledgeBaseManagedUploadRecovery, generalSuggestions: GENERAL_TASK_SUGGESTIONS } = runtime;
+  const {
+    activeConversation,
+    workbenchScopeKey,
+    commitKnowledgeBaseObservation,
+    wakeKnowledgeBaseConversation,
+    rollbackPendingKnowledgeBaseTurn,
+  } = useConversation();
+  const draftKey = `${workbenchScopeKey ?? "workspace"}:${activeConversation?.id ?? "new"}${composerScope ? `:${composerScope}` : ""}`;
+  const localDrafts = useRef(new Map<string, ComposerDraft>());
+  const composerDrafts = workbenchScopeKey
+    ? workspaceComposerDrafts
+    : localDrafts.current;
+  const initialDraft = useRef(composerDrafts.get(draftKey));
+  const currentDraftKey = useRef(draftKey);
+  currentDraftKey.current = draftKey;
+  const responseLogicInitialPromptLocked = Boolean(
+    responseLogicContext && composerPrefill,
+  );
+  const [text, setText] = useState(
+    () =>
+      initialDraft.current?.text ??
+      (composerPrefill || consumePendingFrontMindBuildDraft()),
+  );
+  const [files, setFiles] = useState<FilePreview[]>(
+    () => initialDraft.current?.files ?? [],
+  );
+  const [isDragging, setIsDragging] = useState(false);
+  const [sendingTasks, setSendingTasks] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const submission = useChatSubmission(workbenchScopeKey, activeConversation?.id);
+  const isSending = sendingTasks.has(draftKey) || Boolean(submission && submission.phase !== "failed");
+  const [replacingOfficialLogo, setReplacingOfficialLogo] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Synchronous lock ref to prevent duplicate sends (React state updates are async)
+  const sendLockRef = useRef(new Set<string>());
+  const draftCoordinates = useRef<ComposerCoordinates | null>(
+    initialDraft.current?.coordinates ?? null,
+  );
+  const [, setDraftBindingRevision] = useState(0);
+  const composerDirty = !isSending && Boolean(text.trim() || files.length);
+  useWorkspaceDraftGuard({
+    dirty: operatorWorkspace && composerDirty,
+    label: "任务输入和附件",
+  });
+  useEffect(() => {
+    onComposerDirtyChange?.(composerDirty);
+  }, [composerDirty, onComposerDirtyChange]);
+  useEffect(
+    () => () => onComposerDirtyChange?.(false),
+    [onComposerDirtyChange],
+  );
+  const appliedComposerPrefillRef = useRef<string | null>(
+    composerPrefill || null,
+  );
+
+  // Retain the legacy dispatch field for idempotency; execution is server-owned.
+  const [selectedModel, setSelectedModel] = useState(() => {
+    return fixedAgentProfile || (purpose ? "frontmind-base" : "frontmind-pro");
+  });
+
+  useEffect(() => {
+    if (fixedAgentProfile) setSelectedModel(fixedAgentProfile);
+  }, [fixedAgentProfile]);
+
+  useEffect(() => {
+    if (
+      !composerPrefill ||
+      appliedComposerPrefillRef.current === composerPrefill
+    ) {
+      return;
+    }
+    if (responseLogicContext || !text.trim()) {
+      appliedComposerPrefillRef.current = composerPrefill;
+      setText(composerPrefill);
+      if (responseLogicContext) setFiles([]);
+    }
+  }, [composerPrefill, responseLogicContext, text]);
+
+  const resizeComposer = useCallback(() => {
+    if (textareaRef.current) resizeAgentComposer(textareaRef.current);
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [resizeComposer, text]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    window.addEventListener("resize", resizeComposer);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => window.removeEventListener("resize", resizeComposer);
+    }
+
+    let observedWidth = textarea.getBoundingClientRect().width;
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const nextWidth = entry?.contentRect.width ?? observedWidth;
+      if (nextWidth === observedWidth) return;
+      observedWidth = nextWidth;
+      resizeComposer();
+    });
+    resizeObserver.observe(textarea);
+
+    return () => {
+      window.removeEventListener("resize", resizeComposer);
+      resizeObserver.disconnect();
+    };
+  }, [resizeComposer]);
+
+  const {
+    sendMessage,
+    uploadProgress: rawUploadProgress,
+    stopKnowledgeBaseAttachmentAttempt,
+    knowledgeBaseAttachmentAttempt,
+    continueKnowledgeBaseAttachmentAttempt,
+    discardKnowledgeBaseAttachmentAttempt,
+  } = useSendMessage(knowledgeBaseResetRevision);
+  const previousDraftKey = useRef(draftKey);
+  const latestDraft = useRef<ComposerDraft>({
+    text,
+    files,
+    coordinates: draftCoordinates.current,
+  });
+  useLayoutEffect(() => {
+    if (previousDraftKey.current !== draftKey) {
+      composerDrafts.set(previousDraftKey.current, latestDraft.current);
+      const restored = composerDrafts.get(draftKey);
+      const next = restored ?? {
+        text: composerPrefill ?? "",
+        files: [],
+        coordinates: null,
+      };
+      draftCoordinates.current = next.coordinates;
+      latestDraft.current = next;
+      previousDraftKey.current = draftKey;
+      setText(next.text);
+      setFiles(next.files);
+      setReplacingOfficialLogo(false);
+      setDraftBindingRevision((value) => value + 1);
+    } else {
+      latestDraft.current = {
+        text,
+        files,
+        coordinates: draftCoordinates.current,
+      };
+      composerDrafts.set(draftKey, latestDraft.current);
+    }
+  });
+
+  // Only show upload progress if it belongs to the current active conversation
+  const uploadProgress =
+    rawUploadProgress &&
+    rawUploadProgress.conversationId === activeConversation?.id
+      ? rawUploadProgress
+      : null;
+
+  const isRunning =
+    activeConversation?.status === "running" ||
+    activeConversation?.status === "pending";
+  const candidateKnowledgeBaseAttachmentAttempt =
+    knowledgeBaseAttachmentAttempt;
+  const matchingKnowledgeBaseAttachmentAttempt = (() => {
+    const candidate = candidateKnowledgeBaseAttachmentAttempt;
+    if (!syncKnowledgeBaseSnapshot || !candidate) return null;
+    if (candidate.conversationId !== activeConversation?.id) return null;
+    if (
+      candidate.generation !== activeConversation?.knowledgeBase?.generation
+    ) {
+      return null;
+    }
+    const activeClientRequestId =
+      activeConversation?.knowledgeBase?.activeClientRequestId;
+    if (
+      activeClientRequestId &&
+      candidate.clientRequestId !== activeClientRequestId
+    ) {
+      return null;
+    }
+    const activeTurnId = activeConversation?.knowledgeBase?.activeTurnId;
+    if (activeTurnId && candidate.turnId && candidate.turnId !== activeTurnId) {
+      return null;
+    }
+    const activeResetRevision =
+      activeConversation?.knowledgeBase?.activeTurnResetRevision;
+    if (
+      activeResetRevision !== undefined &&
+      candidate.resetRevision !== activeResetRevision
+    ) {
+      return null;
+    }
+    return candidate;
+  })();
+  const knowledgeBaseAttachmentResumeRequired =
+    matchingKnowledgeBaseAttachmentAttempt?.phase === "failed_retryable";
+  const knowledgeBaseAttachmentReconciliationPending =
+    matchingKnowledgeBaseAttachmentAttempt?.phase === "reconciling_dispatch";
+  const knowledgeBaseAttachmentAttemptActive = Boolean(
+    matchingKnowledgeBaseAttachmentAttempt &&
+      matchingKnowledgeBaseAttachmentAttempt.phase !== "accepted",
+  );
+  const knowledgeBaseDeferredUploadRecoveryRequired = Boolean(
+    syncKnowledgeBaseSnapshot &&
+      activeConversation?.knowledgeBase?.activeTurnOperationType === "revise" &&
+      activeConversation?.knowledgeBase?.activeTurnAwaitingClientAttachments ===
+        true &&
+      activeConversation?.knowledgeBase?.activeTurnId &&
+      activeConversation?.knowledgeBase?.activeClientRequestId &&
+      Number.isSafeInteger(
+        activeConversation?.knowledgeBase?.activeTurnResetRevision,
+      ) &&
+      !matchingKnowledgeBaseAttachmentAttempt,
+  );
+  const knowledgeBaseLogoProvenanceRepairRequired =
+    syncKnowledgeBaseSnapshot &&
+    activeConversation?.knowledgeBase?.notice?.code ===
+      KNOWLEDGE_BASE_LOGO_PROVENANCE_REQUIRED_NOTICE_CODE;
+  // A Provider task id is an upstream transport pointer, not the Dashboard
+  // knowledge-base lifecycle. Local settlement deliberately clears that
+  // pointer before the next explicit customer reply, while the approved
+  // Dashboard presentation remains fully replyable.
+  const knowledgeBaseInitialized =
+    syncKnowledgeBaseSnapshot &&
+    Boolean(
+      activeConversation?.knowledgeBase?.initialized || knowledgeBaseProgress,
+    );
+  const knowledgeBaseNotStarted =
+    syncKnowledgeBaseSnapshot && !knowledgeBaseInitialized;
+  const knowledgeInteractionLocked =
+    syncKnowledgeBaseSnapshot &&
+    knowledgeBaseInitialized &&
+    activeConversation?.knowledgeBase?.canReply !== true;
+  const baseInputLocked =
+    knowledgeBaseLogoProvenanceRepairRequired ||
+    knowledgeBaseAttachmentAttemptActive ||
+    knowledgeBaseDeferredUploadRecoveryRequired ||
+    isRunning ||
+    knowledgeInteractionLocked;
+  const currentKnowledgeLeaf = knowledgeBaseProgress?.branches
+    .flatMap((branch) => branch.leaves)
+    .find((leaf) => leaf.id === knowledgeBaseProgress.build.currentLeafId);
+  const knowledgeBaseReplySnapshot =
+    currentKnowledgeBaseReplySnapshot(activeConversation);
+  const currentDraftCoordinates =
+    knowledgeBaseReplySnapshot && activeConversation
+      ? {
+          conversationId: activeConversation.id,
+          resetRevision: knowledgeBaseResetRevision,
+          reply: knowledgeBaseReplySnapshot,
+        }
+      : null;
+  if (!text.trim() && files.length === 0) draftCoordinates.current = null;
+  else if (!draftCoordinates.current && currentDraftCoordinates)
+    draftCoordinates.current = currentDraftCoordinates;
+  const draftTargetChanged = Boolean(
+    operatorWorkspace &&
+      composerDirty &&
+      draftCoordinates.current &&
+      JSON.stringify(draftCoordinates.current) !==
+        JSON.stringify(currentDraftCoordinates),
+  );
+  const knowledgeBaseInitialDraft =
+    syncKnowledgeBaseSnapshot &&
+    knowledgeBaseProgress?.workbench?.phase === "initial";
+  const inputLocked =
+    baseInputLocked || knowledgeEditingBlocked || draftTargetChanged;
+  const currentNodePresentationReady = Boolean(knowledgeBaseReplySnapshot);
+  const initialDraftReady = Boolean(
+    knowledgeBaseInitialDraft &&
+      knowledgeBaseProgress?.contentAvailability === "complete" &&
+      currentKnowledgeLeaf &&
+      currentNodePresentationReady,
+  );
+  const initialAcceptanceRequestId = useRef<string | null>(null);
+  useEffect(() => {
+    initialAcceptanceRequestId.current = null;
+  }, [activeConversation?.id]);
+  const knowledgeBaseComplete =
+    syncKnowledgeBaseSnapshot &&
+    Boolean(knowledgeBaseProgress?.packageAllowed ||
+      knowledgeBaseProgress?.build.status === "ready_to_publish" ||
+      knowledgeBaseProgress?.build.status === "published") &&
+    !currentKnowledgeLeaf;
+  const knowledgeCompletionNotice = knowledgeBaseProgress?.build.status === "published"
+    ? "知识库已发布，后续新任务将使用此版本。"
+    : knowledgeBaseProgress?.build.hasPublishedSnapshot === false
+      ? knowledgeBaseProgress.packageState === "attention_required"
+        ? "首次发布未完成，工作稿已保存。请点击右上角“重试首次发布”。"
+        : "首轮节点已完成，正在自动发布知识库，无需再次点击更新。"
+      : knowledgeBaseProgress?.packageState === "preparing" || knowledgeBaseProgress?.packageState === "retrying"
+        ? "正在生成并更新知识库，完成后将启用新版本。"
+        : "修改已确认，请点击右上角“更新知识库”启用新版本。";
+  const knowledgeEditingNotice = knowledgeBaseInitialDraft
+    ? knowledgeBaseProgress?.contentAvailability === "complete"
+      ? "请先开始逐节点核验，再修改节点。"
+      : null
+    : "请先完成右侧节点编辑。";
+  const knowledgeLockedPlaceholder = (() => {
+    if (knowledgeBaseLogoProvenanceRepairRequired)
+      return "请先补全企业主 Logo 来源，再继续";
+    if (knowledgeBaseAttachmentReconciliationPending)
+      return "正在核对本轮资料是否已受理…";
+    if (
+      knowledgeBaseAttachmentResumeRequired ||
+      knowledgeBaseDeferredUploadRecoveryRequired
+    )
+      return "请先处理本轮资料上传，再继续";
+    if (isRunning)
+      return knowledgeBaseInitialDraft
+        ? "正在构建知识库初稿…"
+        : "正在根据你的补充资料更新当前节点…";
+    if (knowledgeEditingBlocked && knowledgeBaseInitialDraft)
+      return knowledgeEditingNotice ?? "知识库初稿完成后可继续";
+    if (knowledgeEditingBlocked)
+      return "请先完成当前节点编辑或知识库更新，再继续对话";
+    if (knowledgeBaseProgress && !knowledgeBaseProgress.build.currentLeafId)
+      return "当前没有待回复节点，请在知识节点区查看内容";
+    if (activeConversation?.status === "error")
+      return "本轮已停止，请查看任务提示或节点状态";
+    return "当前节点暂不接受回复，请查看任务提示";
+  })();
+  const officialLogoRequiredByBuild =
+    syncKnowledgeBaseSnapshot &&
+    knowledgeBaseProgress?.build.logoRequired === true;
+  const officialLogoAvailable =
+    syncKnowledgeBaseSnapshot &&
+    knowledgeBaseProgress?.build.logoAvailable === true;
+  const optionalOfficialLogoChoice = Boolean(
+    syncKnowledgeBaseSnapshot &&
+      knowledgeBaseProgress?.build.executionMode === "materialized_bundle_v1" &&
+      currentKnowledgeLeaf &&
+      knowledgeBaseProgress.summary.handled === 0 &&
+      !officialLogoAvailable &&
+      !officialLogoRequiredByBuild,
+  );
+  const officialLogoRequired =
+    officialLogoRequiredByBuild || replacingOfficialLogo;
+
+  useEffect(() => {
+    if (!officialLogoRequired) return;
+    // The Logo gate accepts one dedicated image only. Do not carry a stale
+    // composer draft or pre-gate attachments into this special turn.
+    setText("");
+    setFiles([]);
+  }, [officialLogoRequired]);
+
+  useEffect(() => {
+    if (!matchingKnowledgeBaseAttachmentAttempt || files.length === 0) return;
+    // Ownership of the browser File has moved to the page-memory attempt. The
+    // composer selection can clear without losing retryable bytes.
+    setFiles([]);
+  }, [files.length, matchingKnowledgeBaseAttachmentAttempt]);
+
+  const clearSelectedFiles = useCallback(() => {
+    setFiles([]);
+  }, []);
+
+  const addFiles = useCallback(
+    async (newFiles: File[]) => {
+      if (responseLogicInitialPromptLocked) return;
+      if (
+        syncKnowledgeBaseSnapshot &&
+        newFiles.some((file) => !isSupportedOfficialLogoFile(file))
+      ) {
+        toast.error(
+          "节点附件仅支持 PNG、JPEG、WebP、AVIF 或 GIF 图片；文字修改请填写修改要求",
+        );
+        return;
+      }
+      if (officialLogoRequired && newFiles.length !== 1) {
+        toast.error("请只选择一张企业主 Logo");
+        return;
+      }
+      if (
+        officialLogoRequired &&
+        newFiles[0] &&
+        !isSupportedOfficialLogoFile(newFiles[0])
+      ) {
+        toast.error("Logo 图片格式不支持", {
+          description: "请上传 PNG、JPEG、WebP、AVIF 或 GIF 原图。",
+        });
+        return;
+      }
+      const previews: FilePreview[] = [];
+      for (const file of newFiles) {
+        const sizeError = chatAttachmentSizeError(file);
+        if (sizeError) {
+          toast.error("文件过大", { description: sizeError });
+          continue;
+        }
+        const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        previews.push({ file, id });
+      }
+      if (previews.length > 0) {
+        setFiles((prev) =>
+          officialLogoRequired ? previews.slice(0, 1) : [...prev, ...previews],
+        );
+      }
+    },
+    [
+      officialLogoRequired,
+      responseLogicInitialPromptLocked,
+      syncKnowledgeBaseSnapshot,
+    ],
+  );
+
+  const removeFile = useCallback((id: string) => {
+    setFiles((prev) => prev.filter((f) => f.id !== id));
+  }, []);
+
+  const submitContent = useCallback(
+    async (message: string, selectedFiles: FilePreview[]) => {
+      const initialConfirm =
+        initialDraftReady &&
+        message.trim() === "确认" &&
+        selectedFiles.length === 0;
+      if (
+        (!message.trim() && selectedFiles.length === 0) ||
+        isSending ||
+        (inputLocked && !initialConfirm) ||
+        knowledgeBaseNotStarted
+      ) {
+        return;
+      }
+      if (
+        syncKnowledgeBaseSnapshot &&
+        !knowledgeBaseAttachmentResumeRequired &&
+        !knowledgeBaseReplySnapshot
+      ) {
+        toast.info("当前节点仍在同步", {
+          description: "请等待已展示内容完成确认后再提交。",
+        });
+        return;
+      }
+      if (
+        responseLogicInitialPromptLocked &&
+        (selectedFiles.length > 0 || message !== composerPrefill)
+      ) {
+        return;
+      }
+      if (officialLogoRequired) {
+        if (selectedFiles.length !== 1) {
+          toast.error("请先上传一张企业官方主 Logo", {
+            description: officialLogoRequiredByBuild
+              ? "上传并校验成功后，才可以确认第一个知识节点。"
+              : "Logo 为可选项；如暂不上传，可返回并直接确认当前内容。",
+          });
+          return;
+        }
+        if (!isSupportedOfficialLogoFile(selectedFiles[0]!.file)) {
+          toast.error("Logo 图片格式不支持", {
+            description: "请上传 PNG、JPEG、WebP、AVIF 或 GIF 原图。",
+          });
+          return;
+        }
+      }
+      if (
+        syncKnowledgeBaseSnapshot &&
+        selectedFiles.length === 0 &&
+        AMBIGUOUS_ADVANCE_PATTERN.test(message.trim())
+      ) {
+        toast.info("“继续/下一步”不会推进知识节点", {
+          description:
+            "请点击“确认当前内容”；如需修改，请直接输入意见或上传资料。",
+        });
+        return;
+      }
+
+      // Synchronous lock: immediately block subsequent calls before async state updates.
+      const submittedDraftKey = draftKey;
+      if (sendLockRef.current.has(submittedDraftKey)) return;
+      sendLockRef.current.add(submittedDraftKey);
+      setSendingTasks((previous) => new Set(previous).add(submittedDraftKey));
+      try {
+        if (knowledgeBaseInitialDraft) {
+          if (!knowledgeBaseReplySnapshot || !activeConversation) return;
+          const requestId =
+            initialAcceptanceRequestId.current || crypto.randomUUID();
+          initialAcceptanceRequestId.current = requestId;
+          const rest = captureWorkspaceRestOperation();
+          const response = await rest.fetch(
+            "/api/knowledge-base/initial-draft/accept",
+            {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                conversationId: activeConversation.id,
+                expectedGeneration: knowledgeBaseReplySnapshot.generation,
+                expectedRevision: knowledgeBaseReplySnapshot.revision,
+                expectedStateEpoch: knowledgeBaseReplySnapshot.stateEpoch,
+                expectedContentVersion:
+                  knowledgeBaseReplySnapshot.contentVersion,
+                expectedResetRevision: knowledgeBaseResetRevision ?? 0,
+                clientRequestId: requestId,
+              }),
+            },
+          );
+          const result = await response.json();
+          rest.assertActive();
+          if (result.observation) {
+            commitKnowledgeBaseObservation(
+              activeConversation.id,
+              result.observation,
+            );
+          }
+          if (!response.ok)
+            throw new Error(
+              result.error?.message ?? "开始逐节点核验暂未完成，请重试",
+            );
+        }
+        const sent = await sendMessage(
+          message,
+          selectedFiles.map((file) => file.file),
+          {
+            agentProfile: fixedAgentProfile || selectedModel,
+            purpose,
+            contentProduction,
+            syncKnowledgeBaseSnapshot,
+            knowledgeBaseExpectedGeneration: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.generation
+              : undefined,
+            knowledgeBaseExpectedResetRevision: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseResetRevision
+              : undefined,
+            knowledgeBaseExpectedStateEpoch: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.stateEpoch
+              : undefined,
+            knowledgeBaseExpectedContentVersion: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.contentVersion
+              : undefined,
+            knowledgeBaseExpectedRevision: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.revision
+              : undefined,
+            knowledgeBaseExpectedLeafId: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.leafId
+              : undefined,
+            knowledgeBaseExpectedPresentationKey: syncKnowledgeBaseSnapshot
+              ? knowledgeBaseReplySnapshot?.presentationKey
+              : undefined,
+            submissionKind: officialLogoRequired ? "logo" : undefined,
+            responseLogicContext,
+          },
+        );
+        if (sent) {
+          composerDrafts.set(submittedDraftKey, {
+            text: "",
+            files: [],
+            coordinates: null,
+          });
+          if (currentDraftKey.current === submittedDraftKey) {
+            setText("");
+            clearSelectedFiles();
+            draftCoordinates.current = null;
+            setReplacingOfficialLogo(false);
+            textareaRef.current?.focus();
+          }
+        }
+      } finally {
+        sendLockRef.current.delete(submittedDraftKey);
+        setSendingTasks((previous) => {
+          const next = new Set(previous);
+          next.delete(submittedDraftKey);
+          return next;
+        });
+      }
+    },
+    [
+      activeConversation,
+      draftKey,
+      composerDrafts,
+      clearSelectedFiles,
+      fixedAgentProfile,
+      inputLocked,
+      isSending,
+      knowledgeBaseNotStarted,
+      knowledgeBaseAttachmentResumeRequired,
+      knowledgeBaseReplySnapshot,
+      knowledgeBaseResetRevision,
+      officialLogoRequired,
+      officialLogoRequiredByBuild,
+      knowledgeBaseProgress,
+      currentKnowledgeLeaf,
+      responseLogicContext,
+      responseLogicInitialPromptLocked,
+      composerPrefill,
+      purpose,
+      contentProduction,
+      selectedModel,
+      sendMessage,
+      syncKnowledgeBaseSnapshot,
+      knowledgeBaseInitialDraft,
+      commitKnowledgeBaseObservation,
+      initialDraftReady,
+    ],
+  );
+
+  const handleSubmit = useCallback(
+    async () => submitContent(text, files),
+    [files, submitContent, text],
+  );
+
+  const confirmCurrentContent = useCallback(async () => {
+    if (text.trim() || files.length > 0) return;
+    await submitContent("确认", []);
+  }, [files.length, submitContent, text]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [handleSubmit],
+  );
+
+  const composerComposition = useComposition<HTMLTextAreaElement>({
+    onKeyDown: handleKeyDown,
+  });
+
+  const isUploading = uploadProgress !== null;
+
+  // Drag and drop handlers
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      if (responseLogicInitialPromptLocked) return;
+      setIsDragging(true);
+    },
+    [responseLogicInitialPromptLocked],
+  );
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (
+        responseLogicInitialPromptLocked ||
+        inputLocked ||
+        isSending ||
+        isUploading ||
+        knowledgeBaseNotStarted
+      ) {
+        return;
+      }
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        addFiles(droppedFiles);
+      }
+    },
+    [
+      addFiles,
+      inputLocked,
+      isSending,
+      isUploading,
+      knowledgeBaseNotStarted,
+      responseLogicInitialPromptLocked,
+    ],
+  );
+
+  const handleTextChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setText(e.target.value);
+    },
+    [],
+  );
+
+  const quickActionsDisabled =
+    Boolean(text.trim()) ||
+    files.length > 0 ||
+    isSending ||
+    (inputLocked && !initialDraftReady) ||
+    isUploading ||
+    knowledgeBaseNotStarted ||
+    officialLogoRequired ||
+    (syncKnowledgeBaseSnapshot &&
+      Boolean(currentKnowledgeLeaf) &&
+      !currentNodePresentationReady);
+
+  return (
+    <div
+      className={`knowledge-composer relative shrink-0 bg-white px-3 pb-3 pt-3 sm:px-5 sm:pb-5 ${welcomeSuggestions === true ? "is-welcome-composer" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {draftTargetChanged && (
+        <div
+          role="status"
+          className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm"
+        >
+          当前节点或内容版本已变化，你的输入仍保留。请核对后再使用当前节点。
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={
+              !currentDraftCoordinates ||
+              baseInputLocked ||
+              knowledgeEditingBlocked ||
+              isSending
+            }
+            onClick={() => {
+              if (!currentDraftCoordinates) return;
+              draftCoordinates.current = currentDraftCoordinates;
+              setDraftBindingRevision((value) => value + 1);
+            }}
+          >
+            使用当前节点
+          </Button>
+        </div>
+      )}
+      {knowledgeEditingBlocked && knowledgeEditingNotice && (
+        <p className="mb-2 text-sm text-muted-foreground">
+          {knowledgeEditingNotice}
+        </p>
+      )}
+      {/* Drag overlay */}
+      <AnimatePresence>
+        {isDragging && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center bg-primary/5 border-2 border-dashed border-primary/30 rounded-2xl mx-4 mb-4"
+          >
+            <div className="text-center">
+              <Paperclip className="w-8 h-8 text-primary/50 mx-auto mb-2" />
+              <p className="text-sm text-primary/70 font-medium">
+                拖放文件到此处
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="max-w-4xl mx-auto">
+        {syncKnowledgeBaseSnapshot &&
+          !knowledgeBaseLogoProvenanceRepairRequired &&
+          (currentKnowledgeLeaf || knowledgeBaseComplete) && (
+            <div
+              className={cn(
+                "mb-3 rounded-xl border px-4 py-3",
+                knowledgeBaseComplete
+                  ? "border-border bg-muted/30"
+                  : officialLogoRequired
+                    ? "border-amber-200 bg-amber-50/50"
+                    : "border-border bg-background",
+              )}
+              data-testid="knowledge-node-action-card"
+            >
+              {knowledgeBaseComplete ? (
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900">
+                    {knowledgeBaseProgress?.build.status === "published" ? "知识库已发布" : "全部节点已完成"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-emerald-800">
+                    {knowledgeCompletionNotice}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p
+                        className={cn(
+                          "text-xs font-semibold tracking-wide",
+                          officialLogoRequired
+                            ? "text-amber-700"
+                            : "text-foreground/70",
+                        )}
+                      >
+                        {officialLogoRequired
+                          ? replacingOfficialLogo && !officialLogoAvailable
+                            ? "上传企业主 Logo（可选）"
+                            : replacingOfficialLogo
+                              ? "更换企业主 Logo"
+                              : "需要上传企业主 Logo"
+                          : currentNodePresentationReady && !baseInputLocked
+                            ? "当前待确认"
+                            : "当前处理节点"}
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-1 truncate text-sm font-semibold",
+                          officialLogoRequired
+                            ? "text-amber-950"
+                            : "text-foreground",
+                        )}
+                      >
+                        {currentKnowledgeLeaf!.branchTitle} /{" "}
+                        {currentKnowledgeLeaf!.title}
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-1 text-xs leading-5",
+                          officialLogoRequired
+                            ? "text-amber-900/80"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {officialLogoRequired
+                          ? replacingOfficialLogo
+                            ? officialLogoAvailable
+                              ? "请选择一张新图片；提交后将替换当前 Logo，当前知识节点不会推进。"
+                              : "请选择一张图片作为企业主 Logo；也可暂不上传并直接确认当前内容。"
+                            : "当前节点尚未绑定 Logo。请选择一张图片；用户选择后将直接作为当前 Logo，并可在首节点确认前再次更换。"
+                          : currentNodePresentationReady
+                            ? "可直接确认，也可以输入修改意见或上传补充资料。"
+                            : "正在处理当前节点内容，显示完整后才可确认。"}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {!officialLogoRequired && optionalOfficialLogoChoice && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReplacingOfficialLogo(true)}
+                          disabled={quickActionsDisabled}
+                          className="rounded-xl bg-white"
+                        >
+                          <Upload className="h-4 w-4" />
+                          上传 Logo（可选）
+                        </Button>
+                      )}
+                      {!officialLogoRequired && officialLogoAvailable && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setReplacingOfficialLogo(true)}
+                          disabled={quickActionsDisabled}
+                          className="rounded-xl bg-white"
+                        >
+                          <Upload className="h-4 w-4" />
+                          更换 Logo
+                        </Button>
+                      )}
+                      {replacingOfficialLogo &&
+                        !officialLogoRequiredByBuild && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              clearSelectedFiles();
+                              setReplacingOfficialLogo(false);
+                            }}
+                            disabled={isSending || isUploading}
+                            className="rounded-xl bg-white"
+                          >
+                            暂不上传
+                          </Button>
+                        )}
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          if (officialLogoRequired) {
+                            if (files.length === 1) void handleSubmit();
+                            else fileInputRef.current?.click();
+                            return;
+                          }
+                          void confirmCurrentContent();
+                        }}
+                        disabled={
+                          officialLogoRequired
+                            ? inputLocked || isSending || isUploading
+                            : quickActionsDisabled
+                        }
+                        className="knowledge-node-confirm-button rounded-md"
+                      >
+                        {officialLogoRequired && (isSending || isUploading) ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : officialLogoRequired ? (
+                          <Upload className="h-4 w-4" />
+                        ) : (
+                          <Check className="h-4 w-4" />
+                        )}
+                        {officialLogoRequired
+                          ? isSending || isUploading
+                            ? "正在发送至 FrontMind"
+                            : files.length === 1
+                              ? "使用此图并继续"
+                              : "选择 Logo 原图"
+                          : optionalOfficialLogoChoice
+                            ? "跳过 Logo，确认当前内容"
+                            : "确认当前内容"}
+                      </Button>
+                    </div>
+                  </div>
+                  <p
+                    className={cn(
+                      "mt-2 text-xs",
+                      officialLogoRequired
+                        ? "text-amber-800/80"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {officialLogoRequired
+                      ? "Logo 提交轮不会推进节点；FrontMind 接收后会重新呈现当前节点。"
+                      : "如需修改，请在下方输入意见或上传资料；建议尽量上传与当前部分相关的补充图片，以丰富知识库内容。系统返回修订稿后，再确认当前内容。"}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+        {knowledgeBaseAttachmentResumeRequired &&
+          matchingKnowledgeBaseAttachmentAttempt && (
+            <div className="mb-3 rounded-xl border border-amber-300/70 bg-amber-50/80 p-3 text-sm text-amber-950">
+              <p className="font-medium">本轮资料已保留，可继续上传</p>
+              <p className="mt-1 text-xs leading-5 text-amber-900/80">
+                {matchingKnowledgeBaseAttachmentAttempt.lastError ||
+                  "上传或暂存暂时中断。继续时会复用同一请求、同一附件清单和已完成的暂存结果。"}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => void continueKnowledgeBaseAttachmentAttempt()}
+                  disabled={isSending || isUploading}
+                >
+                  {isSending || isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  继续上传当前资料
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={discardKnowledgeBaseAttachmentAttempt}
+                  disabled={isSending || isUploading}
+                >
+                  放弃本轮上传
+                </Button>
+              </div>
+            </div>
+          )}
+
+        {knowledgeBaseAttachmentReconciliationPending &&
+          matchingKnowledgeBaseAttachmentAttempt && (
+            <div className="mb-3 rounded-xl border border-violet-200 bg-violet-50/80 p-3 text-sm text-violet-950">
+              <div className="flex items-center gap-2 font-medium">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                正在核对本轮是否已受理
+              </div>
+              <p className="mt-1 text-xs leading-5 text-violet-900/75">
+                当前页面仍保留全部资料；系统只核对同一请求，不会创建新的 turn
+                或第二个任务。
+              </p>
+            </div>
+          )}
+
+        {knowledgeBaseDeferredUploadRecoveryRequired &&
+          activeConversation?.knowledgeBase?.activeTurnId &&
+          activeConversation.knowledgeBase.activeClientRequestId &&
+          Number.isSafeInteger(
+            activeConversation.knowledgeBase.activeTurnResetRevision,
+          ) && (
+            <KnowledgeBaseManagedUploadRecovery
+              conversationId={activeConversation.id}
+              turnId={activeConversation.knowledgeBase.activeTurnId}
+              clientRequestId={
+                activeConversation.knowledgeBase.activeClientRequestId
+              }
+              expectedResetRevision={
+                activeConversation.knowledgeBase.activeTurnResetRevision!
+              }
+              onObservation={(observation) => {
+                commitKnowledgeBaseObservation(
+                  activeConversation.id,
+                  observation,
+                );
+                wakeKnowledgeBaseConversation(activeConversation.id);
+              }}
+              onRecovered={() =>
+                wakeKnowledgeBaseConversation(activeConversation.id)
+              }
+              onCancelled={() => {
+                rollbackPendingKnowledgeBaseTurn(
+                  activeConversation.id,
+                  activeConversation.knowledgeBase!.activeClientRequestId!,
+                );
+                wakeKnowledgeBaseConversation(activeConversation.id);
+              }}
+            />
+          )}
+
+        {/* Upload progress indicator */}
+        <AnimatePresence>
+          {isUploading && uploadProgress && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-2 px-1"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <Upload className="w-3.5 h-3.5 text-primary animate-pulse" />
+                <span className="text-xs text-muted-foreground">
+                  {officialLogoRequired
+                    ? uploadProgress.phase === "verifying"
+                      ? "文件已上传，正在发送至 FrontMind"
+                      : "正在上传 Logo"
+                    : uploadProgress.phase === "verifying"
+                      ? "正在校验并提交"
+                      : "上传文件"}{" "}
+                  ({uploadProgress.currentFileIndex + 1}/
+                  {uploadProgress.totalFiles})：
+                  <span className="text-foreground font-medium ml-1">
+                    {uploadProgress.currentFileName}
+                  </span>
+                </span>
+                <span className="text-xs font-mono text-primary ml-auto">
+                  {uploadProgress.overallPercent}%
+                </span>
+              </div>
+              {syncKnowledgeBaseSnapshot &&
+                stopKnowledgeBaseAttachmentAttempt && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void stopKnowledgeBaseAttachmentAttempt()}
+                  >
+                    停止上传
+                  </Button>
+                )}
+              {uploadProgress.totalBytes !== undefined && (
+                <p className="mb-1.5 text-xs tabular-nums text-muted-foreground">
+                  已上传{" "}
+                  {formatKnowledgeBaseUploadBytes(
+                    uploadProgress.uploadedBytes ?? 0,
+                  )}{" "}
+                  / {formatKnowledgeBaseUploadBytes(uploadProgress.totalBytes)}{" "}
+                  · 已完成 {uploadProgress.confirmedFiles ?? 0}/
+                  {uploadProgress.totalFiles} 个文件
+                </p>
+              )}
+              <Progress
+                value={uploadProgress.overallPercent}
+                className="h-1.5"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* A different task must not retain an exiting attachment animation. */}
+        <AnimatePresence key={draftKey}>
+          {previousDraftKey.current === draftKey && files.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-2 flex flex-wrap gap-2"
+            >
+              {files.map((fp) => (
+                <motion.div
+                  key={fp.id}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  className="relative group"
+                >
+                  <div className="flex max-w-[240px] items-center gap-2 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2 shadow-sm">
+                    {officialLogoRequired ? (
+                      <LogoFileThumbnail file={fp.file} />
+                    ) : (
+                      <FileText className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 text-xs text-muted-foreground">
+                      <span className="block truncate">{fp.file.name}</span>
+                      <span className="block text-[10px] opacity-70">
+                        {formatFileSize(fp.file.size)}
+                      </span>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label={`移除 ${fp.file.name}`}
+                    onClick={() => removeFile(fp.id)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* The Logo gate has one deliberate action above. Hiding the ordinary
+            composer prevents the generic Send button from becoming a second,
+            ambiguous submit path for the exact same file. */}
+        {!officialLogoRequired && (
+          <div
+            className={cn(
+              "bg-card/90 border border-[#D0D5DD] rounded-[1.5rem] transition-all duration-300 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl",
+              isDragging && "ring-2 ring-primary/30",
+              "focus-within:shadow-[0_24px_70px_rgba(15,23,42,0.11)] focus-within:border-primary/35",
+            )}
+          >
+            <div className="agent-composer-controls flex min-h-[68px] items-end gap-1.5 p-2.5 sm:gap-2 sm:p-3.5">
+              {/* File buttons — enterprise QA answers from published knowledge
+               * only, so the attachment entry stays hidden there (V2.3). */}
+              {purpose !== "enterprise_qa" && (
+                <div className="agent-composer-attachments flex items-center gap-1 pb-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="w-9 h-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        aria-label="添加附件"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={
+                          responseLogicInitialPromptLocked ||
+                          inputLocked ||
+                          isSending ||
+                          isUploading ||
+                          knowledgeBaseNotStarted
+                        }
+                      >
+                        <Paperclip className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {officialLogoRequired ? "上传企业主 Logo" : "上传文件"}
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+
+              {/* Textarea */}
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={handleTextChange}
+                onCompositionStart={composerComposition.onCompositionStart}
+                onCompositionEnd={composerComposition.onCompositionEnd}
+                onKeyDown={composerComposition.onKeyDown}
+                readOnly={responseLogicInitialPromptLocked}
+                aria-readonly={responseLogicInitialPromptLocked}
+                placeholder={
+                  isUploading
+                    ? uploadProgress!.phase === "verifying"
+                      ? "附件已上传，正在校验并提交本轮…"
+                      : `正在上传文件 ${uploadProgress!.overallPercent}%...`
+                    : draftTargetChanged
+                      ? "输入已保留，请核对当前节点后再发送"
+                      : inputLocked
+                        ? syncKnowledgeBaseSnapshot
+                          ? knowledgeLockedPlaceholder
+                          : purpose === "enterprise_qa"
+                            ? "FrontMind 正在查阅企业知识库并回答…"
+                            : purpose === "content_production"
+                              ? "FrontMind 正在处理内容制作任务…"
+                              : "FrontMind 正在处理你的任务…"
+                        : knowledgeBaseNotStarted
+                          ? "请先点击上方“构建企业知识库”完成资料采集设置"
+                          : officialLogoRequired
+                            ? "请使用左侧按钮上传企业主 Logo，上传后才可继续"
+                            : syncKnowledgeBaseSnapshot
+                              ? "输入文字修改要求；仅上传图片会直接本地保存"
+                              : purpose === "enterprise_qa"
+                                ? "输入企业相关问题，按 Enter 提问…"
+                                : purpose === "content_production"
+                                  ? "输入内容制作要求，按 Enter 发送…"
+                                  : "输入问题或任务，按 Enter 发送…"
+                }
+                disabled={
+                  baseInputLocked ||
+                  knowledgeEditingBlocked ||
+                  isSending ||
+                  isUploading ||
+                  knowledgeBaseNotStarted ||
+                  officialLogoRequired
+                }
+                rows={1}
+                data-max-rows={AGENT_COMPOSER_MAX_ROWS}
+                className="agent-composer-textarea min-h-11 flex-1 resize-none overflow-y-hidden bg-transparent py-2 text-[15px] leading-6 text-foreground placeholder:text-[#595959] focus:outline-none"
+              />
+
+              {/* Runtime status + Send button */}
+              <div className="agent-composer-actions flex items-center gap-1 pb-0.5">
+                {!fixedAgentProfile &&
+                  !syncKnowledgeBaseSnapshot &&
+                  !responseLogicContext && (
+                    <GeneralAgentRuntimeBadge
+                      key={activeConversation?.id ?? "new"}
+                      localTaskId={
+                        activeConversation?.previousResponseId ??
+                        activeConversation?.taskId
+                      }
+                      purpose={purpose}
+                      locked={inputLocked || isSending || isUploading}
+                      onProfile={setSelectedModel}
+                    />
+                  )}
+
+                {/* Send button */}
+                <Button
+                  aria-label="发送消息"
+                  onClick={handleSubmit}
+                  disabled={
+                    (!text.trim() && files.length === 0) ||
+                    isSending ||
+                    inputLocked ||
+                    isUploading ||
+                    knowledgeBaseNotStarted
+                  }
+                  size="icon"
+                  className={cn(
+                    "w-10 h-10 rounded-2xl transition-all flex-shrink-0",
+                    text.trim() || files.length > 0
+                      ? "bg-primary text-primary-foreground shadow-md glow-indigo"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {isSending || isUploading || isRunning ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Hint text */}
+            <div className="px-4 pb-2">
+              <p className="text-xs text-[#595959]">
+                {responseLogicInitialPromptLocked
+                  ? "首轮使用固定提问发送 · 发送后可自由输入文字并上传图片或文件"
+                  : syncKnowledgeBaseSnapshot
+                    ? "Enter 提交修订 · Shift+Enter 换行 · 支持多文件选择与拖拽上传"
+                    : purpose === "enterprise_qa"
+                      ? "Enter 发送 · Shift+Enter 换行 · 仅基于当前知识来源回答"
+                      : "Enter 发送 · Shift+Enter 换行 · 支持资料、图片与交付文件上传"}
+              </p>
+            </div>
+          </div>
+        )}
+        {welcomeSuggestions && (
+          <div className="general-task-suggestions" aria-label="快捷任务建议">
+            {(welcomeSuggestions === "enterprise_qa"
+              ? ENTERPRISE_QA_SUGGESTIONS
+              : GENERAL_TASK_SUGGESTIONS
+            ).map((item) => (
+              <button
+                type="button"
+                key={item.label}
+                onClick={() => {
+                  setText((current) =>
+                    current.trim() ? `${current}\n${item.prompt}` : item.prompt,
+                  );
+                  requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple={!officialLogoRequired}
+        accept={
+          officialLogoRequired || syncKnowledgeBaseSnapshot
+            ? "image/png,image/jpeg,image/webp,image/avif,image/gif"
+            : undefined
+        }
+        disabled={
+          responseLogicInitialPromptLocked ||
+          inputLocked ||
+          isSending ||
+          isUploading ||
+          knowledgeBaseNotStarted
+        }
+        className="hidden"
+        onChange={(e) => {
+          const selected = Array.from(e.target.files || []);
+          if (selected.length > 0) addFiles(selected);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}

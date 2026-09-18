@@ -1,3 +1,6 @@
+import BusinessChatInput from "@frontmind/module-ui/components/BusinessChatInput";
+import type { BusinessComposerRuntime } from "@frontmind/module-ui/components/business-composer-runtime";
+import type { ContentProductionInput } from "../contracts/content-production";
 import MarkdownRenderer from "@frontmind/module-ui/components/MarkdownRenderer";
 import {AgentWorkbenchShell} from "@frontmind/module-ui/components/AgentWorkbenchShell";
 import {WorkbenchTaskToolbar as SharedWorkbenchTaskToolbar} from "@frontmind/module-ui/dashboard/WorkbenchTaskToolbar";
@@ -24,7 +27,7 @@ export const liveContentClient:ContentBusinessClient={
  task:(id,signal)=>json(`/api/frontmind/v2/tasks/${encodeURIComponent(id)}`,{signal}),
  stop:async id=>{await json(`/api/frontmind/v2/tasks/${encodeURIComponent(id)}/stop`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});},
 };
-type Runtime=ContentConversationApi&{sendMessage(prompt:string,files?:File[],options?:ContentSendOptions):Promise<boolean>;stop():Promise<void>;notice:string;refresh():Promise<void>};
+type Runtime=ContentConversationApi&{workspaceId:string;sendMessage(prompt:string,files?:File[],options?:ContentSendOptions):Promise<boolean>;stop():Promise<void>;notice:string;refresh():Promise<void>};
 const RuntimeContext=createContext<Runtime|null>(null);
 function useRuntime(){const value=useContext(RuntimeContext);if(!value)throw new Error("Content runtime missing");return value;}
 function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessClient;children:ReactNode;workspaceId:string}) {
@@ -60,10 +63,17 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
    update(await client.save(accepted));return true;
   }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{locks.current.delete(conversation.id);}
  },[client,update]);
- const value:Runtime={state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
+ const value:Runtime={workspaceId,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
  return <RuntimeContext.Provider value={value}>{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
 }
-function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHomeProps){const runtime=useRuntime();const [prompt,setPrompt]=useState("");const [files,setFiles]=useState<File[]>([]);const [sending,setSending]=useState(false);const busy=sending||knowledgeEditingBlocked||["running","pending"].includes(runtime.activeConversation?.status??"");return <div className="cp-live-dialogue"><div className="cp-live-messages">{runtime.activeConversation?.messages.map(message=><article key={message.id} className={`cp-live-message cp-live-message--${message.role}`} data-role={message.role}>{message.role==="user"&&<div className="cp-live-avatar" aria-hidden="true"><UserRound size={16}/></div>}<div className="cp-live-message-body"><div className="cp-live-text">{message.role==="user"?message.content:<MarkdownRenderer content={message.content} allowCopy={!busy}/>}</div>{message.attachments?.map(file=><small key={file.id}>{file.name}</small>)}{message.outputFiles?.filter(file=>/^\/api\/frontmind\/v2\/artifacts\/[^/]+\/content(?:\?|$)/.test(file.fileUrl)).map((file,index)=><a key={file.fileUrl} href={file.fileUrl} target="_blank" rel="noreferrer" data-workbench-output-key={`${message.id}:${index}`}>{file.fileName}</a>)}{message.generalChatDispatch&&<button onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}</div></article>)}</div>{conversationFooter}<form onSubmit={async event=>{event.preventDefault();if(!prompt.trim()||busy)return;setSending(true);try{await runtime.sendMessage(prompt,files);setPrompt("");setFiles([]);}catch{}finally{setSending(false);}}}><textarea aria-label="内容任务消息" value={prompt} onChange={event=>setPrompt(event.target.value)} disabled={busy} placeholder="补充材料或向当前内容任务提供反馈"/><input aria-label="内容任务附件" type="file" multiple disabled={busy} onChange={event=>setFiles(Array.from(event.target.files??[]))}/><div><button disabled={busy||!prompt.trim()} type="submit">发送</button>{["running","pending"].includes(runtime.activeConversation?.status??"")&&<button type="button" onClick={()=>void runtime.stop().catch(()=>{})}>停止当前执行</button>}</div></form></div>}
+function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHomeProps) {
+ const runtime=useRuntime();
+ const busy=Boolean(knowledgeEditingBlocked)||["running","pending"].includes(runtime.activeConversation?.status??"");
+ return <div className="cp-live-dialogue"><div className="cp-live-messages">{runtime.activeConversation?.messages.map(message=><article key={message.id} className={`cp-live-message cp-live-message--${message.role}`} data-role={message.role}>{message.role==="user"&&<div className="cp-live-avatar" aria-hidden="true"><UserRound size={16}/></div>}<div className="cp-live-message-body"><div className="cp-live-text">{message.role==="user"?message.content:<MarkdownRenderer content={message.content} allowCopy={!busy}/>}</div>{message.attachments?.map(file=><small key={file.id}>{file.name}</small>)}{message.outputFiles?.filter(file=>/^\/api\/frontmind\/v2\/artifacts\/[^/]+\/content(?:\?|$)/.test(file.fileUrl)).map((file,index)=><a key={file.fileUrl} href={file.fileUrl} target="_blank" rel="noreferrer" data-workbench-output-key={`${message.id}:${index}`}>{file.fileName}</a>)}{message.generalChatDispatch&&<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}</div></article>)}</div>{conversationFooter}
+  <BusinessChatInput runtime={contentComposerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
+  {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" onClick={()=>void runtime.stop().catch(()=>{})}>停止当前执行</button>}
+ </div>;
+}
 const pendingDrafts = new Set<() => boolean>();
 const useDraftGuard: ContentWorkspaceHost["useWorkspaceDraftGuard"] = (input) => {
  const current = useRef(input); current.current = input;
@@ -79,5 +89,33 @@ function requestDraftNavigation(operation: () => void) {
  if (![...pendingDrafts].some(dirty => dirty()) || window.confirm("当前修改尚未保存，确定离开吗？")) operation();
 }
 const WorkbenchTaskToolbar: ContentWorkspaceHost["WorkbenchTaskToolbar"] = props => <SharedWorkbenchTaskToolbar {...props} requestNavigation={requestDraftNavigation} />;
+// The same Dashboard composer owns draft, IME, attachment and drag/drop UI.
+// The content adapter supplies only this module's persisted dispatch behavior.
+const contentComposerRuntime: BusinessComposerRuntime<ContentProductionInput, never, ContentConversation, never> = {
+ useConversation() {
+  const state=useRuntime();
+  return {activeConversation:state.activeConversation,workbenchScopeKey:`content:${state.workspaceId}`,
+   commitKnowledgeBaseObservation(){throw new Error("内容任务不能写入知识库状态");},
+   wakeKnowledgeBaseConversation(){throw new Error("内容任务不能调度知识库");},
+   rollbackPendingKnowledgeBaseTurn(){throw new Error("内容任务不能修改知识库提交");}};
+ },
+ currentKnowledgeBaseReplySnapshot:()=>null,
+ useSendMessage() {
+  const runtime=useRuntime();
+  return {sendMessage:(text,files,options)=>runtime.sendMessage(text,files,{purpose:"content_production",contentProduction:options?.contentProduction}),
+   uploadProgress:null,knowledgeBaseAttachmentAttempt:null,
+   stopKnowledgeBaseAttachmentAttempt(){},continueKnowledgeBaseAttachmentAttempt(){},discardKnowledgeBaseAttachmentAttempt(){}};
+ },
+ useChatSubmission:()=>null,
+ useWorkspaceDraftGuard:useDraftGuard,
+ captureWorkspaceRestOperation:()=>({assertActive(){},fetch:(input,init)=>fetch(input,{...init,credentials:"same-origin"})}),
+ consumePendingFrontMindBuildDraft:()=>"",
+ GeneralAgentRuntimeBadge:()=>null,
+ KnowledgeBaseManagedUploadRecovery:()=>null,
+ generalSuggestions:[],
+ formatKnowledgeBaseUploadBytes:bytes=>`${(bytes/1024/1024).toFixed(1)} MB`,
+ chatAttachmentSizeError:file=>file.size>100*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 100 MB`:null,
+ knowledgeLogoNoticeCode:"unused-content-knowledge-logo",
+};
 function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview:({file,className})=><a className={className} href={file.blobUrl} target="_blank" rel="noreferrer">{file.name}</a>,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector};return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}
 export function ModuleWorkspace({context,client=liveContentClient}:{context:ModuleContext;client?:ContentBusinessClient}) {return <RuntimeProvider client={client} workspaceId={context.workspace.id}><InstalledWorkspace client={client}/></RuntimeProvider>}
