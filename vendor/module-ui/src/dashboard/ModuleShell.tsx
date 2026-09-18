@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentWorkbenchShell } from "../components/AgentWorkbenchShell";
 import { OperatorThemeProvider } from "../components/ui/operator-theme";
 import { DashboardFrame } from "./DashboardFrame";
-import { OperatorModuleNavigation, OperatorSidebarFooter } from "./OperatorModuleNavigation";
+import { OperatorModuleNavigation, StandaloneWorkspaceFooter } from "./OperatorModuleNavigation";
 import { ModulePresentationProvider } from "./module-presentation";
 import "./module-shell.css";
 
@@ -62,7 +62,7 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
     <DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
       <aside ref={sidebarRef} role={mobileOpen && compact ? "dialog" : undefined} aria-modal={mobileOpen && compact ? true : undefined} aria-hidden={phone && !mobileOpen ? true : undefined} inert={phone && !mobileOpen ? true : undefined} id="operator-project-navigation" className="global-nav operator-sidebar" aria-label="工作区导航" data-collapsed={collapsed} data-entry="project">
         <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} />
-        <div className="operator-sidebar-bottom"><OperatorSidebarFooter collapsed={collapsed} onCollapse={collapse} workspaceLabel="FrontMind 开发工作区" accountLabel="FrontMind" /></div>
+        <div className="operator-sidebar-bottom"><StandaloneWorkspaceFooter collapsed={collapsed} onCollapse={collapse} workspaceLabel="FrontMind 开发工作区" accountLabel="FrontMind" /></div>
       </aside>
       <main className={`dashboard-main workbench-main ${immersive ? "knowledge-build-main" : ""}`}>
         {preview && <div className="module-preview-notice" role="status">本地预览 · 合成示例数据，不会执行真实业务</div>}

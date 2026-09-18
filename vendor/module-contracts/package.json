@@ -55,6 +55,10 @@
     "./managed-runtime": {
       "types": "./src/managed-runtime.ts",
       "import": "./dist/managed-runtime.js"
+    },
+    "./public-text": {
+      "types": "./src/public-text.ts",
+      "import": "./dist/public-text.js"
     }
   },
   "scripts": {
