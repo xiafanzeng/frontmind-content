@@ -5,8 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  framer-motion>motion-dom: 12.23.21
-  framer-motion>motion-utils: 12.23.6
+  framer-motion@12.23.22>motion-dom: 12.23.21
+  framer-motion@12.23.22>motion-utils: 12.23.6
   motion-dom@12.23.21>motion-utils: 12.23.6
 
 importers:
@@ -127,6 +127,9 @@ importers:
 
   vendor/module-ui:
     dependencies:
+      '@frontmind/module-contracts':
+        specifier: workspace:*
+        version: link:../module-contracts
       '@radix-ui/react-alert-dialog':
         specifier: 1.1.15
         version: 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.1))(@types/react@19.2.1)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
