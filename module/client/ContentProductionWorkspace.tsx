@@ -6,7 +6,7 @@ import type {ContentProductionDto,ContentProductionInput,ContentProductionJobKin
 import ContentProductionConfirmation from "./ContentProductionConfirmation";
 import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionTaskTitle} from "../contracts/content-production-public";
 import "./content-production.css";
-const contentTheme = {"--module-accent":"#9c6b4e","--module-color":"#9c6b4e"} as CSSProperties;
+const contentTheme = {"--module-accent":"#8a6100","--module-color":"#8a6100"} as CSSProperties;
 export const CONTENT_MODES: {
   value: ContentProductionMode;
   title: string;
