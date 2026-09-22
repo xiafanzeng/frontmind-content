@@ -280,23 +280,6 @@ function ContentProductionInner({
     label: "待重试的内容任务开场信息和文件",
   });
 
-  // V2.3: entering 内容制作 without an active task opens the unified task
-  // window once. With task history default to 已有任务, otherwise 新建任务;
-  // handoff arrivals open it themselves with the article type preselected.
-  const taskCenterAutoOpened = useRef(false);
-  useEffect(() => {
-    if (!hydrated || taskCenterAutoOpened.current) return;
-    if (activeConversation || handoffPending || showCreate) return;
-    taskCenterAutoOpened.current = true;
-    openTaskCenter(state.conversations.length ? "existing" : "new");
-  }, [
-    hydrated,
-    activeConversation,
-    handoffPending,
-    showCreate,
-    state.conversations.length,
-  ]);
-
   const refresh = useCallback(async () => {
     readController.current?.abort();
     const controller = new AbortController();
