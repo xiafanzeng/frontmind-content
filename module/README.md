@@ -1,25 +1,26 @@
-# FrontMind 内容制作模块
+# FrontMind 内容制作
 
-公开仓库：<https://github.com/xiafanzeng/frontmind-content>
-开发域名：<https://content.frontmind.cn>
+公开仓库：https://github.com/xiafanzeng/frontmind-content
+开发域名：https://content.frontmind.cn/
 
-`module/` 是与主仓 `modules/content/` 双向同步的完整业务源码。独立启动壳由子仓 `standalone/` 提供；主仓通过公开宿主接口装配同一业务页面。
+`module/` 对应主仓 `modules/content/`；公开仓 `standalone/` 是独立启动壳，不合回 Dashboard。
 
-## 业务源码
+## 业务代码
 
-- `client/ContentProductionWorkspace.tsx`：原内容工作台、任务输入、文件选择、成果、继续使用资料包和任务历史。
-- `client/ContentProductionConfirmation.tsx`：原工作流人工确认，不自动跳过确认或改写 revision。
-- `client/runtime.tsx`：独立内容会话、上传、持久化提交信封、同请求重试、刷新恢复、停止与成果访问。没有通用智能体入口。
-- `server/task-handlers.ts`：创建校验、冻结输入与工作流版本、确认冲突检查。
-- `server/task-persistence.ts` / `persistence.ts` / `state.ts`：原执行账本行锁、用途校验、观察排序与状态归并。
-- `worker/observations.ts`：读取内容工作流状态，过滤私有任务快照与内部文件。
-- `workflows/source/`：有效工作流可编辑源码；构建生成版本和哈希，已开始任务沿用冻结版本。
-- `schema/`：实际使用的共享执行账本及内容 JSON 字段契约。本次不创建替代业务表或迁移旧任务。
+材料输入、任务创建、逐步确认、原任务恢复、快照和成果下载。页面在 `client/`，业务服务在 `server/`，表定义在 `schema/`，后台处理在 `worker/`，有效工作流在 `workflows/`（各目录按实际业务存在）。
 
-## 预览与真实运行
+重点入口：`server/task-handlers.ts`（创建/确认规则）、`server/runtime.ts`（系统上下文、执行参数和文件策略）、`server/state.ts`、`server/task-persistence.ts`、`worker/`、`workflows/`。
 
-在公开仓执行 `pnpm install --frozen-lockfile`、`pnpm dev`。本地预览使用明确标注的合成数据，不发起真实研究或付费调用。`pnpm typecheck`、`pnpm test`、`pnpm build` 用于验证提交。
+新增后端 API 从 **`server/http-api.ts`** 开始，挂在 `/api/modules/content/`。此注册函数由真实开发环境和主仓共同装载；在本模块命名空间新增路径不需要修改主仓的逐接口允许清单。现有 API 地址保留。
 
-真实子域名通过服务器开发门禁后直接使用固定测试工作区。账户、租户、凭据与通用执行存储由私有宿主注入。模块不查询登录或成员表。主仓可以注入已发布知识作为可选连接，独立模式只使用手工材料。
+## 开发方式
 
-不得把本地预览标记为供应商真实验收通过。需要供应商配置和指定的付费测试目标时，验收记录单独列出。
+公开仓根目录执行 `pnpm install --frozen-lockfile`、`pnpm dev`；检查使用 `pnpm typecheck`、`pnpm test`、`pnpm build`。本地预览使用合成数据；真实保存、任务、上传下载和供应商调用在开发子域名检查。
+
+先用 delivery skill 导出准确线上 SHA，交给 Pro 修改并返回 ZIP，再用 delivery skill 提交/部署子域名，验收后用 sync skill 合回主仓。见 [API 开发说明](API_DEVELOPMENT.md) 和 [Pro 交接规则](PRO_GUIDE.md)。
+
+## 运行基础设施
+
+主仓装配真实登录/租户或开发固定工作区、数据库连接、统一资金、文件存储和通用 AI 执行器。业务请求参数、状态机及结果解释由本模块维护。已有测试凭据在服务器配置，组员修改服务端调用代码后沿用它们，无需在本地拿 Key；新增供应商/新凭据仍需管理员配置服务器。服务端可读取注入环境，任何密钥都不得返回浏览器或写入公开 Git/ZIP。
+
+开发入口可用、配置存在或本地测试通过，均不等于所有付费业务链路已验收；HANDOFF 必须记录实际检查范围。

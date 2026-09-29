@@ -25,3 +25,8 @@ export async function freezeContentTaskContext(input:{
 export function assertContentConfirmation(input:{action?:ContentProductionAction;availableActions?:ContentProductionAction["kind"][];runnerRevision?:number|null}) {
  if(input.action&&(!input.availableActions?.includes(input.action.kind)||input.action.revision!==input.runnerRevision))throw new ContentTaskError("CONTENT_PRODUCTION_CONFIRMATION_CONFLICT",409);
 }
+
+/** Business-specific execution policy used by the existing durable task transport. */
+export function assertContentTaskAction(purpose:string|undefined,action:ContentProductionAction|undefined) {
+ if(action&&purpose!=="content_production")throw new ContentTaskError("CONTENT_PRODUCTION_TASK_REQUIRED",400);
+}
