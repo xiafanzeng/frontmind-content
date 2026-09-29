@@ -75,3 +75,19 @@ function contentKnowledgeAttachment(context: FrozenContentTaskContext): SystemAt
   const body = snapshot.documents.map(document => `# ${document.title}\n\n来源：${document.path}\n\n${document.content}`).join("\n\n---\n\n");
   return { filename: "frontmind_published_knowledge.md", mime_type: "text/markdown", file_data: `data:text/markdown;base64,${Buffer.from(body).toString("base64")}` };
 }
+
+/** The host supplies credentials and persistence; the module owns every content instruction. */
+export function contentProductionClientOptions(context:FrozenContentTaskContext,action?:import("../contracts/content-production").ContentProductionAction) {
+ return {
+  systemContext:contentProductionSystemContext(context),
+  systemAttachments:contentProductionSystemAttachments(context),
+  recoverableStatusArtifact:isContentWorkflowStateFilename,
+  turnContext:[CONTENT_PRODUCTION_LANGUAGE_CONTEXT,action
+   ? `The customer submitted this contentProductionAction for the current Runner revision: ${JSON.stringify(action)}. Apply only this original business action with its attached user material; preserve the original user text above.`
+   : null].filter(Boolean).join("\n\n"),
+ };
+}
+export function contentArtifactPolicy(purpose:string|undefined,filename:string,presentation:unknown) {
+ const content=purpose==="content_production";
+ return {hidden:content&&isContentWorkflowInternalFilename(filename),chinesePresentation:content&&presentation==="zh"};
+}
