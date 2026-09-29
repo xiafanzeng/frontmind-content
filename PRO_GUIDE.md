@@ -47,3 +47,11 @@ The delivery skill applies the ZIP in a separate worktree, checks the code and p
 ## Shared Dashboard presentation
 
 The standalone app uses the original Dashboard sidebar, tabs, layout, and controls from vendor/module-ui. It only filters navigation to this business module. Keep business page and style changes in module/client so source synchronization brings them back to Dashboard. standalone/ only supplies runtime adapters and independent inputs; it is not merged into production. Shared shell changes are maintained in main and sent to vendor.
+
+## 后端 API 开发（2026-09-29）
+
+完整业务调用位置与范围见 [module/API_DEVELOPMENT.md](module/API_DEVELOPMENT.md)。新增接口在 `module/server/http-api.ts` 注册，真实地址为 `/api/modules/content/<路径>`；此文件随子仓发布和合回，不再为每个新路径另改主仓允许清单。
+
+已有凭据在服务器注入，成员可以直接修改模块服务端的请求、校验、解析和状态机，在本域名验收；不需要把Key放进public仓库或本地配置。通用AI执行器、真实身份/租户、统一资金和部署基础设施继续共用。新供应商/新Key需要管理员配置服务器一次。
+
+新API读写使用服务器验证的企业项目作用域。工程师调用须携带已授权企业项目；仅提供岗位编号不能作为数据owner。生产写请求须同源；不要在浏览器跨域直连或使用自行填写的用户/管理员身份。监控与发布读写使用core提供的businessOwnerId，而非Dashboard数值账号。
