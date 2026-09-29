@@ -197,7 +197,7 @@ def _answer_groups(row: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         answers.append({
             "slot": number,
-            "answer_text": _normal(content),
+            "answer_text": str(content),
             "region": _normal(next((value for role, value in group.items() if role in {"区域", "region"}), None)) or None,
             "exported_rank": _normal(next((value for role, value in group.items() if role in {"排名", "rank", "ranking"}), None)) or None,
             "monitor_keyword_rank": _normal(next((value for role, value in group.items() if role in {"监控词排名", "keywordrank", "monitorkeywordrank"}), None)) or None,
@@ -208,7 +208,7 @@ def _answer_groups(row: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
             "slot": index,
-            "answer_text": _normal(value),
+            "answer_text": str(value),
             "region": None,
             "exported_rank": None,
             "monitor_keyword_rank": None,
@@ -245,7 +245,7 @@ def _monitoring_rows(
                     "platform": _normal(item.get("platform")) or "unspecified",
                     "model": _normal(item.get("model")) or None,
                     "sampled_at": _date_first(item.get("sampled_at")),
-                    "answer_text": _normal(item.get("answer_text")),
+                    "answer_text": str(item.get("answer_text")),
                     # The overall monitoring export is an answer-landscape
                     # input, not the citation source of record.  In particular,
                     # do not carry screenshot links or arbitrary embedded URLs

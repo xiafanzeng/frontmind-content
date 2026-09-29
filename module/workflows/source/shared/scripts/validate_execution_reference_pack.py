@@ -201,9 +201,10 @@ def _question_ready_uids(view: PackageView, index: dict[str, Any], names: set[st
             for answer in (monitoring or {}).get("answers", [])
             if isinstance(answer, dict) and str(answer.get("answer_text") or "").strip()
         }
+        from shared.question_bank_import import known_platforms
         if (
             not local_errors
-            and len(platforms - {""}) >= 2
+            and len(known_platforms((monitoring or {}).get("answers", []))) >= 2
             and isinstance((citation or {}).get("details"), list)
         ):
             result.append(uid)

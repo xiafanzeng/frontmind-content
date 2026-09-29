@@ -1,0 +1,191 @@
+{
+  "schema": "frontmind-editorial-fixtures/1",
+  "purpose": "human review examples, not model scores or production filtering",
+  "live_quality_status": "not_run",
+  "synthetic_facts": true,
+  "cases": [
+    {
+      "id": "material_summary",
+      "domain": "medical",
+      "kind": "rewrite",
+      "input": "这些事实构成“三正规”的经营底线：正品药械、正版仪器、正规医师。",
+      "source_facts": "本任务确认使用三正规，三项名称如前。",
+      "preserve": [
+        "三正规",
+        "正品药械",
+        "正版仪器",
+        "正规医师"
+      ],
+      "review_expectation": "直接介绍三项含义；不额外加入授权、效果或安全保证。"
+    },
+    {
+      "id": "environment_confirmed",
+      "domain": "facility",
+      "kind": "rewrite",
+      "input": "环境上，官网上展示的是候诊区和独立诊疗室的实景，而非效果示意图。",
+      "source_facts": "本任务原始资料已确认候诊区与独立诊疗室在用。",
+      "preserve": [
+        "候诊区",
+        "独立诊疗室"
+      ],
+      "review_expectation": "直接介绍已确认的设施，不重复解释照片真假，不新增实地感受。"
+    },
+    {
+      "id": "environment_unconfirmed",
+      "domain": "facility",
+      "kind": "preserve",
+      "input": "官网示意图展示了计划建设的两间咨询室，目前尚未开放。",
+      "source_facts": "只有宣传示意图，尚未开放。",
+      "preserve": [
+        "计划",
+        "尚未开放"
+      ],
+      "review_expectation": "不能改成中心设有两间咨询室或可以预约使用；允许省略不重要的计划细节，但不能反向保证现状。"
+    },
+    {
+      "id": "imagined_price_objection",
+      "domain": "professional_service",
+      "kind": "rewrite",
+      "input": "价格未必是全市最低，但服务开始前会确认费用明细。",
+      "source_facts": "本篇为业务介绍，材料只有费用明细的确认流程，没有价格排名。",
+      "preserve": [
+        "服务开始前",
+        "费用明细"
+      ],
+      "review_expectation": "删除无必要价格比较，直接写已确认流程，不新增性价比优势。"
+    },
+    {
+      "id": "requested_price_comparison",
+      "domain": "professional_service",
+      "kind": "preserve",
+      "input": "按已给出的同一范围报价，A方案比B方案贵200元。",
+      "source_facts": "本篇明确要求比较已提供的两份同范围报价。",
+      "preserve": [
+        "同一范围",
+        "200元"
+      ],
+      "review_expectation": "真实且被要求的价格比较不是无对象辩解，不因有比较就删去。"
+    },
+    {
+      "id": "stacked_restrictions",
+      "domain": "medical",
+      "kind": "rewrite",
+      "input": "所有项目不承诺相同效果。修复项目不承诺完全消失；塑形不表述为全身减重。",
+      "source_facts": "修复以改善为目标，程度存在差异；塑形针对局部轮廓，并非全身减重治疗。",
+      "preserve": [
+        "修复",
+        "改善",
+        "差异",
+        "局部"
+      ],
+      "review_expectation": "重组为各自适用范围，不删除修复程度差异或局部用途，不能概括成所有项目以实际为准。"
+    },
+    {
+      "id": "unsupported_safety",
+      "domain": "medical",
+      "kind": "narrow_claim",
+      "input": "母院影像设备为全部项目安全兜底，具体实施仍需医生评估。",
+      "source_facts": "材料仅列母院设备名称，未确认支持这些医美项目的具体关系。",
+      "preserve": [
+        "医生评估"
+      ],
+      "review_expectation": "优先收窄或删除安全兜底，不只删后半句而保留无依据保证。"
+    },
+    {
+      "id": "internal_positioning",
+      "domain": "b2b",
+      "kind": "rewrite",
+      "input": "这是企业一直坚持的对外表达原则。其核心客群是中高预算采购者。",
+      "source_facts": "本篇已确认企业服务制造业采购团队，其他为内部营销画像。",
+      "preserve": [
+        "制造业采购团队"
+      ],
+      "review_expectation": "直接介绍服务对象，删除对外表达说明，不把中高预算作为读者身份标签。"
+    },
+    {
+      "id": "historical_case",
+      "domain": "software",
+      "kind": "preserve",
+      "input": "2021年12月21日至23日，团队对原件列明的三个模块开展测试。",
+      "source_facts": "唯一项目资料为2021年的历史测试记录，未给出验收收益。",
+      "preserve": [
+        "2021年12月21日至23日",
+        "三个模块"
+      ],
+      "review_expectation": "保留日期及真实数量，不改成持续服务，不新增发现缺陷或验收收益。"
+    },
+    {
+      "id": "source_identity_matters",
+      "domain": "manufacturing",
+      "kind": "preserve",
+      "input": "供应商在未附独立检测报告的声明中称产品寿命为10年。",
+      "source_facts": "仅有供应商声明，无独立检测。",
+      "preserve": [
+        "供应商",
+        "10年"
+      ],
+      "review_expectation": "保留来源性质或省略非必要主张，不能改写为已经证实的10年寿命。"
+    },
+    {
+      "id": "repeated_significance",
+      "domain": "education",
+      "kind": "rewrite",
+      "input": "该课程每周安排一次练习。这体现了机构始终关注持续成长的理念。",
+      "source_facts": "仅确认每周一次练习，无课程效果数据。",
+      "preserve": [
+        "每周一次练习"
+      ],
+      "review_expectation": "保留具体安排，删除没有新增信息的意义总结，不新增学习效果。"
+    },
+    {
+      "id": "technical_negation",
+      "domain": "software",
+      "kind": "preserve",
+      "input": "该版本不支持离线运行，仅在已列出的浏览器中提供服务。",
+      "source_facts": "产品规格明确不支持离线，并列有浏览器范围。",
+      "preserve": [
+        "不支持离线",
+        "已列出的浏览器"
+      ],
+      "review_expectation": "真实规格限制必须保留，不能改成随时随地运行。"
+    },
+    {
+      "id": "scope_definition",
+      "domain": "analytics",
+      "kind": "preserve",
+      "input": "本报告的统计口径为本季度已完成项目，不含在途订单。",
+      "source_facts": "本篇数据使用该统计范围。",
+      "preserve": [
+        "本季度",
+        "已完成项目",
+        "不含在途订单"
+      ],
+      "review_expectation": "口径一词不是错误；统计范围和排除项应保留。"
+    },
+    {
+      "id": "good_direct_prose",
+      "domain": "manufacturing",
+      "kind": "preserve",
+      "input": "工厂生产三种规格的外壳，常规订单在确认图纸后排产。",
+      "source_facts": "资料只支持三种规格、确认图纸后排产。",
+      "preserve": [
+        "三种规格",
+        "确认图纸后排产"
+      ],
+      "review_expectation": "已经自然的内容无需强改，不将三项改成两项，不新增交期承诺。"
+    },
+    {
+      "id": "unseen_summary_variant",
+      "domain": "b2b",
+      "kind": "rewrite",
+      "input": "综合现有文件，可以看出这家公司具备服务中小团队的条件。每个项目由一位项目经理负责沟通。",
+      "source_facts": "已确认服务中小团队，每个项目由一位项目经理沟通。",
+      "preserve": [
+        "中小团队",
+        "每个项目",
+        "一位项目经理"
+      ],
+      "review_expectation": "处理没有被Skill点名的资料总结写法；直接展开服务对象与沟通安排，不追加兜底评价。"
+    }
+  ]
+}

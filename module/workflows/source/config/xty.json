@@ -1,0 +1,14 @@
+{
+  "api_key": "",
+  "base_url": "https://api.xty.app/v1",
+  "model": "gpt-5.6-sol",
+  "completion_transport": "stream_merged",
+  "timeout_seconds": 1800,
+  "max_turns": 100,
+  "max_tool_calls": 1000,
+  "max_tokens": 131072,
+  "model_selection_note": "主宿主gpt-5.6-sol（用户2026-09-21选定）+ 备用宿主glm-5.3/max（用户2026-09-22决策）。传输类失败（连接中断、5xx/524、超时）自动切换备用：同一网关同一工具合同，备用尝试独立记录身份并与主尝试互相链接（fallback_for / failed_over_to_backup）；内容合同、工具协议与次数上限类失败不切模型，仍走显式重试/返工。glm-5.3实测(2026-09-22,同网关流式)：reasoning_effort=max被接受；小调用13.6s工具协议正确；20KB负载首字节14.2s(远低于Cloudflare 120s窗口)。gpt-5.5+high实测20KB首字节98.8s、28KB实际调用524，大请求不可用，未采用。gpt-5.6-luna/terra默认档(首字节20.0/17.8s)为已验证备选，可改model字段使用。completion_transport=stream_merged保持。切换模型/备用键均改变请求指纹。",
+  "backup_model": "glm-5.3",
+  "backup_reasoning_effort": "max",
+  "reasoning_effort": "high"
+}

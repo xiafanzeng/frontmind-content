@@ -1,0 +1,8 @@
+{
+  "basis": "user-provided FrontMind_P0_写作Skill_调研与适配.zip and candidate SKILL.md",
+  "candidate_sha256": "178d1c376400e8e0dc70d729fb8c3be8982a1b1373bef6150df413b153277390",
+  "workflow_base_sha256": "31541a6ab151ebc414e7ebbef90c3aa646cf218d1fd1cf5bad37f43111d561ca",
+  "integration_version": "4.12.8",
+  "paid_api_called": false,
+  "content_quality_status": "not_live_tested"
+}

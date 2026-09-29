@@ -1,0 +1,29 @@
+{
+  "basis": "actual v4.12.7 baseline request builders; synthetic fixtures only",
+  "quality_assessment": false,
+  "sha256": {
+    "4.12.5/p0_blueprint": "d3b0e1ac005a5706df5d7d18163925b1de542994108ec8b0383b44a6590e3959",
+    "4.12.5/p0_draft": "01c9849ed623f125877aba6ba51d545f871adc876aad3d20d93ecafbd0a3b179",
+    "4.12.5/p0_edit": "6c370a4307bacd90e2b8b15a1387e253ced7e31551dff6569ba6e9c9fc7d8c88",
+    "4.12.5/p0_style": "bc0316339cf7cfefe9636e8f274f531fe227f3dcb0e0c9a9e8425dd8cfd1c25e",
+    "4.12.5/p0_finalize": "d4d514afba7613088f7f5953703067ff8c9e6c3258300e89c08f3bae01cc7ee0",
+    "4.12.6/p0_blueprint": "d3b0e1ac005a5706df5d7d18163925b1de542994108ec8b0383b44a6590e3959",
+    "4.12.6/p0_draft": "01c9849ed623f125877aba6ba51d545f871adc876aad3d20d93ecafbd0a3b179",
+    "4.12.6/p0_edit": "6c370a4307bacd90e2b8b15a1387e253ced7e31551dff6569ba6e9c9fc7d8c88",
+    "4.12.6/p0_style": "719a0cb0feadaa158286c883e8263e182cc48ee1ad0749b30235d23816fd20e6",
+    "4.12.6/p0_finalize": "79e544a1a60e71ce4aa62a28b300f2828385c2b08c5a1c2bc0235258a43841b8",
+    "4.12.7/p0_blueprint": "fa96669bc0bd985eb1ea7dabe8c11c38181ef0526ff32c242d1c7b020b6603b8",
+    "4.12.7/p0_draft": "762243943055164aaf65fb73735494d5559a699ee8bf24a9061fdba493ee7706",
+    "4.12.7/p0_edit": "f98a11f1f8d55dae08d613f0b9265b53ee8800f32966257066fd32222c236ae9",
+    "4.12.7/p0_style": "ff0fd117e2f50d774e936f7497a5543205141cf4b0abb6f3f0588b3e2a82b46e",
+    "4.12.7/p0_finalize": "73296ff5eb78b1a92965496c40ee4d461a4eff25eba4815ab4f7e4027989359e",
+    "unchanged/article_blueprint": "17d68cdc7875e04beca786f02073b3e639933825a646be74c05d40d7b06a98e1",
+    "unchanged/article_draft": "8903301a8eec876d8522743efeaaf46704e51134f4ad1eaa139c0f855a7bf7ee",
+    "unchanged/article_edit": "b362b8d9f817af173051e73af6ae3410ea9b046ec11efd70a444f2b4d1e90b8f",
+    "unchanged/article_finalize": "4542317dd25c983afa99aa94c5cb753d88b15d0d3ed9a2f007b1ddc9e72aa4d2",
+    "unchanged/article_titles": "c9f886c381376fded6aad73a646fe47af9379d7f7cf0326205ca7c2c00acf426",
+    "unchanged/article_title_review": "320dcae6b1f4a8812d7d526195b81547a0ee698f24bab15f853559eb035259d6",
+    "unchanged/p0_titles": "c9f886c381376fded6aad73a646fe47af9379d7f7cf0326205ca7c2c00acf426",
+    "unchanged/p0_title_review": "320dcae6b1f4a8812d7d526195b81547a0ee698f24bab15f853559eb035259d6"
+  }
+}

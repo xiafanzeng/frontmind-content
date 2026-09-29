@@ -37,8 +37,14 @@ class PositioningControllerContractTests(unittest.TestCase):
         self.job = self.base / 'job'
         self.material = self.base / 'company.md'
         self.material.write_text('材料标记 ORIGINAL_FACTS。甲提供持续服务，乙提供临时服务。')
-        with mock.patch.object(C, 'invoke_external_provider', return_value=False):
-            self.command('reference-pack', 'create', '--brand', BRAND, '--input', str(self.material), '--job-dir', str(self.job))
+        # A permanent per-test guard prevents old mocks from contacting real APIs.
+        guard = mock.patch.object(C, 'run_action', side_effect=AssertionError('Unexpected real model action in offline business test'))
+        guard.start()
+        self.addCleanup(guard.stop)
+        unavailable = C.ProviderActionError('offline_fixture_pause', 'Explicit offline test starts before model research.')
+        with mock.patch.object(C, 'run_action', side_effect=unavailable):
+            with self.assertRaises(C.ProviderActionError):
+                self.command('reference-pack', 'create', '--brand', BRAND, '--input', str(self.material), '--job-dir', str(self.job))
         self.assertEqual(ACTIONS[0], state(self.job)['pending_action']['action'])
 
     def command(self,*args):
@@ -53,12 +59,16 @@ class PositioningControllerContractTests(unittest.TestCase):
     def run_provider(self,research=None,core=None,callback=None,observe=None):
         outputs={ACTIONS[0]:RESEARCH if research is None else research,ACTIONS[1]:CORE if core is None else core}
         calls=[]
-        def provider(request_path,request,job):
-            action=request['action'];self.assertIn(action,ACTIONS)
-            prompt=(job/request['prompt_path']).read_text();calls.append((action,prompt))
+        def provider(package_root,job,action,prompt,validator,retry=False,**kwargs):
+            self.assertIn(action,ACTIONS)
+            calls.append((action,prompt))
             if observe:observe(action,prompt)
-            C.atomic_json(job/request['expected_output'],deepcopy(outputs[action]));return True
-        with mock.patch.object(C,'invoke_external_provider',side_effect=provider),redirect_stdout(io.StringIO()):
+            result=validator(deepcopy(outputs[action]))
+            paths=C.action_paths(job,action)
+            C.atomic_json(paths[2],result)
+            C.atomic_json(paths[2].with_name('execution.json'),{'execution_mode':'offline_simulated','action':action})
+            return result
+        with mock.patch.object(C,'run_action',side_effect=provider),redirect_stdout(io.StringIO()):
             result=callback() if callback else C.drive(self.job)
         self.assertEqual(0,result)
         return calls
@@ -250,11 +260,17 @@ class PositioningControllerContractTests(unittest.TestCase):
     def test_context_and_pack_export_use_the_same_final_value(self):
         value={**CORE,'applicability_notes':['NOTE_FOR_WRITING']}
         self.finish_positioning(core=value)
-        C.atomic_json(self.job/'blueprints/p0_blueprint.json',{'kind':'p0','opening':'从需求展开','sections':[{'heading':'价值','task':'解释选择'}],'ending':'适用人群'})
-        for content in [C.natural_author_context(self.job,p0=True),C.selected_competitive_context_markdown(self.job)]:
-            for field in ('core_positioning_paragraph','advantage_explanation'):self.assertIn(value[field],content)
-            self.assertIn('NOTE_FOR_WRITING',content)
-            self.assertNotIn(RESEARCH['research_markdown'],content)
+        material='甲为有持续需求的客户提供专门服务，按任务安排交付与沟通。'
+        C.atomic_json(self.job/'blueprints/p0_blueprint.json',{'kind':'p0','opening':'介绍企业身份','sections':[{'heading':'服务','task':'解释业务方法'}],'ending':'服务范围','writing_material_markdown':material,'writing_material_sources':['inputs/company.md']})
+        author=C.natural_author_context(self.job,p0=True)
+        self.assertIn(material,author)
+        self.assertNotIn(value['advantage_explanation'],author)
+        self.assertNotIn('NOTE_FOR_WRITING',author)
+        self.assertNotIn(RESEARCH['research_markdown'],author)
+        positioning=C.selected_competitive_context_markdown(self.job)
+        for field in ('core_positioning_paragraph','advantage_explanation'):self.assertIn(value[field],positioning)
+        self.assertIn('NOTE_FOR_WRITING',positioning)
+        self.assertNotIn(RESEARCH['research_markdown'],positioning)
         self.cont('--confirm-core-positioning')
         saved=self.read('deliverables/Reference_Pack_v1/strategy/core_positioning.json')
         self.assertEqual(self.read('positioning/core_positioning.json'),saved)

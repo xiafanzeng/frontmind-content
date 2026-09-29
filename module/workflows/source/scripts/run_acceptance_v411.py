@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.docx_font_embedding import audit_docx_embedded_fonts  # noqa: E402
+from shared.docx_system_fonts import audit_docx_font_contract  # noqa: E402
+from shared import brand_stage, title_strategy  # noqa: E402
 
 
 LAUNCHER = ROOT / "scripts/frontmind"
@@ -97,15 +98,16 @@ def validate_delivery(job: Path, prefix: str, root: Path) -> dict[str, str]:
     if missing:
         raise AcceptanceError(f"{job.name}: missing deliverables: {', '.join(missing)}")
     title_map = json.loads(paths["title_map"].read_text(encoding="utf-8"))
-    if title_map.get("total_count") != 20 or len(title_map.get("options") or []) != 20:
-        raise AcceptanceError(f"{job.name}: title map does not contain 20 titles")
-    if len({item.get("title_text") for item in title_map["options"]}) != 20:
+    expected = title_strategy.expected_count(state(job))
+    if title_map.get("total_count") != expected or len(title_map.get("options") or []) != expected:
+        raise AcceptanceError(f"{job.name}: title map does not contain {expected} titles")
+    if len({item.get("title_text") for item in title_map["options"]}) != expected:
         raise AcceptanceError(f"{job.name}: title map contains duplicate titles")
     with __import__("zipfile").ZipFile(paths["docx"]) as archive:
         if "word/document.xml" not in archive.namelist():
             raise AcceptanceError(f"{job.name}: DOCX has no document.xml")
-    font_audit = audit_docx_embedded_fonts(paths["docx"])
-    if not font_audit.get("passed") or font_audit.get("external_font_dependency"):
+    font_audit = audit_docx_font_contract(paths["docx"])
+    if not font_audit.get("passed"):
         raise AcceptanceError(f"{job.name}: DOCX portable Chinese font audit failed")
     return {name: relative(path, root) for name, path in paths.items()}
 
@@ -158,6 +160,16 @@ def build_positioning_pack(output: Path, fixture: dict) -> tuple[Path, dict]:
     return pack, final
 
 
+def reach_p0_blueprint(job: Path) -> None:
+    """Exercise each contract's actual pause, never invent a removed example step."""
+    if brand_stage.enabled(state(job)):
+        require_status(job, "awaiting_p0_blueprint_confirmation")
+    else:
+        require_status(job, "awaiting_p0_example_confirmation")
+        resume(job, "--accept-p0-example-route", "top20")
+        require_status(job, "awaiting_p0_blueprint_confirmation")
+
+
 def build_p0(output: Path, positioning_pack: Path) -> tuple[Path, dict, dict[str, str]]:
     job = output / "p0"
     run(
@@ -168,9 +180,7 @@ def build_p0(output: Path, positioning_pack: Path) -> tuple[Path, dict, dict[str
     resume(job, "--reference-pack-route", "use")
     require_status(job, "awaiting_p0_route")
     resume(job, "--p0-route", "create")
-    require_status(job, "awaiting_p0_example_confirmation")
-    resume(job, "--accept-p0-example-route", "top20")
-    require_status(job, "awaiting_p0_blueprint_confirmation")
+    reach_p0_blueprint(job)
     resume(job, "--accept-p0-blueprint")
     final = require_status(job, "p0_ready")
     if final.get("pending_action") is not None:
@@ -257,7 +267,7 @@ def render_docx_qa(output: Path, docx_paths: list[str]) -> dict:
             [pdffonts, str(pdf)], text=True, capture_output=True, check=False, timeout=30,
         )
         if font_report.returncode != 0 or "NotoSansCJKsc" not in font_report.stdout:
-            raise AcceptanceError(f"DOCX render did not use embedded Chinese fonts: {relative_path}")
+            raise AcceptanceError(f"DOCX render did not use the required system Chinese font: {relative_path}")
         info = subprocess.run([pdfinfo, str(pdf)], text=True, capture_output=True, check=False, timeout=30)
         page_line = next((line for line in info.stdout.splitlines() if line.startswith("Pages:")), "")
         try:
@@ -273,7 +283,7 @@ def render_docx_qa(output: Path, docx_paths: list[str]) -> dict:
             raise AcceptanceError(f"DOCX page rasterization failed: {relative_path}")
         documents.append({
             "path": relative_path, "status": "pass", "page_count": page_count,
-            "embedded_chinese_font_rendered": True,
+            "system_chinese_font_rendered": True,
             "pdf": relative(pdf, output), "page_images": [relative(path, output) for path in pages],
         })
     result = {
@@ -299,7 +309,7 @@ def create_acceptance(output: Path) -> dict:
         records = [{
             "case_id": "p0", "kind": "p0", "pattern_id": "P00",
             "question": None, "question_positioning": False,
-            "job": "p0", "pack_version": 2, "deliverables": p0_delivery,
+            "job": "p0", "pack_version": 2, "deliverables": p0_delivery, "title_count": title_strategy.expected_count(p0_state),
         }]
         current_pack = p0_pack
         versions = [1, 2]
@@ -312,7 +322,7 @@ def create_acceptance(output: Path) -> dict:
                 "pattern_id": case["pattern_id"], "question": case["question"],
                 "question_positioning": (job / "question_positioning/question_positioning.json").is_file(),
                 "job": relative(job, output), "pack_version": version,
-                "deliverables": delivery,
+                "deliverables": delivery, "title_count": title_strategy.expected_count(article_state),
             })
         if versions != list(range(1, 10)):
             raise AcceptanceError(f"Reference Pack versions are not sequential: {versions}")

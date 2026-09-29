@@ -1,8 +1,7 @@
-# Optional visual modules for a maintainer-prepared test environment. They are
-# never resolved during an article Job; unavailable paths automatically fall
-# back to another usable image or a valid zero-image result.
-Pillow>=10,<13           # raster image validation and DOCX image embedding
-CairoSVG>=2.7,<3          # SVG Logo overlay in E7 and deterministic PNG embedding for E10 DOCX
-requests>=2.31,<3         # unchanged optional S1 web asset capture
-beautifulsoup4>=4.12,<5   # unchanged optional S1 web asset capture
-colorthief>=0.2.1,<0.3    # unchanged optional S1 color extraction
+# Optional validation of submitted raster source material. Article generation
+# remains text only; these modules are never installed during a Job.
+# Source OCR uses the configured remote glm-ocr API only when requested.
+Pillow>=10,<13           # validate submitted raster files during material intake
+
+# Local regression tests only; not required for article generation.
+pytest>=8,<10

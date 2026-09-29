@@ -1,0 +1,67 @@
+{
+  "scope": "用户提供p0.docx中的短引文与标明的合成正反例；用于编辑回归与人工验读，不是品牌事实库。",
+  "live_quality_status": "not_run",
+  "automated_scope": "有效提示、版本分发、字段合同与返工行为；不以离线模拟证明模型理解或成稿质量。",
+  "cases": [
+    {
+      "id": "internal_closing",
+      "kind": "revise",
+      "input": "这是台心医美一贯坚持的沟通口径。",
+      "review_expectation": "删除内部宣传说明，不换成服务理念、承诺等空话补位；检查前文必要条件是否保留。"
+    },
+    {
+      "id": "antiaging_wording",
+      "kind": "revise",
+      "input": "抗衰口径为“综合工程”，不神化单一项目。",
+      "review_expectation": "区分编辑要求与真实服务事实；只展开已有依据的业务内容和条件。不得把删去限制当成肯定效果。"
+    },
+    {
+      "id": "scope_instruction",
+      "kind": "revise",
+      "input": "均强调评估后定点塑形，不表述为“减肥治疗”。",
+      "review_expectation": "保留已支持的范围与评估前提，直接说明事实边界，不把编辑指令写给读者；不据此新增治疗用途。"
+    },
+    {
+      "id": "promise_instruction",
+      "kind": "revise",
+      "input": "不包装为“抗衰神药、逆龄或疾病治疗”。",
+      "review_expectation": "删除宣传禁写清单，检查剩余内容依据；没有支持的效果描述省略或回核，不补写肯定效果。"
+    },
+    {
+      "id": "internal_segmentation",
+      "kind": "revise",
+      "input": "核心客群为中高消费女性及高端定制客群。",
+      "review_expectation": "删除内部消费分层；有依据的服务地区及具体需求可以保留，不虚构客群数据。"
+    },
+    {
+      "id": "statistical_definition",
+      "kind": "preserve",
+      "input": "本篇数据的统计口径为已完成订单，不含取消订单。",
+      "review_expectation": "在任务需要且材料支持时保留，不能因出现“口径”二字而删除。此句是合成正例，不是企业事实。"
+    },
+    {
+      "id": "necessary_condition",
+      "kind": "preserve",
+      "input": "具体方案需经医生面诊评估，效果因人而异。",
+      "review_expectation": "必要条件保留；全文中重复处可合并，各项目独有条件不能丢失。不是本测试对实际医疗项目的事实确认。"
+    },
+    {
+      "id": "historical_status",
+      "kind": "preserve",
+      "input": "该项目于2021年完成，所述测试范围仅适用于当次项目。",
+      "review_expectation": "保留年份、完成状态和范围，不能为写得顺畅改成当前服务承诺。此句为合成正例。"
+    },
+    {
+      "id": "unsupported_relation",
+      "kind": "revise",
+      "input": "母体机构有大型影像设备，因此该科室所有项目都有安全保证。",
+      "review_expectation": "不同事实不自动构成因果与保证；核对是否有具体服务支持关系的材料，删除无依据的保证。"
+    },
+    {
+      "id": "inventory_structure",
+      "kind": "revise",
+      "input": "全文依次列出母体新闻、所有设备、全员名单、十类项目，并在每节重复评估、核验、预约流程。",
+      "review_expectation": "按文章重心重组，重点充分说明，辅助归纳；共同流程合并，独有条件保留。不设机械篇幅或逐词计分。"
+    }
+  ]
+}

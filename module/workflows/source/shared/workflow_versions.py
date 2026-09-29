@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Version and state constants for FrontMind Content Workflow v4.11.0."""
+"""Version and state constants for FrontMind Content Workflow v4.13.2."""
 from __future__ import annotations
 
 from types import MappingProxyType
 
 
-RELEASE_VERSION = "4.11.0"
+RELEASE_VERSION = "4.13.2"
 WORKFLOW_VERSION = "4.11"
 CONTENT_JOB_VERSION = "4.11"
 CONTROLLER_PROVIDER_VERSION = "4"
 REFERENCE_PACK_VERSION = "4.1"
 TITLE_MAP_VERSION = "4.11"
-TITLE_CONTRACT_VERSION = "4.11-natural-title-1"
+TITLE_CONTRACT_VERSION = "4.11.9-separate-titles-1"
 
 ACTIVE_PATTERN_IDS = frozenset({"P00", "P01", "P02", "P03", "P04", "P05", "P06"})
 QUESTION_PATTERN_IDS = frozenset({"P01", "P02", "P03", "P04", "P05", "P06"})
@@ -20,6 +20,7 @@ QUESTION_POSITIONING_PATTERNS = frozenset({"P01", "P02"})
 USER_PAUSE_STATUSES = frozenset({
     "awaiting_reference_pack_route",
     "awaiting_reference_pack_input",
+    "awaiting_question_selection",
     "awaiting_question_research_inputs",
     "awaiting_competitor_selection",
     "awaiting_core_positioning_direction",

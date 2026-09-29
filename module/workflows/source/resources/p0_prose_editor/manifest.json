@@ -1,0 +1,9 @@
+{
+  "skill": "frontmind-p0-prose-editor",
+  "version": "1.1.6",
+  "workflow_contract": "frontmind-p0-style/4.12.8",
+  "runtime_file": "SKILL.md",
+  "sha256": "6aabd5516dd814bafb58130da0fbfacc631445ed548c3280f9f1103ff0384e3a",
+  "integration": "shared.p0_prose_editor.style_system; existing p0_style action only",
+  "verification_scope": "Runtime loading and contract tests; no live prose-quality claim"
+}

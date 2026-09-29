@@ -1,0 +1,22 @@
+{
+  "contract_version": "frontmind-p0-style/4.12.3",
+  "execution_mode": "offline_fixture",
+  "examples": [
+    {
+      "id": "xingyuanzhi",
+      "title": "xingyuanzhi 离线合成例文",
+      "body_path": "xingyuanzhi.md",
+      "content_sha256": "e29624335c2acb110d107cd8951bfda8299dc6c9d9a0d4c62b3d80279617a33e",
+      "guide_path": "xingyuanzhi_guide.md",
+      "publication": "offline_fixture"
+    },
+    {
+      "id": "gangjun",
+      "title": "gangjun 离线合成例文",
+      "body_path": "gangjun.md",
+      "content_sha256": "913685edc352a040d40f8f31e50ddd19a5539de1e836e91f78a0979e1c248384",
+      "guide_path": "gangjun_guide.md",
+      "publication": "offline_fixture"
+    }
+  ]
+}

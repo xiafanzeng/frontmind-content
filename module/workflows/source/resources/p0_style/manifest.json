@@ -1,0 +1,24 @@
+{
+  "contract_version": "frontmind-p0-style/4.12.3",
+  "examples": [
+    {
+      "id": "xingyuanzhi",
+      "title": "世界模型走向端侧 星源智 ω-EVA从仿真评测到真实决策",
+      "source_url": "https://tech.china.com/articles/20260915/202609151959985.html",
+      "publication": "中华网科技，2026-09-15；页面来源：看点时报",
+      "fetch": {
+        "url": "https://tech.china.com/articles/20260915/202609151959985.html",
+        "content_sha256": "0ab41670541e6ceae096d5c5ec0f05345defe441ebc519f14d84b2c1208b78a6"
+      },
+      "guide_path": "xingyuanzhi_guide.md"
+    },
+    {
+      "id": "gangjun",
+      "title": "港隽留学机构介绍（用户提供原文）",
+      "publication": "用户在当前任务中提供并选定的完整例文",
+      "body_path": "gangjun.md",
+      "content_sha256": "b606a0362744426e1a90bef31dca913773c6468e0fc6da8042423fdb3087bc2b",
+      "guide_path": "gangjun_guide.md"
+    }
+  ]
+}
