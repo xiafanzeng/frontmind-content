@@ -27,7 +27,9 @@ const runnerStateSchema = z.object({
     .object({
       pause_type: contentProductionConfirmationSchema,
       title: z.string().max(1000),
-      available_choices: z.array(z.string().max(5000)).max(100),
+      // A question catalog includes one choice per question plus import/change
+      // actions. The raw-state byte limit still bounds the complete payload.
+      available_choices: z.array(z.string().max(5000)).max(2000),
       revision: z.number().int().min(0),
       requires_user_input: z.literal(true),
       user_pause: z.literal(true),
@@ -37,14 +39,15 @@ const runnerStateSchema = z.object({
   pending_action: z.object({ action: z.string().min(1).max(200) }).nullable(),
   flags: z.object({
     p0_production_step: z
-      .enum(["draft", "edit", "titles", "deliver"])
+      .enum(["draft", "edit", "style", "finalize", "repair", "titles", "title_review", "deliver"])
       .optional(),
     article_production_step: z
-      .enum(["draft", "edit", "titles", "deliver"])
+      .enum(["draft", "edit", "finalize", "repair", "polish", "titles", "title_review", "deliver"])
       .optional(),
   }),
   decisions: z.object({
     reference_pack_route: decision.optional(),
+    question_selection: decision.optional(),
     comparison_scope: decision.optional(),
     positioning_direction: decision.optional(),
     core_positioning_confirmation: decision.optional(),
@@ -126,6 +129,8 @@ function completedRunnerConfirmations(
   const decisions = state.decisions;
   if (decisions.reference_pack_route)
     result.push("awaiting_reference_pack_route");
+  if (decisions.question_selection)
+    result.push("awaiting_question_selection");
   if (decisions.comparison_scope?.confirmed)
     result.push("awaiting_competitor_selection");
   if (decisions.positioning_direction)

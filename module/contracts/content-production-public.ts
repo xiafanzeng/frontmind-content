@@ -19,6 +19,7 @@ const patternNames: Record<string, string> = Object.fromEntries([
 export const CONTENT_PRODUCTION_PAUSE_TITLES: Record<string, string> = {
   awaiting_reference_pack_route: "选择品牌资料包",
   awaiting_reference_pack_input: "补充品牌资料",
+  awaiting_question_selection: "选择本次优化问题",
   awaiting_question_research_inputs: "补充问题研究资料",
   awaiting_competitor_selection: "确认比较对象",
   awaiting_core_positioning_direction: "选择核心定位方向",

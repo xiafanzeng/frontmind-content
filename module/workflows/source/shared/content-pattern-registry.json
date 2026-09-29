@@ -1,25 +1,25 @@
 {
-  "schema_version": "4.11",
-  "registry_id": "frontmind_content_patterns_v411",
+  "schema_version": "4.13.2-final13",
+  "registry_id": "frontmind_content_patterns_final13",
   "patterns": [
     {
       "id": "P00",
       "name": "品牌深度特写",
-      "purpose": "Reference Pack/P0：按已确认定位建立品牌身份、服务、团队、流程、适合人群和边界。",
+      "purpose": "Reference Pack/P0：按本篇任务自然介绍企业自身的业务、能力、服务方法与真实项目。",
       "question_selectable": false,
       "question_positioning": false
     },
     {
       "id": "P01",
       "name": "单主体品类或服务推荐",
-      "purpose": "围绕一个主要主体回答推荐理由、适合人群、短板与替代条件。",
+      "purpose": "围绕正式问题，以具体业务、人员、方法和服务介绍一个主要推荐对象。",
       "question_selectable": true,
       "question_positioning": true
     },
     {
       "id": "P02",
       "name": "开放式多主体推荐",
-      "purpose": "推荐多家、建立自然市场分层，或解释如何选择。",
+      "purpose": "围绕正式问题推荐多个主体，保留本篇选定的推荐关系、重点和顺序。",
       "question_selectable": true,
       "question_positioning": true
     },

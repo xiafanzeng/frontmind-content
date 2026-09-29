@@ -39,19 +39,19 @@ QUESTION_ALIASES = {
     "question", "query", "prompt", "monitoringquestion", "monitorquestion",
     "问题", "监控问题", "正式问题",
 }
-PLATFORM_ALIASES = {"platform", "provider", "channel", "平台", "模型平台"}
+PLATFORM_ALIASES = {"platform", "provider", "channel", "平台", "模型平台", "AI大模型", "平台名称"}
 DATE_ALIASES = {
     "date", "datetime", "time", "capturedat", "sampledat", "sampled_at",
-    "日期", "时间", "监控时间", "引用日期",
+    "日期", "时间", "监控时间", "监控日期", "引用日期",
 }
 ANSWER_ALIASES = {
     "answer", "answertext", "answer_text", "content", "response", "output",
-    "答案", "答案内容", "内容", "回答",
+    "答案", "答案内容", "内容", "回答", "回答内容",
 }
 BRAND_ALIASES = {"brand", "brandname", "company", "companyname", "品牌", "品牌名称", "企业", "企业名称"}
 URL_ALIASES = {"url", "contenturl", "内容url", "内容链接", "链接", "文章链接"}
 DETAIL_SHEET_ALIASES = {"详细表格", "引用明细", "信源明细", "details", "detailedtable"}
-RANK_ALIASES = {"rank", "ranking", "position", "排名", "名次", "监控词排名"}
+RANK_ALIASES = {"rank", "ranking", "position", "排名", "名次", "监控词排名", "品牌排名"}
 THEME_LEXICON = {
     "产品服务与核心能力": ("产品", "服务", "功能", "课程", "方案", "项目", "能力", "内容"),
     "团队资质与专业基础": ("团队", "人员", "经验", "资质", "认证", "师资", "专家", "医生", "医师"),
@@ -486,7 +486,7 @@ def _composed_headers(first: Sequence[Any], second: Sequence[Any] | None) -> tup
     return headers, True
 
 
-def _rows_from_xlsx(path: Path) -> list[tuple[str, dict[str, Any]]]:
+def _rows_from_xlsx(path: Path, *, with_provenance: bool = False) -> list[tuple[str, dict[str, Any]]]:
     try:
         from openpyxl import load_workbook
     except ImportError as exc:  # pragma: no cover
@@ -504,12 +504,13 @@ def _rows_from_xlsx(path: Path) -> list[tuple[str, dict[str, Any]]]:
                 values_iter = [second, *iterator]
             else:
                 values_iter = iterator
-            for values in values_iter:
+            for row_number, values in enumerate(values_iter, 3 if consumed_second else 2):
                 if not any(item not in (None, "") for item in values):
                     continue
-                result.append((normal(sheet.title) or path.stem, {
-                    headers[index]: value for index, value in enumerate(values) if index < len(headers)
-                }))
+                row = {headers[index]: value for index, value in enumerate(values) if index < len(headers)}
+                if with_provenance:
+                    row["__frontmind_source_row__"] = row_number
+                result.append((normal(sheet.title) or path.stem, row))
     finally:
         workbook.close()
     return result

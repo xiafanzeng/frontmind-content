@@ -1223,6 +1223,7 @@ def create_reference_pack(
     claims: list[dict[str, Any]] = []
     images: list[dict[str, Any]] = []
     total_extracted_chars = 0
+    monitoring_candidates = []
     intake_budget = IntakeBudget()
     candidates, reports = _collect_inputs(
         [Path(item) for item in knowledge_base], intake_staging,
@@ -1247,6 +1248,12 @@ def create_reference_pack(
     try:
         for candidate in unique:
             suffix = candidate.path.suffix.casefold()
+            from shared.question_bank_import import looks_like_monitoring
+            if looks_like_monitoring(candidate.path):
+                monitoring_candidates.append(candidate)
+                reports[candidate.report_index]["classification"] = "question_monitoring_context"
+                reports[candidate.report_index]["reason"] = "routed_to_question_bank_not_brand_claims"
+                continue
             digest = candidate.sha256
             original_name = PurePosixPath(
                 candidate.source_path.replace("!/", "/")
@@ -1389,6 +1396,10 @@ def create_reference_pack(
         _atomic_json(temporary / "registries/image_registry.json", {
             "schema_version": "2.2.0", "registry_type": "image_registry", "images": images,
         })
+        from shared.question_bank_import import install_in_staging
+        for candidate in monitoring_candidates:
+            summary = install_in_staging(temporary, candidate.path, brand=brand)
+            reports[candidate.report_index]["question_import"] = summary
         report = validate_reference_pack(temporary)
         if report["status"] != "pass" or not report["readiness"]["materials_ready"]:
             raise ReferencePackBuildError("generated_reference_pack_invalid: " + "; ".join(report["errors"]))
@@ -1548,6 +1559,12 @@ def add_materials(
         )
     if not materials:
         raise ReferencePackBuildError("reference_pack_material_update_requires_input")
+    from shared.question_bank_import import looks_like_monitoring, import_into_pack
+    monitoring = [Path(item) for item in materials if looks_like_monitoring(Path(item))]
+    if monitoring:
+        if len(materials) == 1:
+            return import_into_pack(pack=source, monitoring_answers=monitoring[0], output=output, portable_zip=portable_zip)
+        raise ReferencePackBuildError("检测到监控问答表。请先用import-questions导入该表，再单独补充企业材料，避免把AI答案写入品牌事实。")
     old_root = _pack_root_payload(source)
     workspace = Path(tempfile.mkdtemp(prefix="frontmind-material-update-"))
     supplemental = workspace / "supplemental"
@@ -1558,6 +1575,8 @@ def add_materials(
             output=supplemental,
             portable_zip=workspace / "supplemental.zip",
         )
+        if created.get("question_imports") or ((supplemental / "research/question_research/index.json").is_file() and bool(_read_pack_json(supplemental, "research/question_research/index.json").get("questions"))):
+            raise ReferencePackBuildError("材料压缩包含监控问答表；请解出后用import-questions导入，未修改原Pack。")
         del created
         old_index = _read_pack_json(source, "materials/index.json")
         new_index = _read_pack_json(supplemental, "materials/index.json")
@@ -1631,11 +1650,14 @@ def add_materials(
 
 
 def update_research(
-    *, pack: Path, monitoring_answers: Path, source_workbook: Path,
+    *, pack: Path, monitoring_answers: Path, source_workbook: Path | None = None,
     questions: Sequence[str] = (), output: Path | None = None,
     portable_zip: Path | None = None,
 ) -> dict[str, Any]:
     """Add question research in a new immutable Reference Pack version."""
+    if source_workbook is None:
+        from shared.question_bank_import import import_into_pack
+        return import_into_pack(pack=pack, monitoring_answers=monitoring_answers, output=output, portable_zip=portable_zip)
     requested_pack = Path(pack).expanduser()
     source_root = requested_pack.resolve()
     before = validate_reference_pack(source_root)

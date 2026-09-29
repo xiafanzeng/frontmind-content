@@ -35,6 +35,7 @@ export const contentProductionInputSchema = z
 export const CONTENT_PRODUCTION_CONFIRMATIONS = [
   "awaiting_reference_pack_route",
   "awaiting_reference_pack_input",
+  "awaiting_question_selection",
   "awaiting_question_research_inputs",
   "awaiting_competitor_selection",
   "awaiting_core_positioning_direction",
@@ -67,6 +68,9 @@ export const contentProductionActionSchema = z
       .strict(),
     z
       .object({ kind: z.literal("provide_question_research_inputs"), revision })
+      .strict(),
+    z
+      .object({ kind: z.literal("choose_question"), revision, selection: text })
       .strict(),
     z
       .object({
@@ -227,6 +231,11 @@ export const CONTENT_PRODUCTION_CONFIRMATION_ACTIONS: Record<
     "provide_question_research_inputs",
     "revise_current_step",
   ],
+  awaiting_question_selection: [
+    "choose_question",
+    "provide_question_research_inputs",
+    "revise_current_step",
+  ],
   awaiting_competitor_selection: [
     "update_competitor_selection",
     "confirm_competitors",
@@ -287,6 +296,7 @@ const STATUS_POSITIONS: Record<string, number> = {
   running_reference_pack_p0_commit: 12,
   p0_ready: 12,
   awaiting_question_research_inputs: 13,
+  awaiting_question_selection: 13,
   awaiting_response_brief: 14,
   running_answer_analysis: 15,
   awaiting_pattern_confirmation: 15,
@@ -318,6 +328,7 @@ export function contentProductionStagePosition(
     p0_blueprint: 10,
     p0_production: 11,
     p0_commit: 12,
+    question_selection: 13,
     question_research: 13,
     E1: 14,
     E2: 15,

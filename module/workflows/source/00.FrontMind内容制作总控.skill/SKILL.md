@@ -1,94 +1,55 @@
 ---
 name: frontmind-content-workflow-v4-11
-description: FrontMind Content Workflow v4.11 唯一入口；用一个 Reference Pack 4.1 完成行业中立的差异化定位咨询、P0 与单问题内容生产。
+description: FrontMind Content Workflow 入口；以 Reference Pack 4.1 执行差异化定位、P0 与单问题内容生产，当前新建 P01/P02 使用 v16 正文流程与 v16.2 十个同主题近义标题。
 ---
 
-# FrontMind Content Workflow v4.11
+# Final v16.2 编辑准备、自然写作与品类推荐标题
 
-只从包根运行 `./scripts/frontmind`。发行版本为 `4.11.0`，运行时合同为 `4.11`，Reference Pack Schema 为 `4.1`。
+新建 P01/P02 默认使用 `frontmind-natural-prose/16`。P0 和其他 Pattern 保持原流程；历史正文任务按冻结版本恢复，不因标题修改升级正文合同；标题规则的显式升级见下文。技能名称保留既有入口标识。
 
-## 标准启动页
+## 当前标题规则
 
-用户只说“启动工作流”“开始 FrontMind”或附上发行 ZIP 要求启动时，先运行：
+新 P01／P02 每篇10个，全部默认不带品牌名，围绕当前确认的同一地区、品类／项目和推荐意图自然近义改写。P01标题可写品类推荐，正文只介绍一家，不承诺多家榜单或横向对比；P02标题覆盖全文主体范围。允许“机构推荐、品牌推荐、选择参考、选择指南”等表达，不按章节拆成不同选题。用户明确要求标题带品牌时覆盖默认；正文出现品牌不等于此要求。
 
-```bash
-./scripts/frontmind
-```
+作者与标题编辑共用规则和去掉旧H1的最终正文；angle为表达侧重点，可以重复。仍然只有拟题与一次标题编辑两步。P0及其他Pattern保持20个。旧任务重试沿用冻结规则；已完成P01／P02显式使用 `--title-edits` 时，在验证旧稿、快照后仅升级标题规则，正文流程不升级、不重写。人工参考样例见 `title_examples/v16_2/README.md`，不代替生产模型结果。
 
-无参数命令等同于 `./scripts/frontmind start`。完整展示它返回的四个选项：建立新的 Reference Pack、刷新已有 Reference Pack、创建或导入 P0、撰写单问题文章。用户选择前不创建 Job、不开始研究，也不改成一次索取“品牌＋材料＋目标”的开放式问题。只收到品牌名称仍不能默认建立 Pack；只读预检也不能代替启动页。
+## 当前正文流程
 
-用户选择后才收集该路径的最小输入。发行 ZIP 是程序，不是企业材料或 Reference Pack。完整规则见 `START_HERE.md`。
+编辑准备 → 正式蓝图 → DeepSeek 初稿 → E8 全文编辑 → XTY 最后文字编辑 → 独立标题 → Word 与 Markdown 导出。
 
-## 首次路由
+编辑准备由独立的 XTY 动作 `article_editorial_preparation` 完成：结合当前企业和文章任务，实际搜索、获取并完整阅读两篇同类已发布案例，再阅读原始材料并完成编辑取舍。P01 的案例应匹配单主体介绍，P02 匹配多机构推荐；既有参考材料继续按用户约定的文风、篇幅或背景用途使用。
 
-每个新 P0 或 article Job 都必须先停在 `awaiting_reference_pack_route`。即使命令带有 Pack 路径，也要完整展示“使用已有 Pack / 创建新 Pack”页面，等用户明确选择。
+本轮交付自然事实段落和基于案例、编辑经验的蓝图建议，冻结在 `editorial/article_preparation.json`。案例出处与企业事实来源分别保存。取材与写法判断留在编辑内部，不输出事实缺口、评分或审计报告；本轮不定正式蓝图。
 
-用户明确要求直接建立 Reference Pack 时，运行：
+蓝图轮只接收当前委托、干净事实段落、编辑建议及适用的参考内容，不能重新读取原始知识库。程序继承准备轮的素材与来源，蓝图负责正式内容安排，并给作者保留表达空间。
 
-```bash
-./scripts/frontmind reference-pack create \
-  --brand "完整品牌名" \
-  --input /absolute/materials \
-  --job-dir /absolute/jobs/reference-pack
-```
+事实段落是内容基础和方向提示，不是逐句保留或逐项覆盖的底稿。蓝图和作者可以取舍、组织、合并，充分润色、美化；在保持事实含义的基础上，优先完成漂亮、自然、重点清楚的文章。E8 通读全文，改善主次、表达、节奏与衔接，不因成稿措辞不同于材料而改回原句。`count_article` 只统计实际正文长度，按当前委托范围安排篇幅。
 
-该命令已经代表“创建”的明确选择，不重复询问。
+XTY 最后只读当前完整稿与写作要求，提交少量 `original/replacement` 句级修改。局部修改准确对应当前稿，不重排段落、改标题或改变加粗主体。确需重组内容时，由 DeepSeek 返工一次，再经独立 `article_polish` 动作让 XTY 阅读返工全文；仍需大修则保留待修改，不自动循环或宣告合格。
 
-## 暂停处理
+最终来源记录 DeepSeek 基稿和 XTY 局部修改，并如实标记 v16 合同。标题、Word、Markdown 和续改读取同一实际终稿。程序校验来源与流程，成文质量仍须阅读全文判断。
 
-遇到用户暂停：
+## 运行与恢复
 
-1. 完整展示 `review_markdown_path`；
-2. 保留全部表格、全文链接和来源链接；
-3. 等待用户决定；
-4. 继续时传入当前 `revision`；
-5. 不代选系统推荐。
+沿用 `./scripts/frontmind` 及已有新建、继续、正文精修、标题修改入口；先用 `./scripts/frontmind preflight` 检查环境。新 DeepSeek 请求默认使用 `high`，模型与网关读取现有配置。相同历史冻结请求保留原配置恢复，不把旧 `max` 记录改写为 `high`。
 
-空 `continue` 只能重显当前页。定位修改、补充和返回按下文的明确入口处理，并使用当前修订。内部 Provider action 不展示给用户，也不能确认或越过用户暂停。
+仅调整蓝图组织时复用已完成的编辑准备；新增原始材料或改变实际委托时，经准备轮重新处理。普通正文和标题修改不重新搜索。v16 不通过 `--writing-materials` 直接向作者注入新材料，新增材料使用现有蓝图补料入口。
 
-## 行业中立的定位主链
+案例命令保留已设置的 `FRONTMIND_PYTHON`，未设置时使用 `python3`；预检与案例使用同一解释器。使用其他已有运行时时，先设置该变量。
 
-定位正常使用两个内部 Provider 动作，中间必须等待用户确认比较范围：`positioning_market_research` 研究市场并提供候选列表 → `awaiting_competitor_selection` 竞品确认暂停 → `positioning_value_synthesis` 按确认范围综合选择理由与定位表达 → 最终定位确认。全部行业共用这条主链，不预设行业答案或档位。
-
-竞品页把候选标为“比较对象”“同类举例”或“不纳入本次定位”，允许用户增删或输入名称、类别。类型间比较解释所属类型的价值；同类型比较解释品牌的实际区别；混合比较分别解释两层。只有已确认的比较对象参与优劣论证，同档示例不是对手。档位由本次需求和比较支持，目标品牌在档内首先展示不代表同档胜出，也不能扩大为全市场第一。
-
-研究返回 `research_markdown`、`sources`、`brand_category` 和 `competitor_candidates`；综合返回 `user_choice_value`、`core_positioning_paragraph`、`advantage_explanation`，可选 `applicability_notes`。控制器生成候选标识、维护确认的 `comparison_scope` 并写入核心定位 JSON，模型不能改写范围。旧 Pack 缺少范围仍可读，不自动推定；旧方向只作最终结果投影。
-
-修改表述保留范围、只重新综合；补充事实保留范围、补研后再综合；更换对象返回竞品页；重新探索或 `--rerun-positioning-research` 刷新候选，旧选择作为可编辑预选并再次确认。旧定位只是历史结果，不充当新事实。确认后导出新 Pack 版本，不覆盖原包。
-
-P0 与作者接收确认范围和相关材料；P01/P02 按本题重新比较，需要改变对象时在已有问题定位页说明，不静默扩大品牌整体比较范围。离线结构测试与真实 glm-5.3 观察分别报告，测试通过不代表定位质量达标。完整合同见 [共享接口](../shared/README.md)。
-
-竞品页必须展示每个候选的名称、类型、所属类别、研究说明与角色，以及当前范围的自然语言预览。将用户的对话选择转成 `continue --competitor-selection` 接收的 JSON 或文件路径，不要求用户自行填写。只在用户明确确认比较范围后使用 `--confirm-competitors`；更换对象使用 `--return-to-competitors`，旧定位确认随之失效。三个入口都使用当前 `revision`，确认比较范围不等于确认最终定位。
-
-## P0
-
-核心定位确认后导出 `positioning_ready` Pack 并结束 Reference Pack Job。另起 P0 Job：
+本次案例输入保存在 `customer_inputs/taixin/v16/`，原始附件可通过案例配置引用已保留的原件。P01 约3000字，P02 约4330字，三类11家及顺序属于案例配置，不写死到通用 Prompt。
 
 ```bash
-./scripts/frontmind p0 \
-  --reference-pack /absolute/Reference_Pack_v1.zip \
-  --job-dir /absolute/jobs/p0
+export FRONTMIND_PYTHON="${FRONTMIND_PYTHON:-python3}"
+./scripts/frontmind preflight
+"$FRONTMIND_PYTHON" scripts/run_taixin_v16_case.py --pattern P01 --job-dir jobs/taixin-p01-v16 --stage all
+"$FRONTMIND_PYTHON" scripts/run_taixin_v16_case.py --pattern P02 --job-dir jobs/taixin-p02-v16 --stage all
 ```
 
-用户确认 Pack 路由后，再选新建或导入 P0。P0 读取已确认的定位、比较范围和相关研究，不把整份市场候选表当作用户选定的竞品，也不重复品牌市场研究。完成后产生同一 `pack_id` 的新版本，包含 Markdown、HTML、DOCX 和 20 个标题。
+`prepare` 只在新目录准备输入；`blueprint` 也会新建任务，再完成编辑准备和正式蓝图；`all` 从新任务完整执行。已执行 `prepare` 的同一目录应使用 `resume` 推进到蓝图确认，再用 `write` 接受已生成的案例蓝图并执行正文链。`resume` 恢复已保存阶段，不重新建任务。API 失败使用原有显式重试入口。本案例复用已确认委托，入口助手不手写正文、不代填或修改模型结果。
 
-## 单问题
+`generated/` 保存实际运行的交付结果、准备材料和 Prompt，不作为后续写作输入。交付前阅读全文，再渲染 Word 逐页查看；发布包经解压启动检查，包内正文与独立交付保持一致。
 
-article 必须使用 `p0_ready` Pack：
+## 版本说明
 
-```bash
-./scripts/frontmind article \
-  --reference-pack /absolute/Reference_Pack_v2.zip \
-  --job-dir /absolute/jobs/question \
-  --question-id q000123
-```
-
-E1 真实暂停；Pattern 页完整展示 P00–P06；只有 P01/P02 生成问题定位。P02 按本题需求解释实际选择、差异及适用条件，是否分层或排序由问题决定，不强制权重公式。需要与品牌整体范围不同的对象时，在该问题定位页说明；同档品牌首先展示不等于竞争胜出。P03–P06 直接进入文章蓝图。
-
-两篇 AI 答案未提优化企业时，可以使用 Pack 中确认的定位和 P0 说明企业角色，但不得写成 AI 提到或推荐了企业。
-
-作者根据蓝图使用相关定位、优势解释、自然语言比较范围与支持材料，无需照搬核心段落或所有战略结论。范围说明应保留比较对象和同类举例的角色；内部确认记录、Registry、内部 ID、哈希、评分和来源等级不进入写作上下文。不得恢复逐字符答案账本、候选评分、覆盖率、来源数量阈值、排名资格、同分窗口或独立补证流程。
-
-完整命令和恢复方式见 `FrontMind_执行手册_v4.11.0.md` 与 `RUNBOOK.md`。
-
-Fixture 测试只验证结构与流程，不证明真实 Provider 的语义质量或定位判断；后者需要检查真实输出及其来源。
+当前入口与操作说明见 [v16说明](../FIX_v4.13.2_Final_v16.md) 和 [总控手册](../Master_Control/FrontMind_Content_Workflow_Master.md)。v15 的“选材与蓝图合并”及旧自然写作规则仅对应冻结的 `frontmind-natural-prose/15` 任务，保留在 [v15说明](../FIX_v4.13.2_Final_v15.md)。历史说明不加入新版模型上下文，也不覆盖 v16 的当前分工。

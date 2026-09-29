@@ -14,10 +14,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from shared.workflow_versions import RELEASE_VERSION, WORKFLOW_VERSION  # noqa: E402
+from shared.model_runtime import configuration_status
 
 
 REQUIRED = {
     "openpyxl": "openpyxl",
+    "openai-agents": "agents",
+    "openai": "openai",
     "python-docx": "docx",
     "lxml": "lxml",
     "pypdf": "pypdf",
@@ -34,28 +37,15 @@ def probe(module: str) -> dict[str, object]:
 
 
 def probe_docx_font_runtime() -> dict[str, object]:
-    try:
-        from shared.docx_font_embedding import load_release_fonts
-        from shared.portable_fonttools import runtime_report
-
-        report = runtime_report()
-        faces = load_release_fonts(ROOT / "shared/assets/fonts")
-        return {
-            "available": True,
-            "fonttools_version": report["version"],
-            "faces": [str(item["file"]) for item in faces],
-            "error": None,
-        }
-    except Exception as exc:
-        return {
-            "available": False,
-            "fonttools_version": None,
-            "faces": [],
-            "error": f"{type(exc).__name__}: {str(exc)[:240]}",
-        }
+    # Font files are not distributed. Word resolves the declared family locally.
+    return {"available": True, "mode": "system_fonts", "family": "Noto Sans CJK SC",
+            "font_files_bundled": False, "embedded_fonts": False,
+            "glyph_rendering_verified": False,
+            "note": "依赖阅读设备的中文字体；实际排版需渲染检查，不宣称跨设备完全一致。"}
 
 
 def main() -> int:
+    models = configuration_status(ROOT)
     required = {name: probe(module) for name, module in REQUIRED.items()}
     optional = {name: probe(module) for name, module in OPTIONAL.items()}
     docx_font_runtime = probe_docx_font_runtime()
@@ -81,10 +71,18 @@ def main() -> int:
         "controller_exists": controller.is_file() and not controller.is_symlink(),
         "schemas_exist": all(path.is_file() and not path.is_symlink() for path in schemas),
         "docx_font_runtime": bool(docx_font_runtime["available"]),
-        "provider_callback_configured": bool(os.environ.get("FRONTMIND_CONTROLLER_PROVIDER", "").strip()),
+        "embedded_host_configured": bool(models["xty"]["configured"]),
+        "embedded_deepseek_configured": bool(models["deepseek"]["configured"]),
+        "embedded_search_configured": bool(models["zhipu"]["configured"]),
     }
+    package_checks["python_compatible"] = sys.version_info >= (3, 10)
+    if required["openai-agents"]["available"]:
+        from shared.agents_runtime import SDK_VERSION, OPENAI_VERSION
+        import importlib.metadata
+        package_checks["agents_sdk_version"] = importlib.metadata.version("openai-agents") == SDK_VERSION
+        package_checks["openai_client_version"] = importlib.metadata.version("openai") == OPENAI_VERSION
     missing = [name for name, item in required.items() if not item["available"]]
-    missing.extend(name for name, ok in package_checks.items() if name != "provider_callback_configured" and not ok)
+    missing.extend(name for name, ok in package_checks.items() if not ok)
     payload = {
         "status": "pass" if not missing else "fail",
         "release_version": RELEASE_VERSION,
@@ -94,10 +92,11 @@ def main() -> int:
         "optional": optional,
         "docx_font_runtime": docx_font_runtime,
         "package": package_checks,
+        "models": models,
         "missing": missing,
         "notes": [
-            "Provider callback is optional at preflight; without it the controller emits an internal action handoff.",
-            "Preflight does not install packages, contact a model, read credentials or make a user decision.",
+            "Production host uses local OpenAI Agents SDK + explicit XTY Chat Completions; DeepSeek author is unchanged. Zhipu remains auxiliary/legacy only. Preflight does not verify live access or article quality.",
+            "Preflight checks local configuration without displaying credentials or making API calls or user decisions.",
             "Reference Pack 4.1 is the only persistent content package in runtime 4.11.",
         ],
     }
