@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.docx_font_embedding import audit_docx_embedded_fonts  # noqa: E402
+from shared.docx_system_fonts import audit_docx_font_contract as audit_docx_embedded_fonts  # noqa: E402
 
 
 LAUNCHER = ROOT / "scripts/frontmind"
@@ -250,7 +250,7 @@ class WorkflowV411Tests(unittest.TestCase):
         return job
 
     def test_01_version_identity_and_removed_foundation_cli(self) -> None:
-        self.assertEqual("4.11.0", CONTROLLER.RELEASE_VERSION)
+        self.assertEqual("4.13.2", CONTROLLER.RELEASE_VERSION)
         self.assertEqual("4.11", CONTROLLER.WORKFLOW_VERSION)
         self.assertEqual("4.1", CONTROLLER.REFERENCE_PACK_VERSION)
         help_text = run_cli("--help").stdout
@@ -468,7 +468,8 @@ class WorkflowV411Tests(unittest.TestCase):
         ))
         font_audit = audit_docx_embedded_fonts(self.p0_pack / "p0/p0.docx")
         self.assertTrue(font_audit["passed"], font_audit["issues"])
-        self.assertFalse(font_audit["external_font_dependency"])
+        self.assertTrue(font_audit["external_font_dependency"])
+        self.assertFalse(font_audit["embedded_fonts"])
 
     def test_11_article_rejects_positioning_only_pack_before_e1(self) -> None:
         job = self.base / "positioning-only-article"

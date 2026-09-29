@@ -223,14 +223,40 @@ return function ContentProductionConfirmation({
           </>
         )}
 
+        {has("choose_question") && (
+          <>
+            <label className="cp-field">
+              本次优化的问题
+              <input
+                aria-label="本次优化的问题"
+                value={selection}
+                onChange={(event) => setSelection(event.target.value)}
+                placeholder="填写上方问题目录中的序号或完整问题"
+              />
+            </label>
+            <div className="cp-confirm-actions">
+              {button("确认选择的问题", () => {
+                if (!selection.trim()) {
+                  onNotice("请填写当前问题目录中的序号或完整问题。");
+                  return;
+                }
+                void submit(
+                  { kind: "choose_question", revision: revisionValue, selection: selection.trim() },
+                  `我选择当前问题目录中的：${selection.trim()}。请使用对应期次的已有问题和回答继续。`,
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {isInput && (
           <>
             {upload(
               has("provide_question_research_inputs")
-                ? "本题 AI 答案或更新后的品牌资料包"
+                ? "监控问答表、本题 AI 答案或品牌资料包"
                 : "企业材料或品牌资料包",
               has("provide_question_research_inputs")
-                ? "可提交来自两个不同 AI 平台的两篇完整答案及来源说明，或上传已含本题研究的新版资料包。"
+                ? "可上传监控问答表、两个不同 AI 平台的完整答案及来源说明，或已含问题研究的新版资料包。"
                 : "上传本轮需要的企业资料或正确版本的品牌资料包。",
             )}
             <label className="cp-field">

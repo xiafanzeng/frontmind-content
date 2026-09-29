@@ -1,17 +1,247 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://frontmind.local/schemas/p0_record.schema.json",
-  "type": "object", "additionalProperties": false,
-  "required": ["schema_version", "artifact_type", "pack_id", "source_pack_version", "pack_version", "route", "created_at", "paths"],
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_type",
+    "pack_id",
+    "source_pack_version",
+    "pack_version",
+    "route",
+    "created_at",
+    "paths"
+  ],
   "properties": {
-    "schema_version": {"const": "4.11"},
-    "artifact_type": {"const": "frontmind_p0_record"},
-    "pack_id": {"type": "string", "pattern": "^rp_[a-f0-9]{16}$"},
-    "source_pack_version": {"type": "integer", "minimum": 1},
-    "pack_version": {"type": "integer", "minimum": 2},
-    "route": {"enum": ["create", "import"]},
-    "p0_revision": {"type": ["integer", "null"], "minimum": 1},
-    "created_at": {"type": "string", "format": "date-time"},
-    "paths": {"type": "object"}
-  }
+    "schema_version": {
+      "const": "4.11"
+    },
+    "artifact_type": {
+      "const": "frontmind_p0_record"
+    },
+    "pack_id": {
+      "type": "string",
+      "pattern": "^rp_[a-f0-9]{16}$"
+    },
+    "source_pack_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pack_version": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "route": {
+      "enum": [
+        "create",
+        "import"
+      ]
+    },
+    "p0_revision": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "paths": {
+      "type": "object"
+    },
+    "canonical_title_id": {
+      "type": "string",
+      "pattern": "^media_title_(0[1-9]|10)$"
+    },
+    "publication": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract",
+            "transformation",
+            "canonical_title_id",
+            "canonical_title",
+            "host_final_markdown_sha256",
+            "title_result_sha256",
+            "published_markdown_sha256",
+            "body_without_h1_sha256",
+            "finalized_result_file_sha256",
+            "titles_result_file_sha256"
+          ],
+          "properties": {
+            "contract": {
+              "const": "frontmind-title-publication/4.11.8"
+            },
+            "transformation": {
+              "const": "replace_first_h1_only"
+            },
+            "canonical_title_id": {
+              "type": "string",
+              "pattern": "^media_title_(0[1-9]|10)$"
+            },
+            "canonical_title": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^\\r\\n]+$"
+            },
+            "host_final_markdown_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "title_result_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "published_markdown_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "body_without_h1_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "finalized_result_file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "titles_result_file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "contract",
+            "transformation",
+            "host_final_markdown_sha256",
+            "title_result_sha256",
+            "published_markdown_sha256",
+            "body_without_h1_sha256",
+            "finalized_result_file_sha256",
+            "titles_result_file_sha256"
+          ],
+          "properties": {
+            "contract": {
+              "const": "frontmind-title-publication/4.11.9"
+            },
+            "transformation": {
+              "const": "remove_first_h1_line_only"
+            },
+            "host_final_markdown_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "title_result_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "published_markdown_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "body_without_h1_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "finalized_result_file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "titles_result_file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "title_review_result_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "title_review_result_file_sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": [
+                  "title_review_result_sha256"
+                ]
+              },
+              "then": {
+                "required": [
+                  "title_review_result_file_sha256"
+                ]
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "title_review_result_file_sha256"
+                ]
+              },
+              "then": {
+                "required": [
+                  "title_review_result_sha256"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "canonical_title_id"
+        ]
+      },
+      "then": {
+        "required": [
+          "publication"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "publication"
+        ]
+      },
+      "then": {
+        "if": {
+          "properties": {
+            "publication": {
+              "properties": {
+                "contract": {
+                  "const": "frontmind-title-publication/4.11.8"
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "required": [
+            "canonical_title_id"
+          ]
+        },
+        "else": {
+          "not": {
+            "required": [
+              "canonical_title_id"
+            ]
+          }
+        }
+      }
+    }
+  ]
 }

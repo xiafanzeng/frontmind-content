@@ -1,0 +1,64 @@
+{
+  "schema": "frontmind-generalization-fixture/4.11.7",
+  "synthetic": true,
+  "purpose": "Diverse input/route tests and three real Prompt samples, never customer evidence. Input preparation is a fixture, not an asserted model action or user confirmation.",
+  "example_path": "synthetic_style_example.md",
+  "cases": [
+    {
+      "id": "b2b_software",
+      "path": "b2b_software.json",
+      "pattern": "P00",
+      "material_form": "产品帮助页与权限表",
+      "real_model_sample": false
+    },
+    {
+      "id": "manufacturing",
+      "path": "manufacturing.json",
+      "pattern": "P00",
+      "material_form": "实物产品规格表与有条件的抽检记录",
+      "real_model_sample": true
+    },
+    {
+      "id": "education",
+      "path": "education.json",
+      "pattern": "P00",
+      "material_form": "课程周历、人员介绍与家长沟通单",
+      "real_model_sample": true
+    },
+    {
+      "id": "professional_service",
+      "path": "professional_service.json",
+      "pattern": "P00",
+      "material_form": "项目委托与阶段进展备忘录",
+      "real_model_sample": true
+    },
+    {
+      "id": "medical_service",
+      "path": "medical_service.json",
+      "pattern": "P00",
+      "material_form": "资源台账与服务条件说明",
+      "real_model_sample": false
+    },
+    {
+      "id": "scenario_solution",
+      "path": "scenario_solution.json",
+      "pattern": "P03",
+      "material_form": "需求说明与操作步骤",
+      "real_model_sample": false
+    },
+    {
+      "id": "event_news",
+      "path": "event_news.json",
+      "pattern": "P04",
+      "material_form": "活动通知和当日简报",
+      "real_model_sample": false
+    },
+    {
+      "id": "named_comparison",
+      "path": "named_comparison.json",
+      "pattern": "P05",
+      "material_form": "双对象同维度参数表",
+      "real_model_sample": false
+    }
+  ]
+}

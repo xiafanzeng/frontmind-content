@@ -87,7 +87,8 @@
         "awaiting_blueprint_confirmation",
         "running_article_production",
         "completed",
-        "awaiting_competitor_selection"
+        "awaiting_competitor_selection",
+        "awaiting_question_selection"
       ]
     },
     "revision": {
@@ -160,13 +161,77 @@
       ]
     },
     "metadata": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "article_reader_contract": {
+          "type": "string",
+          "enum": [
+            "frontmind-article-reader/4.13.2-final8",
+            "frontmind-article-positioning/4.13.2-final9",
+            "frontmind-article-editor/4.13.2-final11",
+            "frontmind-article-editor/4.13.2-final12"
+          ]
+        },
+        "p0_style_contract": {
+          "type": "string",
+          "enum": [
+            "frontmind-p0-style/4.12.1",
+            "frontmind-p0-style/4.12.2",
+            "frontmind-p0-style/4.12.3",
+            "frontmind-p0-style/4.12.5",
+            "frontmind-p0-style/4.12.4",
+            "frontmind-p0-style/4.12.6",
+            "frontmind-p0-style/4.12.7",
+            "frontmind-p0-style/4.12.8"
+          ]
+        },
+        "writing_editor_contract": {
+          "type": "string",
+          "enum": [
+            "frontmind-natural-editor/4.13.2-final12"
+          ]
+        },
+        "writing_requirements_contract": {
+          "type": "string",
+          "enum": [
+            "frontmind-writing-requirements/4.13.2-final13"
+          ]
+        },
+        "effective_writing_requirements": {
+          "type": "object"
+        }
+      }
     },
     "decisions": {
       "type": "object"
     },
     "flags": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "p0_production_step": {
+          "enum": [
+            "draft",
+            "edit",
+            "style",
+            "finalize",
+            "repair",
+            "titles",
+            "title_review",
+            "deliver"
+          ]
+        },
+        "article_production_step": {
+          "enum": [
+            "draft",
+            "edit",
+            "finalize",
+            "repair",
+            "titles",
+            "title_review",
+            "deliver"
+          ]
+        }
+      }
     }
   }
 }

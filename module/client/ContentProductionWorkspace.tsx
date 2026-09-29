@@ -438,8 +438,7 @@ function ContentProductionInner({
       startLocked.current ||
       !hydrated ||
       !mode ||
-      !name ||
-      (mode === "single_article" && !question.trim() && !questionId.trim())
+      !name
     )
       return;
     if (mode === "refresh_reference_pack" && materials.length === 0) {
@@ -717,17 +716,16 @@ function ContentProductionInner({
               <>
                 <p className="cp-form-context">
                   问题文章需要含已完成品牌文章的品牌资料包，以及来自两个不同 AI
-                  平台的两篇完整答案。可在任务要求资料时补充。
+                  平台的两篇完整答案。也可以留空问题，随后从资料包的问题目录中选择，或导入监控问答表。
                 </p>
                 <label className="cp-field">
-                  正式问题
+                  正式问题（可选）
                   <textarea
-                    required={!questionId.trim()}
                     rows={2}
                     value={question}
                     onChange={(event) => setQuestion(event.target.value)}
                     maxLength={20000}
-                    placeholder="本篇文章只解决的一个问题"
+                    placeholder="填写本篇文章要解决的问题，或留空后从资料包中选择"
                   />
                 </label>
                 <label className="cp-field">

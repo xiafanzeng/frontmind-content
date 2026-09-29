@@ -1,0 +1,5 @@
+{
+  "api_key": "",
+  "reasoning_effort": "high",
+  "effort_note": "用户决策：新 DeepSeek 写作与编辑使用 high 推理强度；历史冻结请求保留原配置，其他模型与网关配置沿用。"
+}

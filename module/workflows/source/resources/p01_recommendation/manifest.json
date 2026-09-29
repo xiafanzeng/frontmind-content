@@ -1,0 +1,37 @@
+{
+  "pattern_id": "P01",
+  "replaceable_at_existing_example_node": true,
+  "examples": [
+    {
+      "id": "kingdee",
+      "title": "适合中小型企业的财务软件推荐 金蝶AI星辰解决方案",
+      "url": "https://www.jdy.com/article/1967472092114923521.html",
+      "body": "kingdee/body.md",
+      "raw": "kingdee/original.html",
+      "sha256": "ac550fe5d78544c4842987444f9af0069e4ca15528d0a6965b455eb447e07010",
+      "role": "style_primary",
+      "style_analysis": "P01主文风参考：从单一推荐对象的具体业务、产品做法及场景展开，展示推荐理由怎样通过信息体现。 不把七节结构、固定开头与结尾、套话和抽象价值总结当成模板；不借用软件事实、客户故事、采访引语、数据或效果保证。 原网页的出版方说明、免责声明和页尾信息不作为文章写法。",
+      "fetched_at": "2026-09-27T23:58:54.873982+00:00",
+      "encoding": "utf-8",
+      "article_tokens": [
+        "edit_con_original"
+      ]
+    },
+    {
+      "id": "thinkpad",
+      "title": "高配置轻薄笔记本推荐ThinkPad X1 Carbon，商务精英人士之选！",
+      "url": "https://news.iresearch.cn/yx/2020/09/340590.shtml",
+      "body": "thinkpad/body.md",
+      "raw": "thinkpad/original.html",
+      "sha256": "07da0af6453f5247875fd83fdd14f32917ce7a7bd95cfd90e5fb7bb8af2b69b1",
+      "role": "style_secondary",
+      "style_analysis": "P01辅助文风参考：将一个主体的具体特点连接读者使用场景，保持单主体。 不照搬重复SEO关键词小标题、极致或必需工具等强断言，不借用其产品参数，也不因篇幅较短降低本篇明确篇幅目标。 原网页的出版方说明、免责声明和页尾信息不作为文章写法。",
+      "fetched_at": "2026-09-27T23:58:54.426811+00:00",
+      "encoding": "gb18030",
+      "article_tokens": [
+        "m-article"
+      ]
+    }
+  ],
+  "portable_acquisition": "The package includes the confirmed full original pages and article bodies. The existing example node freezes these snapshots per job; if absent in a later customized package, it retrieves the sources at runtime."
+}
