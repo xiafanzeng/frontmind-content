@@ -1039,7 +1039,7 @@ function ContentProductionInner({
       {!workbench && (
         <header className="cp-heading">
           <div>
-            <span className="cp-kicker">内容工作台1</span>
+            <span className="cp-kicker">内容工作台</span>
             <h1>内容制作</h1>
           </div>
           <button
