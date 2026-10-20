@@ -20,6 +20,7 @@ TITLE_INPUT_MODE = 'final-body-v1'
 MISSION_MARKER = '<frontmind_natural_editor version="4.13.2-editorial1">'
 FIELDS = {'article_brief', 'estimated_length', 'candidate_order', 'brand_positioning_use',
           'recommendation_relationships', 'formatting', 'reference_roles', 'question', 'pattern_id'}
+P02_SCOPE_FIELDS = frozenset({'article_brief', 'candidate_order', 'recommendation_relationships'})
 
 
 def enabled(state):
@@ -41,6 +42,13 @@ def effective(wf, job, *, p0):
     if not p0:
         value['question'] = state['question']['question_text']
         value['pattern_id'] = state['selected_pattern_id']
+    if not p0:
+        from . import p02_selection
+        value = p02_selection.project(state, value)
+        from . import industry_roundup
+        if industry_roundup.enabled(state):
+            value.update(industry_roundup.commission(state))
+            value['candidate_order'] = industry_roundup.validate_scope(state)
     return value
 
 
@@ -59,6 +67,37 @@ def merge_changes(state, changes):
     current = dict(state.get('metadata', {}).get('effective_writing_requirements', {}))
     current.update(changes)
     state['metadata']['effective_writing_requirements'] = current
+
+
+def p02_scope_changes(wf, job, changes):
+    """Detect explicit new scope before the frozen selection projects its order.
+
+    Only a new user requirements submission changes scope. Generated blueprint
+    fields, ordinary resume, title edits and presentation changes do not.
+    """
+    from . import p02_selection
+    state = wf.load_state(job)
+    if not changes or not p02_selection.enabled(state):
+        return {}
+    relevant = {key: value for key, value in changes.items() if key in P02_SCOPE_FIELDS}
+    if not relevant:
+        return {}
+    order = relevant.get('candidate_order')
+    if order is not None and (not isinstance(order, list) or not order
+                              or any(not isinstance(name, str) or not name.strip() for name in order)):
+        raise ValueError('P02 candidate_order 须为非空主体名称列表；新名单将在原选择页确认')
+    for key in ('article_brief', 'recommendation_relationships'):
+        if key in relevant and (not isinstance(relevant[key], str) or not relevant[key].strip()):
+            raise ValueError('P02范围要求须为非空文字：' + key)
+    current = effective(wf, job, p0=False)
+    return {key: value for key, value in relevant.items() if value != current.get(key)}
+
+
+def record_p02_scope_changes(state, changes):
+    """Store only explicit scope changes, never the projected candidate order."""
+    current = dict(state.get('metadata', {}).get('p02_scope_requirements', {}))
+    current.update(changes)
+    state.setdefault('metadata', {})['p02_scope_requirements'] = current
 
 
 def mark_new_blueprint(state):
@@ -107,6 +146,12 @@ def positioning_still_valid(state, job):
     if not path.is_file() or not state.get('decisions', {}).get('question_positioning_confirmation'):
         return False
     value = json.loads(path.read_text())
+    from . import p02_selection
+    if p02_selection.enabled(state):
+        record = p02_selection.current(state)
+        decision = state.get('decisions', {}).get('question_positioning_confirmation', {})
+        if not record or decision.get('p02_selection_hash') != record['selection_hash']:
+            return False
     return (value.get('pattern_id') == state.get('selected_pattern_id') and
             value.get('question') == state.get('question', {}).get('question_text') and
             value.get('brand') == state.get('reference_pack', {}).get('brand'))

@@ -24,13 +24,38 @@ export const contentProductionInputSchema = z
       .optional(),
     questionId: z.string().trim().min(1).max(200).optional(),
     question: z.string().trim().max(20_000).optional(),
+    genre: z.enum(["default", "industry_roundup"]).optional(),
+    subjectScope: z.array(z.string().trim().min(1).max(200)).min(3).max(12).optional(),
+    articleFocus: z.string().trim().max(300).optional(),
+    readerQuestions: z.array(z.string().trim().min(1).max(300)).max(8).optional(),
+    excludedTopics: z.array(z.string().trim().min(1).max(300)).max(12).optional(),
+    comparisonDimensions: z.array(z.string().trim().min(1).max(100)).min(2).max(8).optional(),
     monitoringAnswerAssetIds: z
       .array(z.string().trim().min(1).max(36))
       .max(16)
       .default([]),
     sourceWorkbookAssetId: z.string().trim().min(1).max(36).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((input, ctx) => {
+    if (input.genre === "industry_roundup") {
+      const names = input.subjectScope ?? [];
+      if (input.mode !== "single_article" || names.length < 3 || names[0]?.toLocaleLowerCase() !== input.enterpriseName.toLocaleLowerCase() || new Set(names.map((name) => name.toLocaleLowerCase())).size !== names.length)
+        ctx.addIssue({code:z.ZodIssueCode.custom,message:"行业盘点须填写 3—12 个不重复的品牌，第一行必须是本次企业。"});
+      const dimensions = input.comparisonDimensions ?? [];
+      if (dimensions.length < 2 || new Set(dimensions.map((item) => item.toLocaleLowerCase())).size !== dimensions.length)
+        ctx.addIssue({code:z.ZodIssueCode.custom,message:"行业盘点须填写 2—8 个不重复的共同对比维度。"});
+    } else if (input.subjectScope?.length) {
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:"主体名单只用于行业盘点。"});
+    } else if (input.comparisonDimensions?.length) {
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:"对比维度只用于行业盘点。"});
+    }
+    if (input.mode !== "single_article" && (input.articleFocus || input.readerQuestions?.length || input.excludedTopics?.length))
+      ctx.addIssue({code:z.ZodIssueCode.custom,message:"本篇聚焦设置只用于问题文章。"});
+    for (const values of [input.readerQuestions, input.excludedTopics])
+      if (values && new Set(values.map((item) => item.toLocaleLowerCase())).size !== values.length)
+        ctx.addIssue({code:z.ZodIssueCode.custom,message:"读者问题和排除主题不能重复。"});
+  });
 
 export const CONTENT_PRODUCTION_CONFIRMATIONS = [
   "awaiting_reference_pack_route",
@@ -154,6 +179,7 @@ export const contentProductionActionSchema = z
         instructions: text,
       })
       .strict(),
+    z.object({kind:z.literal("repair_article_facts"),revision,rejectedClaimIds:z.array(z.string().regex(/^F\d{2,4}$/)).max(100).default([])}).strict(),
   ])
   .superRefine((action, ctx) => {
     if (
@@ -199,6 +225,7 @@ export type ContentProductionDto = {
   pauseTitle: string | null;
   choices: string[];
   productionStep: string | null;
+  factGate?: {issueCount:number;categories:string[];publishReady:boolean};
   confirmation: ContentProductionConfirmation | null;
   /** Highest observed position; corrections keep their actual current pause. */
   progressPosition: number;

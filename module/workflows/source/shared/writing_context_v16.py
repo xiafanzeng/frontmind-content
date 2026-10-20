@@ -94,12 +94,54 @@ def wrap(text, *, writer=False):
     return MARKER + '\n' + ((COUNT_MARKER + '\n') if writer else '') + text
 
 
+def wrap_for(wf, job, text, *, writer=False):
+    from . import p01_expression, p02_selection
+    result = wrap(text, writer=writer)
+    from . import article_focus
+    if article_focus.enabled(wf.load_state(job)):
+        result = result.replace(MARKER + '\n', MARKER + '\n' + article_focus.MARKER + '\n', 1)
+    if article_focus.revised(wf.load_state(job)):
+        result = result.replace(MARKER + '\n', MARKER + '\n' + article_focus.DRAFT_MARKER + '\n', 1)
+    from . import industry_roundup
+    if industry_roundup.enabled(wf.load_state(job)):
+        result = result.replace(MARKER + '\n', MARKER + '\n' + industry_roundup.MARKER + '\n', 1)
+    if p02_selection.enabled(wf.load_state(job)):
+        result = result.replace(MARKER + '\n', MARKER + '\n' + p02_selection.MARKER + '\n', 1)
+    if p01_expression.enabled(wf.load_state(job)):
+        result = result.replace(MARKER + '\n', MARKER + '\n' + p01_expression.MARKER + '\n', 1)
+    return result
+
+
 def system(action, prompt=''):
+    from . import industry_roundup
+    from . import article_focus, fdnv2_guidance
+    stage = 'preparation' if action == 'article_editorial_preparation' else action.rsplit('_', 1)[-1]
+    revised = article_focus.DRAFT_MARKER in prompt[:300]
+    fdn = (fdnv2_guidance.role(stage, article_focus.PROMPT_REVISION if revised else article_focus.PREVIOUS_PROMPT_REVISION)
+           if fdnv2_guidance.matches(prompt) else '')
+    if industry_roundup.matches(prompt):
+        if stage in {'titles', 'review'}:
+            from .writing_context_v14 import system as title_system
+            return title_system(action, '') + '\n标题准确反映横向选购，不写无证据的排名或实测。' + fdn
+        role = ROLES[stage]
+        role += '\n本篇文体是第三人称中立行业盘点，不是机构品宣。保持多品牌横向比较、适用条件、缺失值和证据来源。不能虚构亲身使用、统一测试条件或未经来源支持的优劣结论。'
+        if revised and stage in {'blueprint', 'draft'}:
+            role += '\n先按本篇细分场景和读者问题组织比较；材料足以区分多种技术路线时，先解释路线及适用边界，再进入品牌与具体型号。所有主体用相同维度、口径和克制语气分析，主品牌不享有特殊赞誉。每个重要小节独立说明对象、条件与结论，不能靠前后段拼出答案；不强制增加无证据的趋势、市场数字或FAQ。'
+        if stage in {'finalize', 'polish'}:
+            role += '\n除语言外，检查具体参数是否绑定型号、来源与口径；有事实疑点时提出具体返工意见。'
+        role += fdn
+        return role + '\n\n' + ('最后单独调用submit_result提交结果，成功后只回复{"submitted":true}。'
+                             if stage in {'preparation', 'blueprint', 'finalize', 'polish'}
+                             else '只返回当前动作要求的JSON对象，不加代码围栏。')
     if action in {'article_titles', 'article_title_review'}:
         from .writing_context_v14 import system as title_system
-        return title_system(action, '') + '\n\n' + CATEGORY_GUIDANCE
-    stage = 'preparation' if action == 'article_editorial_preparation' else action.rsplit('_', 1)[-1]
-    parts = [ROLES[stage], CATEGORY_GUIDANCE]
+        return title_system(action, '') + '\n\n' + CATEGORY_GUIDANCE + fdn
+    from . import p01_expression
+    role = p01_expression.role(stage, ROLES[stage]) if p01_expression.matches(prompt) else ROLES[stage]
+    parts = [role, CATEGORY_GUIDANCE] + ([fdn] if fdn else [])
+    from . import p02_selection
+    if p02_selection.matches(prompt) and stage in {'finalize','polish'}:
+        parts.append(p02_selection.REVIEW_GUIDANCE)
     if stage in {'blueprint', 'draft', 'edit', 'repair'}:
         parts.append(MATERIAL_GUIDANCE)
     if stage in {'draft', 'edit', 'repair'}:
@@ -113,6 +155,9 @@ def system(action, prompt=''):
 def commission(wf, job, *, editor=False):
     from .manuscript_revision import current_revision
     brief = dict(requirements.effective(wf, job, p0=False))
+    from . import industry_roundup
+    if industry_roundup.enabled(wf.load_state(job)):
+        brief.update(industry_roundup.commission(wf.load_state(job)))
     if editor:
         brief.pop('reference_roles', None)
         brief.pop('brand_positioning_use', None)
@@ -123,6 +168,12 @@ def commission(wf, job, *, editor=False):
     rev = current_revision(wf, job, p0=False)
     if rev:
         parts.append('本轮正文修改要求：\n' + rev['edits_markdown'])
+    from . import p02_selection
+    if p02_selection.enabled(wf.load_state(job)):
+        parts.append(p02_selection.context(wf.load_state(job)))
+    from . import article_focus
+    if article_focus.enabled(wf.load_state(job)):
+        parts.append(article_focus.context(wf.load_state(job)))
     return '\n\n'.join(parts + ['</current_commission>'])
 
 
@@ -134,7 +185,16 @@ def preparation_commission(wf, job):
         brief['article_brief'] = state.get('decisions', {}).get('response_brief', '')
     brief['question'] = state.get('question', {}).get('question_text', '')
     brief['pattern_id'] = state.get('selected_pattern_id', '')
-    return '<current_commission>\n' + _json(brief) + '\n</current_commission>'
+    from . import industry_roundup
+    if industry_roundup.enabled(state):
+        brief.update(industry_roundup.commission(state))
+    from . import p02_selection
+    brief = p02_selection.project(state, brief)
+    from . import article_focus
+    if not article_focus.enabled(state):
+        return '<current_commission>\n' + _json(brief) + '\n' + p02_selection.context(state) + '\n</current_commission>' if p02_selection.enabled(state) else '<current_commission>\n' + _json(brief) + '\n</current_commission>'
+    extra = article_focus.context(state)
+    return '<current_commission>\n' + _json(brief) + '\n' + (p02_selection.context(state) if p02_selection.enabled(state) else '') + '\n' + extra + '\n</current_commission>'
 
 
 def preparation(wf, job):
@@ -144,9 +204,12 @@ def preparation(wf, job):
 
 def prompt_preparation(wf, job):
     state = wf.load_state(job)
+    from . import industry_roundup
     case_type = ('本次是单机构品宣推荐稿。两篇研究案例都应只介绍一家企业、机构或其一项业务，展示业务与特点。不要选择多机构榜单；不能以一篇单机构加一篇榜单完成本轮。可以放宽地域或具体产品关键词，优先保持企业场景与文章类型一致。'
                  if state.get('selected_pattern_id') == 'P01' else
                  '本次是多机构品宣推荐稿。两篇研究案例都应围绕同类需求介绍多家企业或机构，研究导语、各家特点的选择和详略。可以放宽地域或具体产品关键词，优先保持企业场景与文章类型一致。')
+    if industry_roundup.enabled(state):
+        case_type = '本次是中立行业盘点。研究两篇已发表的多品牌横向选购文章，观察如何设置共同维度、解释测试口径、处理缺失数据及按读者条件给建议。'
     parts = ['# 案例研究与编辑准备', '品牌：' + state.get('reference_pack', {}).get('brand', ''), preparation_commission(wf, job),
              '本次案例类型：\n' + case_type,
              '本次研究线索（如有，仅帮助定向；仍须实际搜索、获取并阅读全文，不作为企业事实或已完成的研究）：\n' + _json(state.get('metadata', {}).get('editorial_research_hints', {})),
@@ -156,12 +219,16 @@ def prompt_preparation(wf, job):
              '已有企业材料索引：\n' + str(wf.user_material_index(job, 'question') or ''),
              '先搜索、读取两个案例全文，再结合本篇需要读取原始企业材料。web_read取得案例后，必须再用read_material分段读完每篇案例的全文，直到正文结尾。',
              '通过submit_result提交：writing_material_markdown（自然事实段落）、blueprint_suggestions（有本篇针对性的蓝图建议）；后台字段reference_cases（恰好两项，每项source_ref、title、url、insight，记录实际阅读全文的案例及借鉴点）、writing_material_sources（实际采用企业原件的source_ref、use）、material_adjustments（可为空数组）。两篇案例只作为写法参考，不列为企业事实来源。不输出正式蓝图。']
-    return wrap('\n\n'.join(parts))
+    if industry_roundup.enabled(state):
+        parts.append('另提交 fact_claims：每个主体至少一条关键事实，字段 id(F01起)、subject、model(具体型号或明确写品牌层级)、claim、source_ref(Job相对路径)、source_quote(原件中连续原文片段)、as_of(原件日期或未注明)。原文片段会由程序与本地文件核对；没有证据的数字不要登记或写入。')
+    return wrap_for(wf, job, '\n\n'.join(parts))
 
 
 def prompt_blueprint(wf, job, *, p0=False):
     from .writing_context_v14 import examples
     prep = preparation(wf, job)
+    from . import industry_roundup
+    state = wf.load_state(job)
     parts = ['# 正式文章蓝图', commission(wf, job), MATERIAL_GUIDANCE,
              '已准备的自然事实段落：\n' + prep['writing_material_markdown'],
              '前置编辑建议（供判断和调整）：\n' + prep['blueprint_suggestions'],
@@ -169,23 +236,58 @@ def prompt_blueprint(wf, job, *, p0=False):
              '仅使用以上材料与建议形成正式蓝图，无需也不能重新读取原始知识库。选用素材与来源由程序从编辑准备结果带入，勿重新筛选或改写。',
              '蓝图字段说明：\n' + _json(BLUEPRINT_FIELDS_DESCRIPTIONS), 'sections.task：' + SECTION_TASK,
              '通过submit_result提交kind=article、question、pattern_id、article_brief、candidate_order、brand_positioning_use、answer_use、opening、sections、ending、materials、estimated_length、style_source、example_use。writing_material_markdown、writing_material_sources与material_adjustments由程序继承，不必重复提交。']
+    if industry_roundup.enabled(state):
+        parts.append('已核对的逐条事实：\n' + _json(prep.get('fact_claims', [])))
+        if (industry_roundup.spec(state) or {}).get('contract') == industry_roundup.CONTRACT:
+            parts.append('行业盘点蓝图另须提交 genre="industry_roundup"、subject_scope(与委托同序)、comparison_dimensions(严格按本篇委托维度与顺序)、comparison_matrix(每主体一行，固定该行具体model，cells及evidence_ids均覆盖全部维度；缺失写“未知”并填空ID数组；非未知值的事实ID须属于该主体及该型号)、reader_questions(覆盖用户指定的问题并映射到真实sections.heading)、selection_rules(至少一条有依据的按条件选型规则)。fact_claims由编辑准备继承。正文需要横向表与来源标记[F01]；FAQ仅在有未回答的真实问题时使用。不同型号或测试条件的数字不可拼成一台产品的参数。')
+        else:
+            parts.append('行业盘点蓝图另须提交 genre="industry_roundup"、subject_scope(与委托同序)、comparison_dimensions(至少转速/温控/噪音/价格)、comparison_matrix(每个主体一行，cells覆盖四维，缺失写“未知”；每行另有evidence_ids，四维分别填支持该格的事实ID数组，未知填空数组)、reader_questions(至少4个问题逐个映射到真实sections.heading)、selection_rules(至少2条带条件的选型规则)。fact_claims由编辑准备结果继承。安排正文横向表、FAQ、来源标记[F01]，不把不同型号或不同条件的数字写成可直接比较的实测值。')
+    from . import article_focus
+    if article_focus.revised(state):
+        parts.append('新版蓝图检查：以已确认主题、正式问题和用户指定问题确定本文边界；没有用户证实的长尾问题只能标作写作假设，不写成监测事实。每个sections.task写明该节回答什么问题、给出什么有证据的答案及必要条件；同一信息只安排一次，不为凑篇幅纳入整个资料包。')
+        if industry_roundup.enabled(state):
+            parts.append('行业盘点按“细分场景与比较条件 → 有材料支持的技术路线／方案类别 → 同维度品牌型号矩阵 → 条件化选型”组织；没有足够证据时不强制独立技术路线章节。每一路线说明适用场景与限制，不能把品牌名称当技术分类。主品牌与竞品用相同维度和证据标准，不单独安排主品牌宣传段。关键小节应脱离前后文仍能读懂对象、条件和结论；趋势、市场规模、FAQ只在有可靠材料且对当前问题有增量时安排。')
     edits = wf.load_state(job).get('decisions', {}).get('blueprint_edits')
     if edits:
         parts.append('本轮构思要求：\n' + str(edits))
-    return wrap('\n\n'.join(parts))
+    return wrap_for(wf, job, '\n\n'.join(parts))
 
 
-def references(wf, job, *, outline=False):
+def references(wf, job, *, outline=False, include_rejected=False):
     from .writing_materials import selected
     from .manuscript_revision import current_revision
     from .writing_context_v14 import examples
     bp = _blueprint(job, p0=False)
     material = selected(current_revision(wf, job, p0=False), bp)
     parts = [MATERIAL_GUIDANCE, '自然事实材料：\n' + material['writing_material_markdown']]
-    parts.append('语言示例（虚构的跨行业表达示范，只用于理解语言尺度，不借用参数、事实或固定句式）：\n'
-                 '素材：笔记本机身重1.1千克，14英寸屏幕，键盘键程1.5毫米。\n'
-                 '成文：1.1千克的机身让这款笔记本便于随身携带，14英寸屏幕留出了宽裕的工作视野。键盘保留1.5毫米键程，连续输入时，按键仍有清晰的反馈。\n'
-                 '具体特点和正常使用感受可以这样直接写进句子。到此即可转入下一项内容，无需再接“这些设计共同构成了兼顾便携、显示与输入的综合体验”。')
+    from . import industry_roundup
+    if industry_roundup.enabled(wf.load_state(job)):
+        rejected = set() if include_rejected else set(wf.load_state(job).get('metadata', {}).get('rejected_fact_claims', []))
+        active_claims = [row for row in bp.get('fact_claims', []) if row['id'] not in rejected]
+        matrix = json.loads(json.dumps(bp.get('comparison_matrix', []), ensure_ascii=False))
+        for row in matrix:
+            for dimension, ids in row.get('evidence_ids', {}).items():
+                row['evidence_ids'][dimension] = [claim_id for claim_id in ids if claim_id not in rejected]
+                if not row['evidence_ids'][dimension]:
+                    row['cells'][dimension] = '未知'
+        ledger_label = '行业盘点事实登记' if include_rejected else '行业盘点有效事实登记'
+        parts.append(ledger_label + '（引用时保留型号、来源口径与[Fxx]标记）：\n' + _json(active_claims))
+        parts.append('共同维度与选型规则：\n' + _json({'comparison_dimensions': bp.get('comparison_dimensions'),
+                    'comparison_matrix': matrix, 'reader_questions': bp.get('reader_questions'),
+                    'selection_rules': bp.get('selection_rules')}))
+        if rejected:
+            parts.append('以下事实 ID 已否决且失效，不得继续引用或改写为无标记事实：' + '、'.join(sorted(rejected)))
+    from . import article_focus
+    if article_focus.enabled(wf.load_state(job)):
+        parts.append('语言示例（虚构，仅示范事实与用途的边界，不借用参数）：\n'
+                     '素材：笔记本机身重1.1千克，屏幕14英寸，键盘键程1.5毫米。\n'
+                     '成文：这款笔记本机身重1.1千克，屏幕为14英寸。经常携带电脑出行的读者可结合重量判断便携需求；键盘键程为1.5毫米，实际输入感受仍需试用。\n'
+                     '屏幕尺寸不能直接推出视野宽裕，键程也不能推出未经测试的手感。')
+    else:
+        parts.append('语言示例（虚构的跨行业表达示范，只用于理解语言尺度，不借用参数、事实或固定句式）：\n'
+                     '素材：笔记本机身重1.1千克，14英寸屏幕，键盘键程1.5毫米。\n'
+                     '成文：1.1千克的机身让这款笔记本便于随身携带，14英寸屏幕留出了宽裕的工作视野。键盘保留1.5毫米键程，连续输入时，按键仍有清晰的反馈。\n'
+                     '具体特点和正常使用感受可以这样直接写进句子。到此即可转入下一项内容，无需再接“这些设计共同构成了兼顾便携、显示与输入的综合体验”。')
     if outline:
         parts.append('正式蓝图（供把握方向与主次，段落与措辞由作者组织）：\n' + _json({k: bp[k] for k in ('opening', 'sections', 'ending') if k in bp}))
     # Keep the agreed reference prose, not a second content brief hidden inside
@@ -200,15 +302,46 @@ def length_note(body):
 
 
 def prompt_article(wf, job, *, p0=False):
-    return wrap('# 写成完整文章\n\n' + commission(wf, job) + '\n\n' + references(wf, job, outline=True)
+    from . import article_focus, industry_roundup
+    state = wf.load_state(job)
+    roundup = ''
+    if industry_roundup.enabled(state):
+        bp = _blueprint(job, p0=False)
+        names = industry_roundup.validate_scope(state)
+        if (industry_roundup.spec(state) or {}).get('contract') == industry_roundup.CONTRACT:
+            instruction = f'正文必须有{len(names)}个主体、同维度Markdown对比表和按条件选型。每行只代表蓝图固定的一个型号；关键数字在原句后用[F01]形式标注。缺失值写未知，FAQ按实际问题决定。'
+        else:
+            instruction = '正文必须有六品牌同维度Markdown对比表、按条件选型和常见问题；关键数字在原句后用[F01]这样的已登记事实ID标注。未知值写未知。'
+        if article_focus.revised(state):
+            roundup = ('\n\n行业盘点成文要求：\n' + instruction
+                       + '以已确认细分场景和读者问题组织正文；有可靠材料支持时先解释技术路线及适用边界，再比较品牌与型号。'
+                       '同一维度使用相同口径，主品牌与其他主体采用同样的语气和证据标准；不能把不同测试条件的数值写成直接排名。'
+                       '每个关键小节独立说清对象、比较条件与结论，不用“它更好”这类脱离上下文无法理解的句子。'
+                       '只展开本篇确有证据的选型问题；不为凑结构补市场规模、趋势或FAQ。')
+        else:
+            roundup = '\n\n行业盘点结构与证据合同：\n' + _json({key: bp.get(key) for key in ('comparison_dimensions', 'comparison_matrix', 'reader_questions', 'selection_rules', 'fact_claims')}) + '\n' + instruction
+    if article_focus.revised(state):
+        return wrap_for(wf, job, '# 写成完整文章\n\n' + commission(wf, job)
+                        + '\n\n' + references(wf, job, outline=True) + roundup
+                        + '\n\n先回答本篇主问题，再按蓝图写成能连续阅读的文章。每节提供不同的有依据的信息；只选与本篇主题和读者问题相关的事实，不因资料包有该内容就全部写入。'
+                        '事实、条件和适用范围留在相应结论附近；材料只给参数时不得推断亲身使用感受、实测性能或绝对优势。'
+                        '专业术语首次出现时用准确的通俗话解释。段落可独立读懂，但不要在每段重复背景、品牌名或同一结论。'
+                        '自然开篇，完成最后一项实质内容后结束；FAQ仅用于补足尚未回答的真实问题。按当前委托的硬性篇幅执行；没有硬性下限时按有效信息量收束。'
+                        + '\n按以下完整JSON结构提交，不省略字段：{"article_markdown":"完整正文","requires_blueprint_reconfirmation":false,"reconfirmation_reason":""}。正常写作取舍直接完成。', writer=True)
+    return wrap_for(wf, job, '# 写成完整文章\n\n' + commission(wf, job) + '\n\n' + references(wf, job, outline=True, include_rejected=True) + roundup
                 + '\n\n按委托篇幅写成完整初稿，充分发挥组织、润色和表达能力。正常需求、用途说明和有表现力的文字可以保留；不必把每个特点写成一段论证或在每段末尾解释意义。'
                 + '\n按以下完整JSON结构提交，不省略字段：{"article_markdown":"完整正文","requires_blueprint_reconfirmation":false,"reconfirmation_reason":""}。正常写作取舍直接完成。', writer=True)
 
 
 def prompt_edit(wf, job, *, p0=False):
     body = edit_base_input(wf, job, p0=False)['article_markdown']
-    return wrap('# E8全文编辑\n\n' + body + '\n\n' + length_note(body) + '\n\n' + commission(wf, job)
+    focus = wf.load_state(job).get('metadata', {}).get('article_fact_repair_focus', [])
+    fact_focus = ('\n\n本轮事实返工必须逐条处理：\n' + _json(focus)
+                  + '\n缺少同句来源的数字要删除、改成来源支持的表述，或在已有有效原文片段足以支持时添加正确事实 ID。不能新增未经核验的数字。'
+                  if focus else '')
+    return wrap_for(wf, job, '# E8全文编辑\n\n' + body + '\n\n' + length_note(body) + '\n\n' + commission(wf, job)
                 + '\n\n' + references(wf, job)
+                + fact_focus
                 + '\n\n以整篇文章的语言质感和可读性为中心完成编辑。需要改善的地方直接改好，已经写好的地方保留；修改后的正文处于委托篇幅范围即可。'
                 + '\n按以下完整JSON结构提交，不省略字段：{"edit_status":"revised","article_markdown":"完整正文","editorial_notes":["简短、真实的修改说明"],"requires_blueprint_reconfirmation":false,"reconfirmation_reason":""}。有实际正文修改时用revised；全文无需改动时用accepted，原文保持不变且editorial_notes=[]。', writer=True)
 
@@ -235,12 +368,21 @@ def prompt_finish(wf, job, *, after_repair=True):
     body = (wf.read_json(Path(job) / 'production/article_repaired.json')['article_markdown'] if after_repair
             else prepare_finalize_input(wf, job, p0=False)['candidate_markdown'])
     focus = polish_focus(wf, job, body) if after_repair else None
+    from . import industry_roundup
+    quality_attention = ''
+    if industry_roundup.enabled(wf.load_state(job)):
+        bp = _blueprint(job, p0=False)
+        gate = industry_roundup.audit_body(wf.load_state(job), bp, body)
+        if gate['issues']:
+            quality_attention = ('\n\n行业盘点事实门槛尚有以下具体问题：\n' + _json(gate['issues'])
+                                 + '\n请在本轮局部修改中删除无依据的数字或补充已有有效事实 ID；若须重组多个段落则明确提出返工。已否决事实不能沿用，也不能编造新数字。')
     attention = ('\n\n本轮编辑关注项（来自全文验读，只指出问题，不提供正文改写）：\n'
                  + _json(focus) + '\n请结合当前全文判断并修好，具体措辞由你决定，仍按本轮少量局部编辑的范围处理。'
                  if focus is not None else '')
-    return wrap('# 最后文字编辑\n\n当前完整稿：\n' + body + '\n\n' + length_note(body)
+    return wrap_for(wf, job, '# 最后文字编辑\n\n当前完整稿：\n' + body + '\n\n' + length_note(body)
                 + '\n基稿标识：' + digest(body) + '\n\n' + commission(wf, job, editor=True)
                 + attention
+                + quality_attention
                 + '\n\n从读者角度判断文章是否自然、漂亮、重点清楚，是否仍有材料罗列、重复解释、无关段落或生硬的衔接。正常的润色与有表现力的文字保留，不要求恢复素材措辞。主体、名单和分类是固定委托，蓝图的具体段落安排可以改善。'
                 + '\n少量影响阅读的句子直接局部修改。只有需要重组内容或多个段落时才提出具体返工意见；普通病句也应认真修通，不用堆叠概括代替润色。'
                 + '\n单独submit_result提交needs_revision、comments、local_edits。无需结构返工时needs_revision=false、comments=[]；少量句级微调放local_edits，每项仅original与replacement。original逐字复制当前稿中唯一的一处单段短句或片段，replacement只改该处表达；不跨段，不增删标题、不改变加粗机构名或类别名称，不重排段落。可以删去段内赘句，不能删掉整段。无需修改就local_edits=[]。需要结构返工则needs_revision=true、comments给少量具体意见、local_edits=[]。最终篇幅按应用局部修改后的正文计算。'
@@ -254,7 +396,7 @@ def prompt_finalize(wf, job, *, p0=False):
 def prompt_repair(wf, job, *, p0=False):
     body = prepare_finalize_input(wf, job, p0=False)['candidate_markdown']
     review = wf.read_json(Path(job) / 'production/article_editorial_review.json')
-    return wrap('# 按编辑意见修订完整正文\n\n' + body + '\n\n' + length_note(body)
+    return wrap_for(wf, job, '# 按编辑意见修订完整正文\n\n' + body + '\n\n' + length_note(body)
                 + '\n\n本轮编辑意见：\n' + _json(review['comments']) + '\n\n' + commission(wf, job)
                 + '\n\n' + references(wf, job)
                 + '\n\n按意见改善受影响的内容组织和表达，保留已经写好的段落。发挥润色能力，让全文自然、顺畅、有吸引力。提交委托篇幅内的完整稿，随后还有一次最后文字编辑。'

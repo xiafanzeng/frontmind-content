@@ -8,6 +8,7 @@ import copy
 from typing import Any
 
 from .workflow_versions import TITLE_CONTRACT_VERSION, WORKFLOW_VERSION
+from . import title_strategy
 
 PUBLICATION_CONTRACT = "frontmind-title-publication/4.11.9"
 LEGACY_PUBLICATION_CONTRACT = "frontmind-title-publication/4.11.8"
@@ -48,10 +49,39 @@ def _candidate_count(candidates: Any, expected_count: int | None) -> int:
     return count
 
 
-def validate_title_map(value: dict[str, Any], *, p0: bool = False,
-                       legacy: bool = False, expected_count: int | None = None) -> dict[str, Any]:
-    """Read 10/20-title artifacts; production passes its frozen expected count."""
+def _expected_contract(expected_count, expected_policy):
     _validate_expected_count(expected_count)
+    policy = title_strategy.validate_policy(expected_policy)
+    if policy is not None:
+        if expected_count is not None and expected_count != policy["requested_count"]:
+            raise ValueError("标题期望数量与冻结标题策略不一致")
+        expected_count = policy["requested_count"]
+    return expected_count, policy
+
+
+def _candidate_styles(candidates, *, p0, expected_policy):
+    """A frozen v2 policy requires styles even when every result omits them.
+
+    Unbound artifact readers may recognize the new shape; production supplies
+    its policy and never derives permission to drop styles from model output.
+    """
+    has_styles = any(isinstance(row, dict) and "style" in row for row in candidates)
+    grouped = title_strategy.grouped(expected_policy)
+    if not grouped and not has_styles:
+        return False
+    if p0 or expected_policy == title_strategy.LEGACY_POLICY:
+        raise ValueError("当前冻结标题策略不使用 5+5 风格分组")
+    styles = tuple(row.get("style") if isinstance(row, dict) else None for row in candidates)
+    if styles != title_strategy.STYLE_SEQUENCE:
+        raise ValueError("5+5 标题必须前 5 项 style=formal、后 5 项 style=scenario，不能缺失或改变分组")
+    return True
+
+
+def validate_title_map(value: dict[str, Any], *, p0: bool = False,
+                       legacy: bool = False, expected_count: int | None = None,
+                       expected_policy: dict | None = None) -> dict[str, Any]:
+    """Read historical/new artifacts; production passes its frozen policy."""
+    expected_count, expected_policy = _expected_contract(expected_count, expected_policy)
     if not isinstance(value, dict):
         raise ValueError("Title Map 必须是 JSON 对象")
     if "candidates" in value:
@@ -59,6 +89,7 @@ def validate_title_map(value: dict[str, Any], *, p0: bool = False,
             raise ValueError("Title Map 不能混用 candidates 与历史 families")
         candidates = value["candidates"]
         count = _candidate_count(candidates, expected_count)
+        grouped = _candidate_styles(candidates, p0=p0, expected_policy=expected_policy)
         family = "publicity" if p0 else "article"
         options = []
         for index, item in enumerate(candidates, 1):
@@ -70,19 +101,24 @@ def validate_title_map(value: dict[str, Any], *, p0: bool = False,
             angle = _headline(item["angle"])
             options.append({"title_id": f"title_{index:02d}", "family": family,
                             "title_text": title, "angle": angle})
+            if grouped:
+                options[-1]["style"] = item["style"]
         if len({item["title_text"] for item in options}) != count:
             raise ValueError(f"Title Map 的 {count} 个标题必须互不重复")
         recommended_id = value.get("canonical_title_id")
         recommended = next((row for row in options if row["title_id"] == recommended_id), None)
         if recommended is None:
             raise ValueError(f"新 Title Map 必须提供有效 canonical_title_id（title_01 至 title_{count:02d}）；不能默认第一项")
-        return {"schema_version": WORKFLOW_VERSION, "artifact_type": "frontmind_title_map",
+        result = {"schema_version": WORKFLOW_VERSION, "artifact_type": "frontmind_title_map",
                 "title_contract_version": TITLE_CONTRACT_VERSION,
                 "requested_count": count, "total_count": count,
                 "families": {family: {"count": count, "options": options}},
                 "options": options, "canonical_title_id": recommended_id,
                 "recommended_title_id": recommended_id, "recommended_title": recommended["title_text"],
                 "title_adoption_mode": "separate_candidates_no_title_adopted"}
+        if grouped:
+            result["title_strategy"] = dict(title_strategy.DEFAULT)
+        return result
     families = value.get("families") or {}
     if not isinstance(families, dict):
         raise ValueError("Title Map families 必须是对象")
@@ -98,9 +134,10 @@ def validate_title_map(value: dict[str, Any], *, p0: bool = False,
                 or any(not isinstance(row, dict) for row in rows)):
             raise ValueError("当前 Title Map 必须包含对应的 article/publicity 家族及候选列表")
         normalized = validate_title_map({
-            "candidates": [{"title": row.get("title_text"), "angle": row.get("angle")} for row in rows],
+            "candidates": [{"title": row.get("title_text"), "angle": row.get("angle"),
+                            **({"style": row["style"]} if "style" in row else {})} for row in rows],
             "canonical_title_id": value.get("canonical_title_id"),
-        }, p0=p0, expected_count=expected_count)
+        }, p0=p0, expected_count=expected_count, expected_policy=expected_policy)
         if (set(value) - set(normalized) - {"publication"}
                 or any(value.get(key) != item for key, item in normalized.items())):
             raise ValueError("当前 Title Map 的顺序编号、家族副本、数量或推荐字段不一致")
@@ -145,19 +182,22 @@ def validate_title_map(value: dict[str, Any], *, p0: bool = False,
                                     else "model_selected_canonical_h1")}
 
 
-def title_review_input(title_result: dict, *, p0: bool, expected_count: int | None = None) -> dict:
+def title_review_input(title_result: dict, *, p0: bool, expected_count: int | None = None,
+                       expected_policy: dict | None = None) -> dict:
     """Neutral projection of original titles for editor comparison, never saved over them."""
-    source = validate_title_map(title_result, p0=p0, expected_count=expected_count)
+    source = validate_title_map(title_result, p0=p0, expected_count=expected_count, expected_policy=expected_policy)
     recommended = source.get("recommended_title_id") or source.get("canonical_title_id")
     options = source["options"]
     position = next(index for index, option in enumerate(options, 1) if option["title_id"] == recommended)
-    return {"candidates": [{"title": option["title_text"], "angle": option.get("angle") or "未标注"}
+    return {"candidates": [{"title": option["title_text"], "angle": option.get("angle") or "未标注",
+                            **({"style": option["style"]} if "style" in option else {})}
                            for option in options], "canonical_title_id": f"title_{position:02d}"}
 
 
 def validate_title_review_result(value: dict, title_result: dict, *, p0: bool,
-                                 expected_count: int | None = None) -> dict:
-    _validate_expected_count(expected_count)
+                                 expected_count: int | None = None,
+                                 expected_policy: dict | None = None) -> dict:
+    expected_count, expected_policy = _expected_contract(expected_count, expected_policy)
     if not isinstance(value, dict):
         raise ValueError("标题编辑结果必须是对象")
     required = {"outcome", "candidates", "canonical_title_id", "title_notes", "reason"}
@@ -175,9 +215,13 @@ def validate_title_review_result(value: dict, title_result: dict, *, p0: bool,
         raise ValueError("标题编辑 outcome 无效")
     if reason:
         raise ValueError("已完成标题编辑不填写未完成原因")
-    original = title_review_input(title_result, p0=p0, expected_count=expected_count)
+    original = title_review_input(title_result, p0=p0, expected_count=expected_count, expected_policy=expected_policy)
+    # Read-only callers also retain the original artifact's style contract.
+    review_policy = expected_policy
+    if review_policy is None and any("style" in row for row in original["candidates"]):
+        review_policy = title_strategy.DEFAULT
     reviewed = title_review_input({"candidates": value["candidates"], "canonical_title_id": value["canonical_title_id"]},
-                                  p0=p0, expected_count=len(original["candidates"]))
+                                  p0=p0, expected_count=len(original["candidates"]), expected_policy=review_policy)
     if outcome == "accepted" and (reviewed != original or notes):
         raise ValueError("标题原文通过须保留全部候选与推荐，且修改说明为空")
     if outcome == "revised" and (reviewed == original or not notes):
@@ -206,11 +250,12 @@ def body_only(markdown: str) -> str:
 
 
 def _legacy_publication(markdown: str, title_result: dict[str, Any], *, p0: bool,
-                        expected_count: int | None = None) -> tuple[str, dict, dict]:
+                        expected_count: int | None = None,
+                        expected_policy: dict | None = None) -> tuple[str, dict, dict]:
     """Read genuine 4.11.8 automatic-title publications without upgrading them."""
     if "candidates" in title_result or set(title_result.get("families", {})) & {"article", "publicity"}:
         raise ValueError("中性标题候选不能按历史自动采用标题合同发布")
-    title_map = validate_title_map(title_result, p0=p0, expected_count=expected_count)
+    title_map = validate_title_map(title_result, p0=p0, expected_count=expected_count, expected_policy=expected_policy)
     title_map["title_contract_version"] = LEGACY_TITLE_CONTRACT
     for option in title_map["options"]:
         option.pop("angle", None)  # 4.11.8 ignored optional angle metadata.
@@ -232,13 +277,15 @@ def _legacy_publication(markdown: str, title_result: dict[str, Any], *, p0: bool
 
 
 def publication(markdown: str, title_result: dict[str, Any], *, p0: bool,
-                title_review: dict | None = None, expected_count: int | None = None) -> tuple[str, dict, dict]:
+                title_review: dict | None = None, expected_count: int | None = None,
+                expected_policy: dict | None = None) -> tuple[str, dict, dict]:
     if title_review is not None:
-        validate_title_review_result(title_review, title_result, p0=p0, expected_count=expected_count)
+        validate_title_review_result(title_review, title_result, p0=p0, expected_count=expected_count,
+                                     expected_policy=expected_policy)
         if title_review["outcome"] == "incomplete":
             raise ValueError("标题编辑未完成，不能交付原候选")
     title_map = validate_title_map(title_review if title_review is not None else title_result,
-                                   p0=p0, expected_count=expected_count)
+                                   p0=p0, expected_count=expected_count, expected_policy=expected_policy)
     if "selected_title_id" in title_map:  # Historical family payload, new body-only delivery.
         title_map["recommended_title_id"] = title_map.pop("selected_title_id")
         title_map["recommended_title"] = title_map.pop("selected_title")
@@ -256,16 +303,17 @@ def publication(markdown: str, title_result: dict[str, Any], *, p0: bool,
 
 def verify_publication(markdown: str, title_result: dict, published: str,
                        binding: dict, *, p0: bool, title_review: dict | None = None,
-                       expected_count: int | None = None) -> dict:
+                       expected_count: int | None = None, expected_policy: dict | None = None) -> dict:
     contract = binding.get("contract")
     if contract == LEGACY_PUBLICATION_CONTRACT:
         if title_review is not None:
             raise ValueError("历史发布稿不能混入新的标题编辑结果")
         expected, title_map, expected_binding = _legacy_publication(markdown, title_result, p0=p0,
-                                                                    expected_count=expected_count)
+                                                                    expected_count=expected_count, expected_policy=expected_policy)
     elif contract == PUBLICATION_CONTRACT:
         expected, title_map, expected_binding = publication(markdown, title_result, p0=p0,
-                                                            title_review=title_review, expected_count=expected_count)
+                                                            title_review=title_review, expected_count=expected_count,
+                                                            expected_policy=expected_policy)
     else:
         raise ValueError("未知发布稿绑定合同")
     allowed = set(expected_binding) | {"finalized_result_file_sha256", "titles_result_file_sha256"}

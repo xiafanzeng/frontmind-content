@@ -22,7 +22,7 @@ from typing import Any, Iterable
 RELEASE_VERSION = "4.13.2"
 WORKFLOW_VERSION = "4.11"
 RELEASE_ROOT_NAME = "FrontMind_Content_Workflow_v4.13.2"
-FINAL_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Final_v16_2_Category_Titles.zip"
+FINAL_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Final_v16_3.zip"
 CANDIDATE_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Candidate.zip"
 CHECKSUM_NAME = FINAL_ZIP_NAME + ".sha256"
 REPORT_NAME = "acceptance-report-v4.13.2.md"
@@ -35,6 +35,14 @@ ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 # maintainers, while old package models, ledgers, scoring modules, tests and
 # work output cannot enter the v4.11 release projection.
 RELEASE_FILES = frozenset({
+    "shared/article_focus.py", "shared/fdnv2_guidance.py", "shared/industry_roundup.py",
+    "shared/p01_expression.py", "shared/p02_selection.py",
+    "shared/runtime_credentials.py", "shared/agents_runtime.py",
+    "scripts/tests_v411/test_fdnv2_focus_roundup.py",
+    "scripts/tests_v411/test_grouped_titles_v163.py",
+    "scripts/tests_v411/test_selection_expression_v163.py",
+    "scripts/tests_v411/test_p02_requirement_delivery_v163.py",
+    "scripts/tests_v411/test_industry_roundup_v164.py",
     "validation/title_logic_v16_2.json",
     "title_examples/v16_2/README.md", "title_examples/v16_2/manifest.json",
     "title_examples/v16_2/P01.json", "title_examples/v16_2/P02.json",

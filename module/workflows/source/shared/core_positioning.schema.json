@@ -256,6 +256,52 @@
                   "peer_example",
                   "excluded"
                 ]
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "objective_strength": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "relative": {
+                    "enum": [
+                      "self",
+                      "stronger",
+                      "peer",
+                      "weaker",
+                      "unknown"
+                    ]
+                  },
+                  "tier": {
+                    "type": "string"
+                  },
+                  "basis": {
+                    "type": "string"
+                  },
+                  "source_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "relative",
+                  "tier",
+                  "basis",
+                  "source_urls"
+                ]
+              },
+              "ai_visibility": {
+                "type": "object"
+              },
+              "dual_stronger": {
+                "type": "boolean"
               }
             }
           },

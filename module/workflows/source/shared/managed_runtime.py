@@ -21,6 +21,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 from typing import Any
+from .example_acquisition import AcquisitionError
 
 BASE_URL = "https://agent-api.bigmodel.cn/api/agent/managed"
 API_VERSION = "2026-05-26"
@@ -43,6 +44,31 @@ def _fail(code: str, message: str, *, action: str = ""):
 
 def digest(value: Any) -> str:
     return hashlib.sha256(_rt()._json(value).encode("utf-8")).hexdigest()
+
+
+def tool_failure(exc: Exception, secrets: list) -> dict:
+    """Bounded private diagnostic; public projection uses only the safe code."""
+    if isinstance(exc, AcquisitionError):
+        code = "non_public_address" if str(exc) == "web URL resolves to a non-public address" else "source_acquisition_failed"
+        message = "web URL resolves to a non-public address; HTTP and Reader share this URL safety check. Do not retry another method or URL variant." if code == "non_public_address" else _rt().redact(str(exc), secrets)[:1000]
+    else:
+        from .host_tools import ToolError
+        code = getattr(exc, "code", "invalid_tool_arguments") if isinstance(exc, ToolError) else "tool_request_rejected"
+        message = {"material_reference_missing": "Copy the exact artifact_id from list_materials or search_materials; never construct one from a filename.",
+                   "material_reference_ambiguous": "Copy one exact artifact_id from the material directory.",
+                   "material_boundary_rejected": "Material changed or is outside the registered boundary; re-register and confirm it.",
+                   "invalid_tool_arguments": "Correct the tool argument contract before trying again."}.get(code, "Tool request rejected; inspect private diagnostics.")
+    return {"error": code, "message": message}
+
+
+def deterministic_request_key(name: str, arguments: dict) -> str:
+    if name == "web_read":
+        value = {"url": str(arguments.get("url", "")).split("#", 1)[0].rstrip("/")}
+    elif name in {"read_material", "extract_document", "ocr"}:
+        value = {"artifact_id": arguments.get("artifact_id")}
+    else:
+        value = arguments
+    return digest({"tool": "material" if name in {"read_material", "extract_document", "ocr"} else name, "arguments": value})
 
 
 def custom_tools(definitions: list[dict]) -> list[dict]:
@@ -188,7 +214,7 @@ def _write(client, attempt: Path, state: dict, label: str, path: str, payload: d
 def read_history(client, session_id: str, existing: list[dict]) -> list[dict]:
     """Replay from the timestamp boundary; deduplicate by authoritative event ID."""
     known = {e["id"]: e for e in existing}
-    after = existing[-1].get("processed_at") if existing else None
+    after = next((e["processed_at"] for e in reversed(existing) if e.get("processed_at")), None)
     query: dict[str, Any] = {"order": "asc", "limit": 100}
     if after:
         query["created_at[gte]"] = after
@@ -199,14 +225,23 @@ def read_history(client, session_id: str, existing: list[dict]) -> list[dict]:
         if not isinstance(rows, list):
             raise _fail("managed_event_page_invalid", "托管历史事件页缺少 data 数组。")
         for event in rows:
-            if not isinstance(event, dict) or not event.get("processed_at") or not isinstance(event.get("type"), str):
-                raise _fail("managed_event_invalid", "托管事件缺少类型或处理时间。")
+            if not isinstance(event, dict) or not isinstance(event.get("type"), str):
+                raise _fail("managed_event_invalid", "托管事件缺少类型。")
+            # Queued user events may not have processed_at yet. The official
+            # history contract permits later snapshots to fill optional fields.
+            if not event.get("processed_at") and event["type"] not in {"user.message", "user.interrupt"}:
+                raise _fail("managed_event_invalid", "已处理的托管事件缺少处理时间。")
             eid = _identifier(event.get("id"), "事件")
             if "encrypted" in event:
                 raise _fail("managed_encrypted_event", "当前客户端未配置业务事件解密，不能把密文作为完整材料。")
             if eid in known:
-                if known[eid] != event:
-                    raise _fail("managed_event_changed", "同一托管事件标识返回了不同内容。")
+                old = known[eid]
+                for key, value in event.items():
+                    if value is None:
+                        continue
+                    if old.get(key) is not None and old[key] != value:
+                        raise _fail("managed_event_changed", "同一托管事件标识返回了不同内容。")
+                    old[key] = value
             else:
                 existing.append(event)
                 known[eid] = event
@@ -337,6 +372,10 @@ def run_managed_action(package_root: Path, job_root: Path, action: str, prompt: 
         raise _fail("production_transport_override", "生产模式不允许注入托管响应。", action=action)
     if offline and client is None:
         raise _fail("missing_offline_transport", "离线托管测试必须显式提供模拟服务器。", action=action)
+    if not offline:
+        from .runtime_credentials import proxy_enabled
+        if proxy_enabled():
+            raise _fail("managed_proxy_unsupported", "当前私有任务网关尚未支持智谱 Managed Agents；请使用本地直接接入。", action=action)
     profile = rt.profile_for(action)
     if profile.get("wire_api") != WIRE_API:
         raise _fail("managed_profile_invalid", "当前动作不是托管宿主路由。", action=action)
@@ -378,6 +417,9 @@ def run_managed_action(package_root: Path, job_root: Path, action: str, prompt: 
             if (record.get("error") or {}).get("code") in {"invalid_result_contract", "managed_duplicate_submission", "managed_tool_after_submission"}:
                 raise _fail("saved_submission_not_recoverable", "已完成提交存在内容或合同错误；需要修正上游输入，不能自动生成第二份终稿。", action=action)
             state = rt._read_json(attempt / "managed_state.json", {})
+            # Explicit recovery authorizes one new try after the cause was fixed.
+            # Saved error receipts remain unchanged and duplicate loops still stop.
+            state["deterministic_rejections"] = {}
             if rt._read_json(attempt / "request_plan.json") != plan:
                 raise _fail("managed_input_changed", "托管恢复输入与原请求不一致。", action=action)
             rt._restore_checkpoint(attempt, host_tools)
@@ -499,21 +541,28 @@ def run_managed_action(package_root: Path, job_root: Path, action: str, prompt: 
                                     business = rt._submission_result(arguments)
                                     try:
                                         rt._checked(validator, business, host_tools)
-                                    except Exception:
+                                    except Exception as exc:
                                         rt._atomic(attempt / "rejected_submission.json", business)
-                                        raise _fail("invalid_result_contract", "托管最终提交未通过当前内容合同；没有重复请求改稿。", action=action) from None
+                                        detail = rt.redact(str(exc), secrets)[:3000]
+                                        raise _fail("invalid_result_contract", "托管最终提交未通过当前内容合同；没有重复请求改稿：" + detail, action=action) from None
                                     state["submission"] = business
                                     tool_result = {"saved": True, "instruction": '只回复 {"submitted":true}，不要再调用工具。'}
                                     is_error = False
                                 else:
                                     if name not in {d["function"]["name"] for d in defs}:
                                         raise _fail("managed_unknown_tool", "托管会话请求了未声明工具。", action=action)
+                                    failure_key = deterministic_request_key(name, arguments)
+                                    rejected = state.setdefault("deterministic_rejections", {})
+                                    if failure_key in rejected:
+                                        raise _fail("deterministic_tool_repeat", "相同确定性工具错误再次出现；已停止，不重复执行。", action=action)
                                     try:
                                         tool_result = host_tools.execute(name, arguments)
                                         is_error = False
-                                    except Exception:
-                                        tool_result = {"error": "tool_request_rejected", "message": "工具参数或读取范围不符合本任务要求。"}
+                                    except Exception as exc:
+                                        tool_result = tool_failure(exc, secrets)
                                         is_error = True
+                                        if tool_result["error"] in {"non_public_address", "material_reference_missing", "material_reference_ambiguous", "material_boundary_rejected", "invalid_tool_arguments"}:
+                                            rejected[failure_key] = tool_result["error"]
                                 output = {"type": "user.custom_tool_result", "custom_tool_use_id": eid,
                                           "content": [{"type": "text", "text": rt._json(tool_result)}], "is_error": is_error}
                                 if any(k and k in rt._json(output) for k in secrets):

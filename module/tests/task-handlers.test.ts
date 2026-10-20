@@ -16,6 +16,12 @@ describe("content business handlers",()=>{
  it("rejects files outside the fixed request workspace",async()=>{
   await expect(freezeContentTaskContext({userId:7,enterpriseProjectId:"workspace",input:source,localAssetIds:["asset_answer"],loadKnowledge:async()=>null,loadOwnedFiles:async()=>[],workflow:()=>workflow})).rejects.toThrow("LOCAL_ASSET_NOT_FOUND");
  });
+ it("requires a v16.3 frozen workflow before creating an industry roundup",async()=>{
+  const input={...source,genre:"industry_roundup" as const,subjectScope:["合成测试品牌","竞品甲","竞品乙"],comparisonDimensions:["噪音","价格"]};
+  const args={userId:7,enterpriseProjectId:"workspace",input,localAssetIds:["asset_answer"],loadKnowledge:async()=>null,loadOwnedFiles:async()=>[{localAssetId:"asset_answer",filename:"answer.md"}]};
+  await expect(freezeContentTaskContext({...args,workflow:()=>workflow})).rejects.toThrow("INDUSTRY_ROUNDUP_REQUIRES_V16_3");
+  await expect(freezeContentTaskContext({...args,workflow:()=>({...workflow,version:"4.13.2-v16.3"})})).resolves.toMatchObject({contentProduction:{genre:"industry_roundup"},contentWorkflow:{version:"4.13.2-v16.3"}});
+ });
  it("requires the exact saved runner revision and allowed business confirmation",()=>{
   expect(()=>assertContentConfirmation({action:{kind:"confirm_competitors",revision:3},runnerRevision:4,availableActions:["confirm_competitors"]})).toThrow("CONTENT_PRODUCTION_CONFIRMATION_CONFLICT");
   expect(()=>assertContentConfirmation({action:{kind:"confirm_competitors",revision:4},runnerRevision:4,availableActions:["confirm_competitors"]})).not.toThrow();

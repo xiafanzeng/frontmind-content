@@ -6,4 +6,4 @@ import ModuleWorkspace from './App';
 
 // Local fixtures and live business components share exactly this entry.
 enableModuleFileTransport();
-createRoot(document.getElementById('root')!).render(<React.StrictMode><ModuleWorkspace preview={import.meta.env.DEV} /></React.StrictMode>);
+createRoot(document.getElementById('root')!).render(<React.StrictMode><ModuleWorkspace preview={import.meta.env.DEV&&!import.meta.env.VITE_LOCAL_WORKFLOW} localWorkflow={import.meta.env.DEV&&import.meta.env.VITE_LOCAL_WORKFLOW} /></React.StrictMode>);

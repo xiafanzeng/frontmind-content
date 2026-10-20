@@ -135,7 +135,7 @@ class LanguageEditorFlowTests(unittest.TestCase):
                 if action == 'article_repair': return {'article_markdown': self.repaired}
                 if action == 'article_polish': return review(structural=self.polish_incomplete, edits=self.polish_edits)
                 if action.endswith('_titles'):
-                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍'} for i in range(title_strategy.expected_count(wf.load_state(job)))],
+                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍', **({'style': title_strategy.STYLE_SEQUENCE[i]} if title_strategy.grouped(title_strategy.policy(wf.load_state(job))) else {})} for i in range(title_strategy.expected_count(wf.load_state(job)))],
                             'canonical_title_id': 'title_03'}
                 return fixture_builder()
             return original_ensure(job, action, prompt, fixture_builder=fixture)

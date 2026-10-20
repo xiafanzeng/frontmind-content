@@ -38,6 +38,7 @@ const runnerStateSchema = z.object({
     .nullable(),
   pending_action: z.object({ action: z.string().min(1).max(200) }).nullable(),
   flags: z.object({
+    article_fact_gate: z.object({issue_count:z.number().int().min(0).max(100000),publish_ready:z.boolean()}).optional(),
     p0_production_step: z
       .enum(["draft", "edit", "style", "finalize", "repair", "titles", "title_review", "deliver"])
       .optional(),
@@ -231,6 +232,9 @@ export function contentProductionPublicDto(
   const state = progress?.lastObservation.state ?? null;
   const parsed = contentProductionConfirmationSchema.safeParse(state?.status);
   const confirmation = parsed.success ? parsed.data : null;
+  const factRepair = state?.status === "running_article_production" &&
+    state.flags.article_production_step === "deliver" &&
+    state.pending_action?.action === "article_fact_repair";
   return {
     mode: context.contentProduction.mode,
     enterpriseName: context.contentProduction.enterpriseName,
@@ -252,12 +256,13 @@ export function contentProductionPublicDto(
       state?.flags.p0_production_step ??
       state?.flags.article_production_step ??
       null,
+    ...(factRepair ? {factGate:{issueCount:state?.flags.article_fact_gate?.issue_count ?? 0,categories:["请查看工作流校验结果"],publishReady:false}} : {}),
     confirmation,
     progressPosition: progress?.progressPosition ?? 0,
     completedConfirmations: progress?.completedConfirmations ?? [],
     availableActions: confirmation
       ? CONTENT_PRODUCTION_CONFIRMATION_ACTIONS[confirmation]
-      : [],
+      : factRepair ? ["repair_article_facts"] : [],
     knowledgeBase: context.knowledgeBase,
     source: state ? "runner_job_state" : "awaiting_runner",
   };

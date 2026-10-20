@@ -31,7 +31,19 @@ FORBIDDEN_FILES = {"job_state.json", "deepseek.json", "zhipu.json", "xty.json", 
 TITLE_REVIEW_ACTIONS = {"p0_title_review", "article_title_review"}
 
 class ToolError(ValueError):
-    pass
+    code = "invalid_tool_arguments"
+
+
+class MaterialReferenceError(ToolError):
+    code = "material_reference_missing"
+
+
+class MaterialAmbiguousError(MaterialReferenceError):
+    code = "material_reference_ambiguous"
+
+
+class MaterialBoundaryError(ToolError):
+    code = "material_boundary_rejected"
 
 
 class ToolOutcomeUnknown(ToolError):
@@ -152,7 +164,8 @@ class HostTools:
     def configure_for_prompt(self, prompt):
         """Bind available operations to this request, never mutable Job defaults."""
         from shared import title_strategy
-        self._category_title_body_only = self.action == "article_title_review" and title_strategy.matches(prompt)
+        self._title_strategy_policy = title_strategy.request_policy(prompt)
+        self._category_title_body_only = self.action == "article_title_review" and self._title_strategy_policy is not None
         from shared.writing_context_v14 import matches, selected_tools
         if not hasattr(self, "_original_definitions"):
             self._original_definitions = list(self.definitions)
@@ -673,7 +686,7 @@ class HostTools:
         scores.sort(key=lambda item: (-item[0], item[1]["path"], item[1]["artifact_id"]))
         return [self._compact_artifact(record) for unused, record in scores[:5]]
 
-    def resolve_artifact(self, ref):
+    def resolve_artifact(self, ref, *, canonical_only=False):
         if not isinstance(ref, str) or not ref or "\x00" in ref or "\\" in ref or ".." in PurePosixPath(ref).parts:
             raise ToolError("Use a canonical artifact_id or an exact registered Job-local path/title/filename; arbitrary filesystem paths are not allowed.")
         if PurePosixPath(ref).is_absolute():
@@ -691,19 +704,19 @@ class HostTools:
         record = self.artifacts.get(ref)
         if record is None:
             matches = [r for r in self.artifacts.values() if r["path"] == ref]
-            if not matches:
+            if not matches and not canonical_only:
                 matches = [r for r in self.artifacts.values() if r.get("title") == ref or PurePosixPath(r["path"]).name == ref]
             if len(matches) > 1:
                 candidates = [self._compact_artifact(r) for r in sorted(matches, key=lambda r: (r["path"],r["artifact_id"]))[:5]]
-                raise ToolError("Reference is ambiguous; no source was read. Copy one canonical artifact_id from candidates: " + json.dumps(candidates, ensure_ascii=False) + ("; use search_materials to narrow further." if len(matches)>5 else ""))
+                raise MaterialAmbiguousError("Reference is ambiguous; no source was read. Copy one canonical artifact_id from candidates: " + json.dumps(candidates, ensure_ascii=False) + ("; use search_materials to narrow further." if len(matches)>5 else ""))
             record = matches[0] if matches else None
         if not record:
             candidates = self._reference_candidates(ref)
             hint = " Copy the exact artifact_id shown; never build one from a filename hash. Use search_materials with distinctive words or list_materials."
-            raise ToolError("Unknown registered source; no source was read." + hint + (" Advisory candidates: " + json.dumps(candidates, ensure_ascii=False) if candidates else ""))
+            raise MaterialReferenceError("Unknown registered source; no source was read." + hint + (" Advisory candidates: " + json.dumps(candidates, ensure_ascii=False) if candidates else ""))
         path = self._artifact_path(record)
         if not self._allowed_file(path) or _hash_file(path) != record["sha256"]:
-            raise ToolError("registered artifact changed or escaped material boundaries")
+            raise MaterialBoundaryError("registered artifact changed or escaped material boundaries")
         return record
 
     def _artifact_path(self, record):
@@ -947,7 +960,7 @@ class HostTools:
             offset, limit = arguments.get("offset", 0), arguments.get("limit", 25)
             if not isinstance(offset, int) or offset < 0 or not isinstance(limit, int) or not 1 <= limit <= 100:
                 raise ToolError("invalid inventory pagination")
-            payload = {"artifacts": [self._compact_artifact(row) for row in rows[offset:offset+limit]], "total": len(rows), "next_offset": offset+limit if offset+limit < len(rows) else None, "required_artifacts": sorted(self._required), "reference_help": "Copy artifact_id/path exactly; unique exact title/filename also works. Do not derive IDs from hashes."}
+            payload = {"artifacts": [self._compact_artifact(row) for row in rows[offset:offset+limit]], "total": len(rows), "next_offset": offset+limit if offset+limit < len(rows) else None, "required_artifacts": sorted(self._required), "reference_help": "Copy artifact_id or registered path exactly. Do not derive IDs from filenames or hashes."}
             # Local fix 2026-09-21: category is an exact label; guessing one that
             # does not exist used to return a silent empty list. Point the model
             # at the categories that actually exist in this action.
