@@ -81,7 +81,10 @@ def load(job):
 def bind_blueprint(job, value):
     prepared = load(job)
     # The model owns the formal outline, never a second selection of facts.
-    return {**value, **{key: prepared[key] for key in FIELDS}}
+    bound = {**value, **{key: prepared[key] for key in FIELDS}}
+    if "fact_claims" in prepared:
+        bound["fact_claims"] = prepared["fact_claims"]
+    return bound
 
 
 def fixture():

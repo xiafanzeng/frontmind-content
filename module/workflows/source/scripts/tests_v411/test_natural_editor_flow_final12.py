@@ -57,7 +57,11 @@ class NaturalEditorFlowTests(unittest.TestCase):
                 if action.endswith('_repair'):
                     return {'article_markdown': self.repaired}
                 if action.endswith('_titles'):
-                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍'} for i in range(title_strategy.expected_count(wf.load_state(job)))],
+                    state = wf.load_state(job)
+                    grouped = title_strategy.grouped(title_strategy.policy(state))
+                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍',
+                                            **({'style': title_strategy.STYLE_SEQUENCE[i]} if grouped else {})}
+                                           for i in range(title_strategy.expected_count(state))],
                             'canonical_title_id': 'title_03'}
                 return fixture_builder()
             return original_ensure(job, action, prompt, fixture_builder=fixture)
@@ -80,6 +84,8 @@ class NaturalEditorFlowTests(unittest.TestCase):
         state['metadata'].pop('writing_mission_input_mode', None)
         state['metadata'].pop('natural_prose_contract', None)
         state['metadata'].pop('title_strategy', None)
+        state['metadata'].pop('p01_expression_policy', None)
+        state['metadata'].pop('p02_selection_policy', None)
         state.update(status='running_'+prefix+'_production', stage='production', selected_pattern_id='P00' if prefix=='p0' else 'P02',
                      selected_example_route='default', question={'question_text': '本题相关机构有哪些？'})
         pack = job/'00_input/reference_pack.zip';pack.write_text('offline fixture pack')

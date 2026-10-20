@@ -2,10 +2,11 @@ import {useCallback,useEffect,useRef,useState,type CSSProperties} from "react";
 import {Check,ChevronDown,FileText,Loader2,Plus,RefreshCw,Sparkles,X} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
 import {useContentWorkspaceHost,type TaskResponse} from "./host";
-import type {ContentProductionDto,ContentProductionInput,ContentProductionJobKind,ContentProductionMode} from "../contracts/content-production";
+import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput,type ContentProductionJobKind,type ContentProductionMode} from "../contracts/content-production";
 import ContentProductionConfirmation from "./ContentProductionConfirmation";
 import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionTaskTitle} from "../contracts/content-production-public";
 import "./content-production.css";
+import "./content-workbench.css";
 const contentTheme = {"--module-accent":"#8a6100","--module-color":"#8a6100"} as CSSProperties;
 export const CONTENT_MODES: {
   value: ContentProductionMode;
@@ -97,7 +98,7 @@ export function contentProductionLane(
         detail: "确认结构、材料与已有文章的编辑方案",
         position: 10,
       },
-      { title: "正文与编辑", detail: "完成品牌文章和 20 个标题", position: 11 },
+      { title: "正文与编辑", detail: "完成品牌文章与候选标题", position: 11 },
       {
         title: "交付品牌文章与资料包",
         detail: "正文文档、网页和新版品牌资料包",
@@ -129,7 +130,7 @@ export function contentProductionLane(
     },
     {
       title: "正文与最终交付",
-      detail: "正文、编辑、20 个标题、文档和网页",
+      detail: "正文、编辑、候选标题与交付文件",
       position: 19,
     },
   ];
@@ -177,7 +178,7 @@ function ContentProductionInner({
   workbench?: boolean;
   projectId?: string;
 }) {
-  const {useConversation,useSendMessage,captureWorkspaceRestOperation,retrieveTask,useWorkspaceDraftGuard,requestWorkspaceNavigation,Home,FilePreview,AgentWorkbenchShell,BusinessWorkspaceInspector,WorkbenchTaskToolbar,connections} = useContentWorkspaceHost();
+  const {useConversation,useSendMessage,captureWorkspaceRestOperation,retrieveTask,useWorkspaceDraftGuard,requestWorkspaceNavigation,Home,FilePreview,AgentWorkbenchShell,WorkbenchTaskToolbar,connections} = useContentWorkspaceHost();
   const currentStandaloneModule = () => !connections?.publishedKnowledge;
   const {
     state,
@@ -189,6 +190,7 @@ function ContentProductionInner({
   } = useConversation();
   const { sendMessage } = useSendMessage();
   const [showCreate, setShowCreate] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
   const taskCenterTrigger = useRef<HTMLElement | null>(null);
   const [taskCenterTab, setTaskCenterTab] = useState<"new" | "existing">("new");
   const [mode, setMode] = useState<ContentProductionMode | null>(null);
@@ -198,6 +200,13 @@ function ContentProductionInner({
   );
   const [questionId, setQuestionId] = useState("");
   const [question, setQuestion] = useState("");
+  const [genre, setGenre] = useState<"default"|"industry_roundup">("default");
+  const [subjects, setSubjects] = useState("");
+  const [articleFocus, setArticleFocus] = useState("");
+  const [readerQuestions, setReaderQuestions] = useState("");
+  const [excludedTopics, setExcludedTopics] = useState("");
+  const [comparisonDimensions, setComparisonDimensions] = useState("");
+  const [rejectedClaimIds, setRejectedClaimIds] = useState("");
   const [materials, setMaterials] = useState<File[]>([]);
   const [handoffName, setHandoffName] = useState("");
   const [handoffFile, setHandoffFile] = useState<File | null>(null);
@@ -228,6 +237,7 @@ function ContentProductionInner({
   const [notice, setNotice] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [confirmationPending, setConfirmationPending] = useState(false);
+  const [acceptedConfirmation, setAcceptedConfirmation] = useState<string | null>(null);
   const currentId = useRef(activeConversation?.id);
   const refreshSequence = useRef(0);
   const readController = useRef<AbortController | null>(null);
@@ -264,9 +274,13 @@ function ContentProductionInner({
       enterpriseName.trim() ||
       question.trim() ||
       questionId.trim() ||
+      genre !== "default" || subjects.trim() ||
+      articleFocus.trim() || readerQuestions.trim() ||
+      excludedTopics.trim() || comparisonDimensions.trim() ||
       materials.length,
   );
   useWorkspaceDraftGuard({ dirty: createDirty, label: "新建内容任务" });
+  useWorkspaceDraftGuard({dirty: Boolean(rejectedClaimIds.trim()), label: "待提交的事实修复说明"});
   useWorkspaceDraftGuard({
     dirty: Boolean(pendingStart) || handoffPending,
     label: "内容任务正在提交",
@@ -306,6 +320,9 @@ function ContentProductionInner({
         )
           throw new Error("任务状态与当前内容任务不匹配，请重新读取。");
         setTaskRead({ conversationId, task: result });
+        // Acceptance can precede a CLI failure; the original pause is retryable.
+        if (["error", "failed", "cancelled"].includes(result.status))
+          setAcceptedConfirmation(null);
         setNotice("");
       }
     } catch (error) {
@@ -332,6 +349,8 @@ function ContentProductionInner({
     setNotice("");
     setSelectedPack("");
     setConfirmationPending(false);
+    setAcceptedConfirmation(null);
+    setRejectedClaimIds("");
     return () => {
       readController.current?.abort();
       handoffController.current?.abort();
@@ -343,6 +362,7 @@ function ContentProductionInner({
     refresh,
     activeConversation?.status,
     activeConversation?.messages.length,
+    activeConversation?.updatedAt,
   ]);
   useEffect(() => {
     if (
@@ -413,6 +433,12 @@ function ContentProductionInner({
     setKnowledgeSource(currentStandaloneModule() ? "files" : "published");
     setQuestionId("");
     setQuestion("");
+    setGenre("default");
+    setSubjects("");
+    setArticleFocus("");
+    setReaderQuestions("");
+    setExcludedTopics("");
+    setComparisonDimensions("");
     setMaterials([]);
     setHandoffName("");
     setHandoffFile(null);
@@ -445,6 +471,18 @@ function ContentProductionInner({
       setNotice("请选择需要更新的已有品牌资料包。");
       return;
     }
+    const subjectScope = subjects.split(/\r?\n/u).map((item)=>item.trim()).filter(Boolean);
+    const questions = readerQuestions.split(/\r?\n/u).map((item)=>item.trim()).filter(Boolean);
+    const exclusions = excludedTopics.split(/\r?\n/u).map((item)=>item.trim()).filter(Boolean);
+    const dimensions = comparisonDimensions.split(/\r?\n/u).map((item)=>item.trim()).filter(Boolean);
+    if (mode === "single_article" && genre === "industry_roundup" && (subjectScope.length < 3 || subjectScope.length > 12 || subjectScope[0]?.toLocaleLowerCase() !== name.toLocaleLowerCase() || new Set(subjectScope.map((item)=>item.toLocaleLowerCase())).size !== subjectScope.length)) {
+      setNotice("行业盘点请每行填写一个品牌，共 3—12 个；第一行写本次企业，品牌不能重复。");
+      return;
+    }
+    if (mode === "single_article" && genre === "industry_roundup" && (dimensions.length < 2 || dimensions.length > 8 || new Set(dimensions.map((item)=>item.toLocaleLowerCase())).size !== dimensions.length)) {
+      setNotice("行业盘点请填写 2—8 个不重复的共同对比维度。");
+      return;
+    }
     startLocked.current = true;
     const config: ContentProductionInput = {
       mode,
@@ -455,6 +493,11 @@ function ContentProductionInner({
         ? {
             question: question.trim(),
             ...(questionId.trim() ? { questionId: questionId.trim() } : {}),
+            genre,...(genre === "industry_roundup" ? {subjectScope} : {}),
+            ...(articleFocus.trim() ? {articleFocus: articleFocus.trim()} : {}),
+            ...(questions.length ? {readerQuestions: questions} : {}),
+            ...(exclusions.length ? {excludedTopics: exclusions} : {}),
+            ...(genre === "industry_roundup" ? {comparisonDimensions: dimensions} : {}),
           }
         : {}),
     };
@@ -473,6 +516,11 @@ function ContentProductionInner({
       mode === "single_article" &&
         questionId.trim() &&
         `问题编号：${questionId.trim()}`,
+      mode === "single_article" && genre === "industry_roundup" && `文体：行业盘点；主体顺序：${subjectScope.join("、")}`,
+      mode === "single_article" && articleFocus.trim() && `本篇聚焦：${articleFocus.trim()}`,
+      mode === "single_article" && questions.length > 0 && `需回答的问题：${questions.join("；")}`,
+      mode === "single_article" && exclusions.length > 0 && `不展开：${exclusions.join("；")}`,
+      mode === "single_article" && genre === "industry_roundup" && `共同对比维度：${dimensions.join("、")}`,
       materials.length > 0 && `附件：${fileList(materials)}`,
       "请按内容制作流程开始，在需要我确认的内容阶段展示结果。",
     ]
@@ -497,7 +545,9 @@ function ContentProductionInner({
     }
   }
   const steps = contentProductionLane(activeMode, progress?.jobKind);
-  const position = progress?.progressPosition ?? 0;
+  const position = progress
+    ? contentProductionStagePosition(progress.currentStage, progress.workflowStatus)
+    : 0;
   const finished = contentProductionFinished(progress);
   const packFinished =
     finished &&
@@ -508,7 +558,7 @@ function ContentProductionInner({
   const convertedToPack =
     packFinished &&
     !["new_reference_pack", "refresh_reference_pack"].includes(activeMode);
-  const turnFailed = ["error", "failed"].includes(
+  const turnFailed = ["error", "failed", "cancelled"].includes(
     task?.status ?? activeConversation?.status ?? "",
   );
   const currentStep =
@@ -522,6 +572,8 @@ function ContentProductionInner({
     ? taskId
       ? "任务信息待读取"
       : "尚未开始"
+    : (task?.status??activeConversation?.status)==="cancelled"
+      ? "本轮已取消"
     : turnFailed
       ? "本轮执行失败"
       : progress?.confirmation
@@ -737,6 +789,28 @@ function ContentProductionInner({
                     placeholder="已有资料包中的问题编号；没有可留空"
                   />
                 </label>
+                <><label className="cp-field">
+                  文章文体
+                  <select value={genre} onChange={(event)=>setGenre(event.target.value as "default"|"industry_roundup")}>
+                    <option value="default">默认问题文章</option>
+                    <option value="industry_roundup">行业盘点（横向选购）</option>
+                  </select>
+                </label><label className="cp-field">
+                  本篇聚焦的细分主题或功能（可选）
+                  <input maxLength={300} value={articleFocus} onChange={(event)=>setArticleFocus(event.target.value)} placeholder="例如：高速吹风机的温控和噪音，不写全部个护产品" />
+                </label><label className="cp-field">
+                  要回答的读者问题（每行一个，可选）
+                  <textarea rows={3} value={readerQuestions} onChange={(event)=>setReaderQuestions(event.target.value)} placeholder="例如：不同温控方式有什么区别？" />
+                </label><label className="cp-field">
+                  本篇不展开的内容（每行一个，可选）
+                  <textarea rows={2} value={excludedTopics} onChange={(event)=>setExcludedTopics(event.target.value)} placeholder="例如：剃须刀和电动牙刷" />
+                </label>{genre === "industry_roundup" && <><label className="cp-field">
+                  对比品牌（每行一个，第一行须为本次企业；共 3—12 个）
+                  <textarea rows={5} value={subjects} onChange={(event)=>setSubjects(event.target.value)} placeholder={`例如：\n${enterpriseName || "本次企业"}\n竞品甲\n竞品乙`}/>
+                </label><label className="cp-field">
+                  共同对比维度（每行一个，2—8 个）
+                  <textarea rows={4} value={comparisonDimensions} onChange={(event)=>setComparisonDimensions(event.target.value)} placeholder="例如：\n转速\n温控\n噪音\n价格" />
+                </label></>}</>
               </>
             )}
             {notice && (
@@ -767,10 +841,14 @@ function ContentProductionInner({
   );
   const showResult = Boolean(activeConversation);
   const confirmationConversation = activeConversation;
+  const confirmationKey = confirmationConversation && progress?.confirmation
+    ? `${confirmationConversation.id}:${taskId}:${progress.runnerRevision}:${progress.confirmation}`
+    : null;
   const confirmationView =
-    confirmationConversation && progress ? (
+    confirmationConversation && progress?.confirmation && progress.availableActions.length > 0 &&
+    !busy && !["running", "pending"].includes(task?.status ?? "") && acceptedConfirmation !== confirmationKey ? (
       <ContentProductionConfirmation
-        key={`${confirmationConversation.id}:${progress.runnerRevision}:${progress.confirmation}`}
+        key={confirmationKey}
         progress={progress}
         busy={busy}
         onPendingChange={setConfirmationPending}
@@ -784,6 +862,11 @@ function ContentProductionInner({
           });
           if (accepted === false)
             throw new Error("本轮提交尚未确认成功，请查看任务回复中的提示。");
+          if (currentId.current === id) {
+            // Do not reopen the consumed pause while an older snapshot is still visible.
+            setAcceptedConfirmation(confirmationKey);
+            await refresh();
+          }
         }}
         onNotice={setNotice}
       />
@@ -795,8 +878,8 @@ function ContentProductionInner({
             className={`cp-results-heading ${workbench ? "cp-results-heading--agent" : ""}`}
           >
             <div>
-              <strong>任务成果</strong>
-              <span>阶段确认与交付文件</span>
+              <strong>制作档案</strong>
+              <span>阶段进度与交付文件</span>
             </div>
             <button
               aria-label="刷新制作阶段"
@@ -812,9 +895,30 @@ function ContentProductionInner({
             </button>
           </header>
           <div className="cp-results-scroll">
+            {progress?.factGate && !progress.factGate.publishReady && <section className="cp-handoff" role="alert">
+              <strong>事实校验未通过{progress.factGate.issueCount > 0 ? `：${progress.factGate.issueCount} 项` : ""}</strong>
+              <p>{progress.factGate.categories.join("、")}。原稿和校验结果均已保存；返工会从全文编辑阶段重新运行。</p>
+              <label className="cp-field">否决的事实编号（可选，逗号分隔，例如 F01,F03）
+                <input value={rejectedClaimIds} onChange={(event)=>setRejectedClaimIds(event.target.value)} placeholder="留空则只按校验问题返工"/>
+              </label>
+              <button className="cp-primary" disabled={busy || confirmationPending || progress.runnerRevision == null || !progress.availableActions.includes("repair_article_facts")} onClick={async()=>{
+                if (startLocked.current) return;
+                const ids=[...new Set(rejectedClaimIds.split(/[,，\s]+/u).map((item)=>item.trim()).filter(Boolean))];
+                if(ids.some((id)=>!/^F\d{2,4}$/u.test(id))){setNotice("事实编号须为 F01 这样的格式。");return;}
+                if(ids.length>100){setNotice("一次最多否决 100 条事实。");return;}
+                const conversationId=currentId.current;
+                startLocked.current=true;setConfirmationPending(true);setNotice("");
+                try {
+                  const accepted=await sendMessage("按事实校验结果返工",[],{contentProductionAction:{kind:"repair_article_facts",revision:progress.runnerRevision!,rejectedClaimIds:ids}});
+                  if(currentId.current===conversationId && accepted!==false){setRejectedClaimIds("");await refresh();}
+                } catch(error) {
+                  if(currentId.current===conversationId)setNotice(error instanceof Error?error.message:"事实修复提交失败，请重试。");
+                } finally {startLocked.current=false;if(currentId.current===conversationId)setConfirmationPending(false);}
+              }}>从编辑阶段返工</button>
+            </section>}
             <details
               className="cp-progress"
-              open={!progress?.confirmation && !finished}
+              open={!finished}
             >
               <summary>
                 制作进度 <span>{statusLabel}</span>
@@ -847,7 +951,7 @@ function ContentProductionInner({
                 </ol>
               )}
             </details>
-          {confirmationView}
+          {!workbench && confirmationView}
             {handoffAvailable && (
               <section className="cp-handoff">
                 <strong>
@@ -914,7 +1018,7 @@ function ContentProductionInner({
                 )}
               </section>
             )}
-            {!workbench && (
+            {
               <section className="cp-deliverables">
                 <header>
                   <strong>交付文件</strong>
@@ -941,7 +1045,7 @@ function ContentProductionInner({
                   </p>
                 )}
               </section>
-            )}
+            }
           </div>
         </aside>
     </div>
@@ -975,7 +1079,7 @@ function ContentProductionInner({
               </div>
             </details>
           )}
-          <div className="cp-chat">
+          <div className="cp-chat" id="cp-conversation-panel">
             <Home
               key={activeConversation.id}
               embedded
@@ -991,7 +1095,7 @@ function ContentProductionInner({
               purpose="content_production"
               contentProduction={input}
               standardWelcomeVariant="simple"
-              conversationFooter={workbench ? confirmationView : undefined}
+              conversationFooter={workbench && confirmationView ? <details className="cp-confirmation-disclosure"><summary><span>写作下一步</span><strong>{statusLabel}</strong><ChevronDown size={16}/></summary>{confirmationView}</details> : undefined}
             />
           </div>
         </>
@@ -1001,10 +1105,11 @@ function ContentProductionInner({
             <h2>
               {state.conversations.length
                 ? "继续一个内容任务"
-                : "开始第一个内容任务"}
+                : "把品牌资料，写成好文章"}
             </h2>
-            <p>新建任务选择交付目标并补充材料；已有任务保留全部过程与交付物。</p>
+            <p>从一个真实问题出发，研究资料、确认写作方案，再一起打磨正文。</p>
           </div>
+          <div className="cp-entry-route" aria-label="内容制作流程"><span>明确任务</span><span>研究选材</span><span>确认方案</span><span>写作修改</span><span>交付稿件</span></div>
           <div className="cp-entry-actions">
             <button
               type="button"
@@ -1077,6 +1182,8 @@ function ContentProductionInner({
                     {contentProductionTaskTitle(conversation.title)}
                     {["running", "pending"].includes(conversation.status)
                       ? " · 执行中"
+                      : conversation.status==="cancelled"
+                        ? " · 本轮已取消"
                       : ["error", "failed"].includes(conversation.status)
                         ? " · 本轮失败"
                         : ""}
@@ -1139,63 +1246,15 @@ function ContentProductionInner({
             <div
               className={`cp-main-flow ${activeConversation ? "has-conversation" : ""}`}
             >
-              <>{conversationView}</>
+              {activeConversation && <header className="cp-task-overview">
+                <div className="cp-task-overview-title"><div><span className="cp-task-eyebrow">{modeLabel ?? "内容制作任务"}</span><h2>{progress?.enterpriseName || contentProductionTaskTitle(activeConversation.title)}</h2></div><span className={`cp-status ${turnFailed ? "is-error" : ""}`}>{statusLabel}</span></div>
+                <p>{progress?.pauseTitle || (modeKnown ? steps[currentStep]?.detail : "正在读取本次任务的制作进度与成果。")}</p>
+                <button type="button" className="cp-mobile-files" onClick={() => setShowFiles(true)}>制作档案 <FileText size={14}/></button>
+              </header>}
+              {conversationView}
             </div>
           }
-          auxiliary={
-            <div className="workbench-task-panel">
-                <BusinessWorkspaceInspector
-                  summary={{
-                    status: statusLabel,
-                    items: modeKnown
-                      ? [
-                          { label: "任务类型", value: modeLabel ?? "尚未选择" },
-                          {
-                            label: "知识来源",
-                            value: progress?.knowledgeBase
-                              ? `知识库 v${progress.knowledgeBase.version}`
-                              : input?.knowledgeSource === "files"
-                                ? "上传材料"
-                                : "开始任务时确定",
-                          },
-                        ]
-                      : [],
-                    outputs: deliverables.map((file) => ({
-                      id: file.fileUrl,
-                      title: contentProductionArtifactName(file.fileName),
-                      type: "交付文件",
-                      status: "已交付",
-                      onOpen: () => {
-                        for (const message of activeConversation?.messages ??
-                          []) {
-                          const index =
-                            message.outputFiles?.findIndex(
-                              (item) => item.fileUrl === file.fileUrl,
-                            ) ?? -1;
-                          if (index >= 0) {
-                            const node = Array.from(
-                              document.querySelectorAll<HTMLElement>(
-                                "[data-workbench-output-key]",
-                              ),
-                            ).find(
-                              (item) =>
-                                item.dataset.workbenchOutputKey ===
-                                `${message.id}:${index}`,
-                            );
-                            node?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "center",
-                            });
-                            node?.click();
-                            break;
-                          }
-                        }
-                      },
-                    })),
-                  }}
-                />
-            </div>
-          }
+          auxiliary={resultView}
           resultKey={activeConversation?.id ?? "empty"}
           status={statusLabel}
         />
@@ -1205,6 +1264,13 @@ function ContentProductionInner({
           {resultView}
         </div>
       )}
+      <Dialog open={showFiles} onOpenChange={setShowFiles}>
+        <DialogContent className="cp-mobile-files-dialog" style={contentTheme}>
+          <DialogTitle>制作进度与交付文件</DialogTitle>
+          <DialogDescription>查看当前阶段与可用成果。</DialogDescription>
+          {resultView}
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={showCreate}
         onOpenChange={(open) => {

@@ -215,7 +215,7 @@ def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
             lambda v: (brand_stage.validate_style(v, edited["article_markdown"], state=state) if new_brand_chain else contracts.validate_style_result(v, edited["article_markdown"])), offline=offline)] if styled_chain else []),
         *([_verified_action(wf, job, prefix + "_finalize", local_file(job, f"production/{prefix}_editorial_review.json"), review_validator, offline=offline)] if natural_editor.enabled(state) else
           [_verified_action(wf, job, prefix + "_finalize", final_path, lambda v: (brand_stage.validate_final(v, candidate, state=state) if new_brand_chain else contracts.validate_finalize_result(v, candidate, require_quality_review=p0 and p0_style.is_deep(state))), offline=offline)]),
-        _verified_action(wf, job, prefix + "_titles", local_file(job, f"production/{prefix}_titles.json"), lambda v: (wf.validate_title_map(v, p0=p0, legacy=True, expected_count=title_strategy.expected_count(state)), v)[1], offline=offline),
+        _verified_action(wf, job, prefix + "_titles", local_file(job, f"production/{prefix}_titles.json"), lambda v: (wf.validate_title_map(v, p0=p0, legacy=True, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state)), v)[1], offline=offline),
     ]
     from . import editorial_preparation
     if editorial_preparation.enabled(state, p0=p0):
@@ -275,11 +275,11 @@ def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
             review_path = local_file(job, f"production/{prefix}_title_review.json")
             title_review = wf.read_json(review_path)
             actions.append(_verified_action(wf, job, prefix + "_title_review", review_path,
-                lambda v: title_publication.validate_title_review_result(v, title_result, p0=p0, expected_count=title_strategy.expected_count(state)), offline=offline))
+                lambda v: title_publication.validate_title_review_result(v, title_result, p0=p0, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state)), offline=offline))
             if publication_source.get("title_review_result_file_sha256") != file_hash(review_path):
                 raise ValueError("已完成稿的标题编辑结果文件与交付绑定不一致")
         expected_map = title_publication.verify_publication(final["article_markdown"], title_result, published,
-                                                            publication_source, p0=p0, title_review=title_review, expected_count=title_strategy.expected_count(state))
+                                                            publication_source, p0=p0, title_review=title_review, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state))
         for name in ("finalized", "titles"):
             if publication_source.get(name + "_result_file_sha256") != file_hash(local_file(job, f"production/{prefix}_{name}.json")):
                 raise ValueError("发布来源与模型结果文件不一致")

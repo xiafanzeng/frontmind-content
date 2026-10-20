@@ -1,0 +1,28 @@
+/* Quiet chronological notes share the reading column with user and final reply. */
+.cp-process { --cp-process-gap:9px; margin:16px 0 2px; color:var(--cp-muted,#677587); font-size:13px; line-height:1.7; min-width:0; }
+.cp-process-status { display:flex; align-items:center; gap:6px; margin-bottom:9px; font-size:11px; }
+.cp-process-stream { list-style:none; margin:0; padding:0; }
+.cp-process-stream li,.cp-process-activity { display:flex; align-items:flex-start; gap:var(--cp-process-gap); padding:6px 0; overflow-wrap:anywhere; }
+.cp-process-stream li[hidden] { display:none; }
+.cp-process-stream li>svg,.cp-process-activity>svg:first-child { flex:none; margin-top:3px; }
+.cp-process-activity { margin-bottom:0; font-size:inherit; }
+.cp-process-activity>.cp-process-spinner { flex:none; align-self:center; }
+.cp-process-stream li>div { flex:1; min-width:0; }
+.cp-process-stream li span { color:var(--cp-ink,#263447); }
+.cp-process-stream li p { margin:3px 0 0; }
+.cp-process-stream li.is-failed,.cp-process.is-failed .cp-process-status,.cp-process-reason { color:#984f37; }
+.cp-process-toggle { display:flex; align-items:center; gap:5px; padding:5px 0 0 24px; border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; font-size:11px; }
+.cp-process-toggle>svg { transition:transform .15s; }
+.cp-process-toggle>svg.is-open { transform:rotate(180deg); }
+.cp-process-toggle:focus-visible { outline:2px solid var(--cp-primary,#8a6100); outline-offset:4px; }
+.cp-process-empty { margin:4px 0; }
+.cp-process-reason,.cp-process-recovery { margin:4px 0 4px 24px; overflow-wrap:anywhere; }
+.cp-process-recovery { color:#227b68; }
+.cp-process-spinner { animation:cp-process-spin 1.3s linear infinite; color:var(--cp-primary,#8a6100); }
+@keyframes cp-process-spin { to { transform:rotate(360deg); } }
+@media(prefers-reduced-motion:reduce) { .cp-process-spinner { animation:none; } .cp-process-toggle>svg { transition:none; } }
+@media(max-width:480px) { .cp-process { margin-top:12px; --cp-process-gap:7px; } }
+
+.cp-process-stream li.is-thinking span { color:var(--cp-muted,#677587); }
+.cp-process-row-state { display:inline-block; margin-left:8px; color:var(--cp-muted,#677587); font-size:10px; white-space:nowrap; }
+.cp-process-stream li.is-failed .cp-process-row-state { color:#984f37; }

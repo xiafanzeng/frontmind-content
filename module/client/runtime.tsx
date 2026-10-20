@@ -1,15 +1,17 @@
-import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
 import {generalExecutionSlots} from "@frontmind/module-ui/lib/general-execution-display";
 import {GeneralExecutionActivity} from "@frontmind/module-ui/components/GeneralExecutionActivity";
+import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
+import {mergeConversationProcesses} from "../contracts/conversation-process";
+import ConversationExecutionProcess from "./ConversationExecutionProcess";
 import BusinessChatInput from "@frontmind/module-ui/components/BusinessChatInput";
 import type { BusinessComposerRuntime } from "@frontmind/module-ui/components/business-composer-runtime";
 import type { ContentProductionInput } from "../contracts/content-production";
-import BusinessMessage from "@frontmind/module-ui/components/BusinessMessage";
+import BusinessMessage, {type BusinessMessageRuntime} from "@frontmind/module-ui/components/BusinessMessage";
 import FilePreview from "@frontmind/module-ui/components/FilePreview";
 import {AgentWorkbenchShell} from "@frontmind/module-ui/components/AgentWorkbenchShell";
 import {WorkbenchTaskToolbar as SharedWorkbenchTaskToolbar} from "@frontmind/module-ui/dashboard/WorkbenchTaskToolbar";
 import {BusinessWorkspaceInspector} from "@frontmind/module-ui/dashboard/BusinessWorkspaceInspector";
-import {createContext,useCallback,useContext,useEffect,useRef,useState,type ReactNode} from "react";
+import {createContext,useCallback,useContext,useEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import {ContentWorkspaceHostProvider,type ContentConversation,type ContentConversationApi,type ContentHomeProps,type ContentSendOptions,type ContentWorkspaceHost,type TaskResponse} from "./host";
 import ContentProductionWorkspace from "./ContentProductionWorkspace";
 export type ModuleContext={module:string;workspace:{id:string;ownerUserId:number};marketEdition:string;capabilities:string[]};
@@ -35,17 +37,19 @@ const RuntimeContext=createContext<Runtime|null>(null);
 function useRuntime(){const value=useContext(RuntimeContext);if(!value)throw new Error("Content runtime missing");return value;}
 function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessClient;children:ReactNode;workspaceId:string}) {
  const [conversations,setConversations]=useState<ContentConversation[]>([]),[activeId,setActiveId]=useState<string|null>(null),[hydrated,setHydrated]=useState(false),[notice,setNotice]=useState("");
- const items=useRef(conversations);items.current=conversations;const current=useRef(activeId);current.current=activeId;const locks=useRef(new Set<string>());
+ const items=useRef(conversations);items.current=conversations;const current=useRef(activeId);current.current=activeId;const locks=useRef(new Set<string>());const listVersion=useRef(0);
  const storageKey=`frontmind-content-active:${workspaceId}`;
- const update=useCallback((item:ContentConversation)=>{setConversations(previous=>{const next=[item,...previous.filter(entry=>entry.id!==item.id)];items.current=next;return next;});},[]);
- const refresh=useCallback(async()=>{const rows=await client.list();setConversations(previous=>{const remoteIds=new Set(rows.map(row=>row.id));const next=[...rows,...previous.filter(row=>!remoteIds.has(row.id)&&row.messages.length===0)];items.current=next;return next;});},[client]);
- useEffect(()=>{let disposed=false;void client.list().then(rows=>{if(disposed)return;setConversations(rows);items.current=rows;const saved=localStorage.getItem(storageKey);setActiveId(rows.some(row=>row.id===saved)?saved:null);setHydrated(true);}).catch(error=>{if(!disposed)setNotice(error.message);});return()=>{disposed=true};},[client,storageKey]);
+ // A list read cannot supersede a newer read or a local write. Do not compare
+ // updatedAt: tool events can change while the business-stage timestamp stays equal.
+ const update=useCallback((item:ContentConversation)=>{listVersion.current++;setConversations(previous=>{const next=[item,...previous.filter(entry=>entry.id!==item.id)];items.current=next;return next;});},[]);
+ const refresh=useCallback(async()=>{const version=++listVersion.current;const rows=await client.list();if(version!==listVersion.current||locks.current.size>0)return;setConversations(previous=>{const remoteIds=new Set(rows.map(row=>row.id));const next=[...rows.map(row=>({...row,processes:mergeConversationProcesses(previous.find(p=>p.id===row.id)?.processes,row.processes)})),...previous.filter(row=>!remoteIds.has(row.id)&&row.messages.length===0)];items.current=next;return next;});},[client]);
+ useEffect(()=>{let disposed=false;const version=++listVersion.current;void client.list().then(rows=>{if(disposed)return;if(version===listVersion.current&&locks.current.size===0){setConversations(rows);items.current=rows;const saved=localStorage.getItem(storageKey);setActiveId(rows.some(row=>row.id===saved)?saved:null);}setHydrated(true);}).catch(error=>{if(!disposed)setNotice(error.message);});return()=>{disposed=true;listVersion.current++;};},[client,storageKey]);
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
  useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const id=activeConversation.taskId;async function poll(){try{await client.task(id!);if(!cancelled)await refresh();}catch(error){if(!cancelled)setNotice(error instanceof Error?error.message:String(error));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}void poll();return()=>{cancelled=true;clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;
-  locks.current.add(conversation.id);setNotice("");
+  locks.current.add(conversation.id);listVersion.current++;setNotice("");
   try{
    // Keep the exact persisted envelope for an unacknowledged request. Uploads and
    // task creation are never repeated with a new identity after a lost response.
@@ -62,23 +66,29 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
    const result=await client.dispatch({conversationId:conversation.id,clientRequestId:dispatch.clientRequestId,prompt:dispatch.providerPrompt,localAssetIds:dispatch.localAssetIds,...(!existingTask?{modelProfile:dispatch.modelProfile,purpose:"content_production",contentProduction:dispatch.contentProduction}:dispatch.contentProductionAction?{contentProductionAction:dispatch.contentProductionAction}:{})},existingTask);
    if(result.purpose&&result.purpose!=="content_production")throw new Error("返回的任务不属于内容制作");
    const latest=items.current.find(row=>row.id===conversation.id)??conversation;
-   const accepted={...latest,taskId:result.id,previousResponseId:result.id,executionKind:"general_chat_v2" as const,status:result.status==="cancelled"?"completed":result.status,updatedAt:Date.now(),messages:latest.messages.map(item=>item.id===message!.id?(({generalChatDispatch:_,...rest})=>rest)(item):item)};
+   const accepted={...latest,taskId:result.id,previousResponseId:result.id,executionKind:"general_chat_v2" as const,status:result.status,updatedAt:Date.now(),messages:latest.messages.map(item=>item.id===message!.id?(({generalChatDispatch:_,...rest})=>rest)(item):item)};
    update(await client.save(accepted));return true;
-  }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{locks.current.delete(conversation.id);}
+  }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{listVersion.current++;locks.current.delete(conversation.id);}
  },[client,update]);
- const value:Runtime={workspaceId,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
+ const value:Runtime={workspaceId,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{listVersion.current++;setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
  return <RuntimeContext.Provider value={value}>{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
 }
+// Keep the message wrapper's component identity stable across polling updates.
+// A fresh wrapper remounts the shared message and replays its entrance animation.
+const ContentMessageActions = ({children}:{children:ReactNode}) => <>{children}</>;
+const contentMessageRuntime: BusinessMessageRuntime = {MessageActions:ContentMessageActions};
 function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHomeProps) {
  const runtime=useRuntime();
  const busy=Boolean(knowledgeEditingBlocked)||["running","pending"].includes(runtime.activeConversation?.status??"");
  const viewport=useRef<HTMLDivElement>(null);
- const {showLatest,returnToLatest}=useChatReadingPosition(viewport,`${runtime.workspaceId}:${runtime.activeConversation?.id??"new"}`,`${runtime.activeConversation?.messages.map(m=>`${m.id}:${m.content.length}`).join("|")}:${runtime.activeConversation?.status}`);
- const slots=generalExecutionSlots(runtime.activeConversation?.messages??[],runtime.activeConversation?.execution,busy);
+ const {showLatest,returnToLatest}=useChatReadingPosition(viewport,`${runtime.workspaceId}:${runtime.activeConversation?.id??"new"}`,`${runtime.activeConversation?.messages.map(m=>`${m.id}:${m.content.length}`).join("|")}:${runtime.activeConversation?.status}:${runtime.activeConversation?.processes?.map(p=>`${p.id}:${p.status}:${[...p.thinking,...p.tools].map(r=>`${r.id}:${r.status}:${r.summaryRevision??0}:${r.text.length}`).join(",")}`).join("|")}`);
+ const processes=runtime.activeConversation?.processes??[];
+ const slots=generalExecutionSlots(runtime.activeConversation?.messages??[],processes.length?undefined:runtime.activeConversation?.execution,busy);
  return <div className="cp-live-dialogue"><div ref={viewport} className="cp-live-messages custom-scrollbar" data-testid="chat-messages-viewport"><div className="workbench-reading-column space-y-7">{runtime.activeConversation?.messages.map(message=><article key={message.id} data-role={message.role} data-reading-anchor={message.id}>
    <GeneralExecutionActivity items={slots.before.get(message.id)} />
-   <BusinessMessage message={message} isRunning={busy} isFinalReply={!busy} />
+   <BusinessMessage runtime={contentMessageRuntime} message={message} isRunning={busy} isFinalReply={!busy} />
    <GeneralExecutionActivity items={slots.after.get(message.id)} placement="after" />
+   {processes.filter(p=>p.userMessageId===message.id).map(process=><ConversationExecutionProcess key={process.id} process={process} onRecover={process.id===processes.at(-1)?.id&&["error","cancelled"].includes(runtime.activeConversation?.status??"")?()=>void runtime.sendMessage("重试当前执行").catch(()=>{}):undefined}/>)}
    {message.generalChatDispatch&&<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}
   </article>)}</div></div>{showLatest&&<button className="workbench-return-latest" onClick={returnToLatest}>回到最新</button>}{conversationFooter}
   <BusinessChatInput runtime={contentComposerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
@@ -128,5 +138,5 @@ const contentComposerRuntime: BusinessComposerRuntime<ContentProductionInput, ne
  chatAttachmentSizeError:file=>file.size>100*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 100 MB`:null,
  knowledgeLogoNoticeCode:"unused-content-knowledge-logo",
 };
-function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector};return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}
+function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host=useMemo<ContentWorkspaceHost>(()=>({connections:{publishedKnowledge:false},ConversationPurposeProvider:ContentMessageActions,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector}),[client]);return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}
 export function ModuleWorkspace({context,client=liveContentClient}:{context:ModuleContext;client?:ContentBusinessClient}) {return <RuntimeProvider client={client} workspaceId={context.workspace.id}><InstalledWorkspace client={client}/></RuntimeProvider>}

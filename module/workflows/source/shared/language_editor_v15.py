@@ -142,8 +142,14 @@ def bound_input(wf, job, action):
 
 def validate_action(wf, job, action, value):
     body = bound_input(wf, job, action)
-    value = validate_review(value, body)
     state = wf.load_state(job)
+    from . import p02_selection
+    if p02_selection.enabled(state):
+        if not isinstance(value,dict) or 'entity_mentions' not in value: raise ValueError('P02最后编辑须记录全文实体核验')
+        validate_review({k:v for k,v in value.items() if k!='entity_mentions'},body)
+        p02_selection.validate_mentions(state,apply_local_edits(body,value['local_edits']),value['entity_mentions'],accepted=not value['needs_revision'])
+    else:
+        value = validate_review(value, body)
     bounds = state.get("metadata", {}).get("body_character_range")
     if not value["needs_revision"] and enabled(state) and bounds is not None:
         bounds = validate_body_character_range(bounds)
@@ -188,11 +194,16 @@ def _selected(wf, job):
               "base_sha256": digest(base), "body_sha256": digest(body),
               "review_action": action, "review_sha256": digest(json.dumps(review, ensure_ascii=False, sort_keys=True)),
               "result_file": f"production/article_{suffix}.json"}
+    from . import p02_selection
+    if p02_selection.enabled(wf.load_state(job)):
+        source['p02_selection_hash']=p02_selection.current(wf.load_state(job))['selection_hash']
     return final, source
 
 
 def select_final(wf, job):
     final, source = _selected(wf, job)
+    from . import p02_selection
+    p02_selection.check_body(wf.load_state(job), final['article_markdown'])
     wf.atomic_json(Path(job) / "production/article_finalized.json", final)
     wf.atomic_json(Path(job) / "production/article_final_source.json", source)
     return final
@@ -200,6 +211,8 @@ def select_final(wf, job):
 
 def validate_selected(wf, job):
     final, source = _selected(wf, job)
+    from . import p02_selection
+    p02_selection.check_body(wf.load_state(job), final['article_markdown'])
     root = Path(job) / "production"
     if wf.read_json(root / "article_finalized.json") != final or wf.read_json(root / "article_final_source.json") != source:
         raise ValueError("交付稿与当前作者基稿、XTY局部修改及真实来源不一致")

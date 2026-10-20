@@ -116,6 +116,14 @@ def _hash_file(path: Path) -> str:
 _LEGACY_MANAGED = contextvars.ContextVar("frontmind_legacy_managed", default=False)
 
 
+def host_provider() -> str:
+    """Select the host explicitly; credentials do not implicitly change routing."""
+    provider = os.environ.get("FRONTMIND_CONTENT_HOST_PROVIDER", "xty").strip()
+    if provider not in {"xty", "zhipu"}:
+        raise ProviderActionError("invalid_host_provider", "FRONTMIND_CONTENT_HOST_PROVIDER 仅支持 xty 或 zhipu。")
+    return provider
+
+
 def legacy_managed_profile() -> dict[str, Any]:
     return {"provider": "zhipu", "api_url": "https://agent-api.bigmodel.cn/api/agent/managed",
             "wire_api": "zhipu_managed_agents", "model": "glm-5.3", "effort": "max",
@@ -135,7 +143,7 @@ def legacy_managed_routes():
 
 def profile_for(action: str) -> dict[str, Any]:
     if action in HOST_ACTIONS:
-        if _LEGACY_MANAGED.get():
+        if _LEGACY_MANAGED.get() or host_provider() == "zhipu":
             return legacy_managed_profile()
         from .agents_runtime import public_profile
         return public_profile()
@@ -197,8 +205,14 @@ def configuration_status(package_root: Path | str) -> dict[str, Any]:
             result[provider] = {**profile, "configured": config["configured"], "configuration_source": config["source"]}
         except (ProviderActionError, ValueError) as exc:
             result[provider] = {"provider": provider, "configured": False, "error_code": getattr(exc, "code", "invalid_configuration")}
-    result["xty"].update(host_actions=sorted(HOST_ACTIONS), role="default_host", network_validation="not_performed_by_preflight")
-    result["zhipu"].update(role="auxiliary_search_reader_ocr_and_legacy_recovery", new_host_resources=False)
+    selected = host_provider()
+    result["xty"].update(host_actions=sorted(HOST_ACTIONS), role="selected_host" if selected == "xty" else "available_host", network_validation="not_performed_by_preflight")
+    result["zhipu"].update(role="selected_host_and_auxiliary" if selected == "zhipu" else "auxiliary_search_reader_ocr_and_legacy_recovery", new_host_resources=selected == "zhipu", network_validation="not_performed_by_preflight")
+    if selected == "zhipu":
+        from .runtime_credentials import proxy_enabled
+        if proxy_enabled():
+            result["zhipu"].update(configured=False, error_code="managed_proxy_unsupported",
+                error="当前私有任务网关尚未支持智谱 Managed Agents；请使用本地直接接入。")
     return result
 
 
@@ -397,6 +411,14 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
         from .editorial_preparation import schema
         result.clear()
         result.update(schema())
+        from . import industry_roundup
+        if industry_roundup.matches(prompt):
+            result['properties']['fact_claims'] = {'type': 'array', 'minItems': 3, 'items': {
+                'type': 'object', 'properties': {key: {'type': 'string', 'minLength': 1}
+                    for key in ('id', 'subject', 'model', 'claim', 'source_ref', 'source_quote', 'as_of')},
+                'required': ['id', 'subject', 'model', 'claim', 'source_ref', 'source_quote', 'as_of'],
+                'additionalProperties': False}}
+            result['required'].append('fact_claims')
         return tool
     if action in {"p0_blueprint", "article_blueprint"}:
         result.update({
@@ -449,7 +471,8 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
         })
     elif action.endswith("_title_review"):
         from . import title_strategy
-        count = 10 if title_strategy.matches(prompt) else 20
+        policy = title_strategy.request_policy(prompt)
+        count = 10 if policy is not None else 20
         result.update({
             "description": f"一次实际标题编辑结果；保留正文，只编辑{count}个独立标题和角度。",
             "properties": {
@@ -463,6 +486,12 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
             "required": ["outcome", "candidates", "canonical_title_id", "title_notes", "reason"],
             "additionalProperties": False,
         })
+        if title_strategy.grouped(policy):
+            result["description"] += " 前5项style=formal、后5项style=scenario；incomplete时保留空候选。"
+            candidate = result["properties"]["candidates"]["items"]
+            candidate["properties"]["style"] = {"type": "string", "enum": ["formal", "scenario"],
+                "description": "固定前5项formal严肃推荐、后5项scenario场景卖点。"}
+            candidate["required"].append("style")
     from . import natural_editor
     if action.endswith("_blueprint") and natural_editor.matches(prompt):
         fields = result["properties"]
@@ -511,11 +540,40 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
             for name in editorial_preparation.FIELDS:
                 fields.pop(name, None)
             result["required"] = [name for name in result["required"] if name not in editorial_preparation.FIELDS]
+            from . import industry_roundup
+            if industry_roundup.matches(prompt):
+                dynamic_dimensions = industry_roundup.CONTRACT in prompt
+                cells_schema = ({'type': 'object', 'additionalProperties': {'type': 'string'}}
+                    if dynamic_dimensions else {'type': 'object',
+                        'properties': {dimension: {'type': 'string'} for dimension in industry_roundup.DIMENSIONS},
+                        'required': list(industry_roundup.DIMENSIONS)})
+                evidence_schema = ({'type': 'object', 'additionalProperties': {'type': 'array', 'items': {'type': 'string'}}}
+                    if dynamic_dimensions else {'type': 'object', 'properties': {
+                        dimension: {'type': 'array', 'items': {'type': 'string'}}
+                        for dimension in industry_roundup.DIMENSIONS},
+                        'required': list(industry_roundup.DIMENSIONS)})
+                fields['genre'] = {'type': 'string', 'enum': ['industry_roundup']}
+                fields['subject_scope'] = {'type': 'array', 'minItems': 3, 'items': {'type': 'string'}}
+                fields['comparison_dimensions'] = {'type': 'array', 'items': {'type': 'string'}}
+                fields['comparison_matrix'] = {'type': 'array', 'items': {'type': 'object',
+                    'properties': {'subject': {'type': 'string'}, 'model': {'type': 'string'},
+                        'cells': cells_schema, 'evidence_ids': evidence_schema},
+                        'required': ['subject', 'cells', 'evidence_ids', *(['model'] if dynamic_dimensions else [])]}}
+                fields['reader_questions'] = {'type': 'array', 'items': {'type': 'object',
+                    'properties': {'question': {'type': 'string'}, 'section': {'type': 'string'}},
+                    'required': ['question', 'section']}}
+                fields['selection_rules'] = {'type': 'array', 'items': {'type': 'string'}}
+                result['required'].extend(['genre', 'subject_scope', 'comparison_dimensions',
+                    'comparison_matrix', 'reader_questions', 'selection_rules'])
         elif action in {"article_finalize", "article_polish"}:
             from .language_editor_v15 import review_schema
             result.clear()
             result.update(review_schema())
             result["properties"]["needs_revision"]["description"] = writing_context_v16.POLISH_REVISION_SCOPE
+            from . import p02_selection
+            if p02_selection.matches(prompt):
+                result['properties']['entity_mentions'] = p02_selection.review_schema()
+                result['required'].append('entity_mentions')
             return tool
     from . import writing_context_v15, language_editor_v15
     if writing_context_v15.matches(prompt):
@@ -1251,6 +1309,16 @@ def run_action(package_root, job_root, action, prompt, validator, retry=False, *
     """Resume an unchanged frozen legacy writer with its original effort."""
     from . import editorial_preparation
     frozen = None
+    if action in HOST_ACTIONS and os.environ.get("FRONTMIND_CONTENT_HOST_PROVIDER"):
+        record = action_record(Path(job_root), action)
+        original = record.get("requested_configuration", {})
+        current = profile_for(action)
+        old_prompt = (Path(job_root) / "provider" / action / "runtime" / "attempts"
+                      / record.get("attempt_id", "") / "prompt.md")
+        if (original.get("wire_api") and original.get("wire_api") != current.get("wire_api")
+                and old_prompt.is_file() and old_prompt.read_text(encoding="utf-8") == prompt):
+            raise ProviderActionError("frozen_host_provider_mismatch",
+                "当前动作已冻结另一宿主；请使用原宿主恢复，或为新宿主创建新任务。", action=action)
     if action in DEEPSEEK_ACTIONS and not editorial_preparation.matches(prompt):
         record = action_record(Path(job_root), action)
         identity = record.get("attempt_id", "")

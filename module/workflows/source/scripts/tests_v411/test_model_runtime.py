@@ -12,6 +12,16 @@ sys.path.insert(0, str(ROOT / 'shared'))
 from shared import model_runtime as m
 
 
+
+def remove_fixture_job(path):
+    """Windows 清理本测试生成的只读材料，不改变生产材料保护。"""
+    import shutil
+    import stat
+    if os.name == 'nt':
+        for item in path.rglob('*'):
+            if item.is_file():item.chmod(item.stat().st_mode | stat.S_IWRITE)
+    shutil.rmtree(path)
+
 def stream(content='{"ok":true}', model='deepseek-v4-pro', finish='stop', reasoning='private thought'):
     yield {'id':'test-id','model':model,'choices':[{'index':0,'delta':{'reasoning_content':reasoning},'finish_reason':None}]}
     yield {'id':'test-id','model':model,'choices':[{'index':0,'delta':{'content':content},'finish_reason':finish}], 'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}}
@@ -239,7 +249,7 @@ class LegacyRuntimeCompatibilityTests(unittest.TestCase):
         import shutil
         for production in (False, True):
             with self.subTest(production=production):
-                shutil.rmtree(self.job);self.job.mkdir()
+                remove_fixture_job(self.job);self.job.mkdir()
                 tools,old,original_record=self._failed_inline_submission(production=production)
                 self.assertFalse((old/'pending_submission.json').exists())
                 original_files={p.name:p.read_bytes() for p in old.iterdir() if p.is_file()}
@@ -307,7 +317,7 @@ class LegacyRuntimeCompatibilityTests(unittest.TestCase):
         import shutil
         for target in ('response','stream','request','checkpoint','pending'):
             with self.subTest(target=target):
-                shutil.rmtree(self.job);self.job.mkdir()
+                remove_fixture_job(self.job);self.job.mkdir()
                 tools,old,original_record=self._failed_inline_submission()
                 if target == 'response':
                     path=old/'round_01_response.json';value=json.loads(path.read_text())
@@ -337,7 +347,7 @@ class LegacyRuntimeCompatibilityTests(unittest.TestCase):
         import shutil
         for target in ('parsed','validated','source_request','source_stream','source_checkpoint'):
             with self.subTest(target=target):
-                shutil.rmtree(self.job);self.job.mkdir()
+                remove_fixture_job(self.job);self.job.mkdir()
                 tools,old,_=self._failed_inline_submission()
                 def no_call(*a):raise AssertionError('unexpected model call')
                 result=m.run_action(self.root,self.job,'p0_finalize','Entire selected example',valid,

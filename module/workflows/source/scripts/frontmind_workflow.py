@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared import title_strategy
+from shared import title_strategy, p01_expression, p02_selection, industry_roundup, article_focus
 from shared import natural_editor, writing_requirements, writing_materials, language_editor_v15, editorial_preparation
 
 from shared.workflow_versions import (  # noqa: E402
@@ -424,7 +424,7 @@ def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
         "current_pause": None,
         "pending_action": None,
         "metadata": ({"writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "p0_style_contract": p0_style.DEFAULT_P0_STYLE_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "title_input_mode": writing_requirements.TITLE_INPUT_MODE} if job_kind == "p0" else
-                     {"natural_prose_contract": editorial_preparation.CONTRACT, "writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "article_reader_contract": article_positioning.CURRENT_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "writer_count_contract": "frontmind-writer-count/1", "single_subject_writing_contract": "frontmind-single-subject/3", "title_input_mode": writing_requirements.TITLE_INPUT_MODE, "title_strategy": dict(title_strategy.DEFAULT)} if job_kind == "article" else {}),
+                     {"natural_prose_contract": editorial_preparation.CONTRACT, "writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "article_reader_contract": article_positioning.CURRENT_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "writer_count_contract": "frontmind-writer-count/1", "single_subject_writing_contract": "frontmind-single-subject/3", "title_input_mode": writing_requirements.TITLE_INPUT_MODE, "title_strategy": dict(title_strategy.DEFAULT), "p01_expression_policy": p01_expression.CONTRACT, "p02_selection_policy": p02_selection.CONTRACT} if job_kind == "article" else {}),
         "decisions": {},
         "flags": {},
     }
@@ -732,10 +732,14 @@ def validate_action_result(job_root: Path, action: str, value: dict[str, Any]) -
             normalize_core_result(core, state["reference_pack"]["brand"])
     elif action == editorial_preparation.ACTION:
         value = editorial_preparation.validate(value)
+        if industry_roundup.enabled(state):
+            industry_roundup.validate_claims(job_root, value.get('fact_claims'), industry_roundup.validate_scope(state))
     elif action.endswith("_blueprint"):
         if action == "article_blueprint" and editorial_preparation.enabled(state):
             value = editorial_preparation.bind_blueprint(job_root, value)
         validate_blueprint(value, p0=action == "p0_blueprint")
+        if action == 'article_blueprint': p02_selection.check_scope(state, value)
+        if action == 'article_blueprint': industry_roundup.validate_blueprint(state, value, job_root)
         writing_context.validate_writing_material(value)
         writing_context.validate_article_brief(value)
         if not state.get("flags", {}).get("offline_fixture") and not (action == "article_blueprint" and editorial_preparation.enabled(state)):
@@ -754,6 +758,8 @@ def validate_action_result(job_root: Path, action: str, value: dict[str, Any]) -
         if not state.get("flags", {}).get("offline_fixture"):
             for item in examples:
                 ExampleStore(job_root).resolve(item.get("artifact_id", ""), require_complete=True)
+    if action in {'article_draft', 'article_edit', 'article_repair'} and value.get('article_markdown') and not value.get('requires_blueprint_reconfirmation'):
+        p02_selection.check_body(state, value['article_markdown'])
     if action.endswith("_draft"):
         editorial_contracts.validate_draft_result(value)
         if not value.get("requires_blueprint_reconfirmation"):
@@ -793,9 +799,9 @@ def validate_action_result(job_root: Path, action: str, value: dict[str, Any]) -
     elif action.endswith("_title_review"):
         prefix = action.removesuffix("_title_review")
         raw_titles = read_json(job_root / "production" / f"{prefix}_titles.json")
-        title_publication.validate_title_review_result(value, raw_titles, p0=prefix == "p0", expected_count=title_strategy.expected_count(state))
+        title_publication.validate_title_review_result(value, raw_titles, p0=prefix == "p0", expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state))
     elif action.endswith("_titles"):
-        validate_title_map(value, p0=action == "p0_titles", expected_count=title_strategy.expected_count(state))
+        validate_title_map(value, p0=action == "p0_titles", expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state))
     return value
 
 
@@ -1523,9 +1529,9 @@ def validate_article_markdown(value: str, *, expected_question: str | None = Non
     return markdown + "\n"
 
 
-def validate_title_map(value: dict[str, Any], *, p0: bool = False, legacy: bool = False, expected_count: int | None = None) -> dict[str, Any]:
+def validate_title_map(value: dict[str, Any], *, p0: bool = False, legacy: bool = False, expected_count: int | None = None, expected_policy: dict | None = None) -> dict[str, Any]:
     try:
-        return title_publication.validate_title_map(value, p0=p0, legacy=legacy, expected_count=expected_count)
+        return title_publication.validate_title_map(value, p0=p0, legacy=legacy, expected_count=expected_count, expected_policy=expected_policy)
     except ValueError as exc:
         raise WorkflowError(str(exc)) from exc
 
@@ -1548,11 +1554,11 @@ def deliver_article(job_root: Path, markdown: str, title_map_payload: dict[str, 
     if legacy:
         if not load_state(job_root).get("flags", {}).get("offline_fixture"):
             raise WorkflowError("旧式导出仅供显式离线历史兼容测试使用")
-        title_map = validate_title_map(title_map_payload, p0=prefix == "p0", legacy=True, expected_count=title_strategy.expected_count(load_state(job_root)))
+        title_map = validate_title_map(title_map_payload, p0=prefix == "p0", legacy=True, expected_count=title_strategy.expected_count(load_state(job_root)), expected_policy=title_strategy.policy(load_state(job_root)))
         published, binding = markdown, None
     else:
         try:
-            published, title_map, binding = title_publication.publication(markdown, title_map_payload, p0=prefix == "p0", title_review=title_review, expected_count=title_strategy.expected_count(load_state(job_root)))
+            published, title_map, binding = title_publication.publication(markdown, title_map_payload, p0=prefix == "p0", title_review=title_review, expected_count=title_strategy.expected_count(load_state(job_root)), expected_policy=title_strategy.policy(load_state(job_root)))
         except ValueError as exc:
             raise WorkflowError(str(exc)) from exc
     # Validate public body without adding its internal heading to the artifact.
@@ -1604,7 +1610,11 @@ def title_options_markdown(title_map: dict[str, Any], *, p0: bool) -> str:
              f"以下 {title_map['total_count']} 个标题根据本篇完整正文拟定，供发布时自行选用。正文稿不附文章主标题。", "",
              "“推荐”仅为参考，没有自动采用任何候选标题。", "",
              f"| 编号 | {'表达侧重点' if title_map['total_count'] == 10 else '切入角度'} | 标题 | 参考 |", "| --- | --- | --- | --- |"]
+    if title_map["options"] and title_map["options"][0].get("style"):
+        lines = lines[:-2]
     for index, option in enumerate(title_map["options"], 1):
+        if option.get('style') and index in (1, 6):
+            lines.extend(('', '## ' + title_strategy.style_label(option['style']), '', '| 编号 | 表达侧重点 | 标题 | 参考 |', '| --- | --- | --- | --- |'))
         marker = "推荐" if option["title_id"] == recommended else ""
         lines.append(f"| {index} | {cell(option.get('angle') or '未标注')} | {cell(option['title_text'])} | {marker} |")
     markdown = "\n".join(lines) + "\n"
@@ -1617,6 +1627,8 @@ def title_options_html(title_map: dict[str, Any], *, p0: bool) -> str:
     recommended = title_map.get("recommended_title_id") or title_map.get("canonical_title_id")
     rows = []
     for index, option in enumerate(title_map["options"], 1):
+        if option.get('style') and index in (1, 6):
+            rows.append('<tr><th colspan="4">' + html_module.escape(title_strategy.style_label(option['style'])) + '</th></tr>')
         angle = html_module.escape(str(option.get("angle") or "未标注"))
         title = html_module.escape(option["title_text"])
         marker = "推荐" if option["title_id"] == recommended else ""
@@ -1935,6 +1947,8 @@ def fixture_positioning_market_research(job_root: Path) -> dict[str, Any]:
         notes.extend(f"{key}：{item}" for item in fields.get(key, []))
     scope = load_state(job_root).get("decisions", {}).get("comparison_scope") or {}
     selected = scope.get("comparison_targets", []) + scope.get("peer_examples", [])
+    if p02_selection.confirmed_draft(load_state(job_root)):
+        selected = p02_selection.confirmed_draft(load_state(job_root))['comparison_targets']
     candidates = [{"name": item["name"], "category": item.get("category") or "其他服务路径", "kind": item.get("kind", "brand"), "research_notes": "离线对象识别与传递说明，不证明真实竞争优势。", "source_urls": [], "suggested_role": "comparison_target"} for item in selected] if selected else [
         {"name": "其他服务路径", "category": "其他服务路径", "kind": "category", "research_notes": "离线候选对象，仅验证范围选择传递。", "source_urls": [], "suggested_role": "comparison_target"}]
     return {"brand_category": scope.get("brand_category") or "专业服务提供方", "competitor_candidates": candidates, "research_markdown": "\n\n".join(notes), "sources": [
@@ -2038,7 +2052,7 @@ def fixture_blueprint(job_root: Path, *, p0: bool) -> dict[str, Any]:
         "kind": "article", "question": question.get("question_text"), "pattern_id": pattern,
         "article_brief": "围绕正式问题解释判断所需的事实、关系与适用条件，保留本题必要回答、步骤或比较，背景按需选用。",
         "opening": "首段直接回答问题，再解释选择逻辑。", "sections": sections,
-        "candidate_order": [],
+        "candidate_order": [x["name"] for x in p02_selection.current(state)["entities"]] if p02_selection.enabled(state) else [],
         "brand_positioning_use": "核心定位只用于解释企业相关部分；不复制 P0 固定段落。",
         "answer_use": "完整读取两篇 AI 答案，吸收其选择标准、主体和冲突，不声称答案提及了未出现的企业。",
         "example_use": state.get("selected_example_route") or "workflow",
@@ -2121,7 +2135,7 @@ def fixture_question_positioning(job_root: Path) -> dict[str, Any]:
         "brand": brand,
         "natural_analysis": analysis,
         "material_adjustments": ["无法确认的具名对象能力改为有条件的类别表达。"],
-        "candidate_scope": [brand, "问题点名主体", "AI 答案主体", "Reference Pack 中与本题相关的替代路径"],
+        "candidate_scope": [x["name"] for x in p02_selection.current(state)["entities"]] if p02_selection.enabled(state) else [brand, "问题点名主体", "AI 答案主体", "Reference Pack 中与本题相关的替代路径"],
     }
 
 def fixture_article(job_root: Path, *, p0: bool) -> dict[str, Any]:
@@ -2243,6 +2257,8 @@ def fixture_article(job_root: Path, *, p0: bool) -> dict[str, Any]:
 
 {brand}适合重视沟通和连续协同的人。对于单项需求或不同服务偏好，其他路径也可能更合适。
 """
+    if not p0 and p02_selection.enabled(state):
+        markdown = '# 本题推荐（离线合成）\n\n' + '\n\n'.join('## '+x['name']+'\n\n'+('该主体提供本题相关的服务。本段只验证名单传递与交付，不代表实际模型写作或真实机构事实。'*16) for x in p02_selection.current(state)['entities'])
     return {"article_markdown": markdown, "requires_blueprint_reconfirmation": False, "reconfirmation_reason": ""}
 
 
@@ -2268,7 +2284,7 @@ def fixture_titles(job_root: Path, *, p0: bool) -> dict[str, Any]:
     if not p0 and title_strategy.enabled(state):
         # Offline transport fixture only; editorial examples live separately.
         return {"canonical_title_id": "title_01", "candidates": [
-            {"title": f"{question}（离线结构候选{n+1}）", "angle": "同主题表达"}
+            {"title": f"{question}（离线结构候选{n+1}）", "angle": "同主题表达", **({"style": "formal" if n < 5 else "scenario"} if title_strategy.policy(state) == title_strategy.DEFAULT else {})}
             for n in range(title_strategy.expected_count(state))]}
     decision_styles = ["怎么选", "选择指南", "核心判断", "实用解读", "先看这几点", "按需求判断", "完整说明", "常见疑问", "关键标准", "决策路径"]
     media_styles = ["品牌观察", "本地发现", "服务解读", "深度特写", "用户指南", "行业视角", "场景观察", "选择方法", "服务故事", "内容专访"]
@@ -2430,6 +2446,7 @@ def validate_question_positioning(value: dict[str, Any], state: dict[str, Any]) 
         raise WorkflowError("问题定位品牌不匹配")
     if not normal(value.get("natural_analysis")):
         raise WorkflowError("问题定位缺少自然分析")
+    p02_selection.check_scope(state, value)
     return value
 
 
@@ -2523,7 +2540,7 @@ def prompt_positioning_market_research(job_root: Path) -> str:
 
 候选同时写明 relation_to_brand（same_type/different_type/unknown），只表达本题中研究确认的相对类别关系，不是排名或用户角色；无法判断时用 unknown，不凭类别名称措辞不同断言异类。
 
-{selected_research_instruction(job_root)}
+{selected_research_instruction(job_root)}{p02_selection.research_prompt(sys.modules[__name__], job_root)}
 """
 
 
@@ -2603,7 +2620,10 @@ def comparison_scope_markdown(scope: dict[str, Any]) -> str:
 
 
 def selection_draft(job_root: Path, market: dict[str, Any]) -> dict[str, Any]:
-    old = load_state(job_root).get("decisions", {}).get("comparison_scope") or {}
+    state = load_state(job_root)
+    if state.get('metadata', {}).get('p02_selection_pending') and not (job_root / 'positioning/competitor_selection.json').is_file():
+        return p02_selection.suggested(market)
+    old = state.get("decisions", {}).get("comparison_scope") or {}
     existing_path = job_root / "positioning/competitor_selection.json"
     previous = read_json(existing_path) if existing_path.is_file() else old
     candidates = market.get("competitor_candidates", [])
@@ -2718,6 +2738,13 @@ def render_competitor_selection(job_root: Path, message: str | None = None) -> i
     candidates.extend(item for role in draft.values() for item in role if candidate_key(item) not in known)
     kind_labels = {"brand": "品牌", "category": "类别", "alternative": "其他解决方式"}
     lines = ["# 确认本次要与哪些选择区分", "", "先确定比较对象，再生成定位。可直接告诉我保留、删除或补充哪些名称，以及哪些只作为同类举例。", ""]
+    if p02_selection.research_enabled(load_state(job_root)):
+        lines.extend(p02_selection.table(market, load_state(job_root)['reference_pack']['brand']))
+        if load_state(job_root)['metadata'].get('p02_selection_pending'):
+            lines.extend(('', '本篇P02只写自己及两家竞品。请选两家具体机构；证据不足时仍可自行选择，不另选同类举例。', ''))
+            selection_meta = load_state(job_root)['metadata']
+            if selection_meta.get('p02_scope_change_notice'):
+                lines.extend((selection_meta['p02_scope_change_notice'], '', '本次明确的范围要求：', json.dumps(selection_meta.get('p02_scope_requirements', {}), ensure_ascii=False, indent=2), ''))
     if message:
         lines.extend((message, ""))
     def cell(value: Any) -> str:
@@ -2754,6 +2781,8 @@ def restart_scoped_positioning(job_root: Path, *, research: bool = False) -> int
 
 
 def handle_competitor_selection(args: argparse.Namespace, job_root: Path) -> int:
+    if load_state(job_root).get('metadata', {}).get('p02_selection_pending'):
+        return p02_selection.handle_selection(sys.modules[__name__], args, job_root)
     state = load_state(job_root)
     if args.rerun_positioning_research:
         require_revision(args, state)
@@ -2775,6 +2804,8 @@ def handle_competitor_selection(args: argparse.Namespace, job_root: Path) -> int
     scope = scope_from_selection(job_root, draft, confirmed=True)
     state = load_state(job_root)
     state["decisions"]["comparison_scope"] = scope
+    if p02_selection.research_enabled(state):
+        state["metadata"]["comparison_scope_question"] = p02_selection.scope(state)
     save_state(job_root, state)
     atomic_json(job_root / "decisions/competitor_selection.json", scope)
     needs_research = any(not item.get("research_notes") or not item.get("category") for item in draft["comparison_targets"])
@@ -2978,7 +3009,7 @@ def current_question_positioning_prompt(job_root: Path, state: dict[str, Any]) -
     requirements = writing_requirements.effective(sys.modules[__name__], job_root, p0=False)
     return f"""# 任务：整理当前问题的推荐重点与选材关系
 
-正式问题：{state['question']['question_text']}
+{(p02_selection.context(state) + chr(10) + '本页修改自然表述保持确认名单；若用户文字要求另换主体，不能静默忽略或替换，请在material_adjustments明确指出需经原竞品选择入口确认新的两家。' + chr(10) + chr(10)) if p02_selection.enabled(state) else ""}正式问题：{state['question']['question_text']}
 Pattern：{state['selected_pattern_id']}
 优化品牌：{state['reference_pack']['brand']}
 本篇写作委托：{state.get('decisions', {}).get('response_brief') or '按正式问题确定任务'}
@@ -3001,7 +3032,7 @@ P0：
 问题级补充：
 {user_material_text(job_root, 'question') or '无'}
 
-输出符合 question_positioning.schema.json 的 JSON：schema_version="4.11"、artifact_type="frontmind_question_positioning"、pattern_id="{state['selected_pattern_id']}"、question（上述正式问题）、brand（上述优化品牌）、natural_analysis（字符串）、material_adjustments（内部资料处理说明的字符串数组，可为空）；可选 candidate_scope 为对象名称字符串数组。不增加其他字段。
+输出符合 question_positioning.schema.json 的 JSON：schema_version="4.11"、artifact_type="frontmind_question_positioning"、pattern_id="{state['selected_pattern_id']}"、question（上述正式问题）、brand（上述优化品牌）、natural_analysis（字符串）、material_adjustments（内部资料处理说明的字符串数组，可为空）；可选 candidate_scope 为对象名称字符串数组。不增加其他字段。{chr(10) + "本轮P02必须按已确认三家名单的顺序提供candidate_scope，不能扩展名单。" if p02_selection.enabled(state) else ""}
 
 natural_analysis 用自然段说明本篇推荐重点以及能够支持它的业务、人员、方法和实际服务，供后续选材使用。P01 围绕主推荐对象回答正式问题，展开与需求直接相关的内容；只有当前委托要求比较时才纳入其他对象。P02 保留本篇明确的对象范围、推荐关系、重点和顺序，逐个提炼有依据的具体特点；已确认分类用于组织选材，不自行改成平铺名录。P03–P06 继续完成各自任务。
 
@@ -3689,6 +3720,8 @@ def render_question_positioning(job_root: Path) -> int:
         "4. 返回 Pattern。", "",
         "只有确认当前 revision 后才会生成文章蓝图。",
     ))
+    if p02_selection.enabled(load_state(job_root)):
+        lines.extend(('', 'P02的两家竞品已单独确认。修改措辞保留名单；要换机构，可通过 --competitor-selection 提交两家并用 --confirm-competitors 确认，或 --rerun-positioning-research 回到选择页。'))
     set_pause(
         job_root, "awaiting_question_positioning_confirmation", "\n".join(lines),
         choices=["确认", "修改", "补充材料", "返回 Pattern"],
@@ -4144,6 +4177,14 @@ def run_positioning_market_research(job_root: Path) -> int | None:
         return 0
     state = load_state(job_root)
     research = normalize_research_result(result, state["reference_pack"]["brand"])
+    if p02_selection.research_enabled(state):
+        research = p02_selection.enrich(sys.modules[__name__], job_root, research)
+    if state.get('metadata', {}).get('p02_selection_pending'):
+        write_choice_map_research_files(job_root, research)
+        if p02_selection.confirmed_draft(state):
+            p02_selection.complete_selected_research(sys.modules[__name__], job_root, research)
+            return None
+        return render_competitor_selection(job_root)
     if "competitor_candidates" not in research or not research.get("brand_category"):
         raise WorkflowError("新定位研究需要品牌类别和候选对象列表；旧 Pack 读取不受影响")
     raw_research = result.get("choice_map", result)
@@ -4530,7 +4571,7 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
             language_editor_v15.bind_input(sys.modules[__name__], job_root, "article_finalize")
         result = ensure_action(
             job_root, f"{prefix}_finalize", writing_context.prompt_finalize(sys.modules[__name__], job_root, p0=p0),
-            fixture_builder=lambda: {"needs_revision": False, "comments": [], "local_edits": []} if v15 else {"needs_revision": False, "comments": []} if natural_editor.enabled(state) else {"outcome": "accepted", "article_markdown": context["candidate_markdown"], "editorial_notes": [], "reason": "",
+            fixture_builder=lambda: p02_selection.fixture_review(state, context["candidate_markdown"]) if v15 else {"needs_revision": False, "comments": []} if natural_editor.enabled(state) else {"outcome": "accepted", "article_markdown": context["candidate_markdown"], "editorial_notes": [], "reason": "",
                 **({} if p0 and prose_only.enabled(state) else
                    {"brand_review": brand_stage.fixture_review(context["candidate_markdown"])} if p0 and brand_stage.enabled(state) else
                    {"quality_review": p0_style.fixture_quality_review(context["candidate_markdown"])} if p0 and p0_style.is_deep(state) else {})},
@@ -4608,7 +4649,7 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         language_editor_v15.bind_input(sys.modules[__name__], job_root, "article_polish")
         result = ensure_action(job_root, "article_polish",
             prose_context.prompt_finish(sys.modules[__name__], job_root, after_repair=True),
-            fixture_builder=lambda: {"needs_revision": False, "comments": [], "local_edits": []})
+            fixture_builder=lambda: p02_selection.fixture_review(state, language_editor_v15.input_body(sys.modules[__name__], job_root, after_repair=True)))
         if result is None:
             return 0
         review = language_editor_v15.validate_action(sys.modules[__name__], job_root, "article_polish", result)
@@ -4634,7 +4675,7 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         )
         if result is None:
             return 0
-        validate_title_map(result, p0=p0, expected_count=title_strategy.expected_count(state))
+        validate_title_map(result, p0=p0, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state))
         atomic_json(production_root / f"{prefix}_titles.json", result)
         state = load_state(job_root)
         state["metadata"].setdefault(f"{prefix}_production_bindings", {})["titles"] = production_signature(job_root, prefix, "titles")
@@ -4647,12 +4688,12 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         result = ensure_action(
             job_root, f"{prefix}_title_review",
             writing_context.prompt_title_review(sys.modules[__name__], job_root, p0=p0),
-            fixture_builder=lambda: {"outcome": "accepted", **title_publication.title_review_input(raw_titles, p0=p0, expected_count=title_strategy.expected_count(state)),
+            fixture_builder=lambda: {"outcome": "accepted", **title_publication.title_review_input(raw_titles, p0=p0, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state)),
                                      "title_notes": [], "reason": ""},
         )
         if result is None:
             return 0
-        title_publication.validate_title_review_result(result, raw_titles, p0=p0, expected_count=title_strategy.expected_count(state))
+        title_publication.validate_title_review_result(result, raw_titles, p0=p0, expected_count=title_strategy.expected_count(state), expected_policy=title_strategy.policy(state))
         atomic_json(production_root / f"{prefix}_title_review.json", result)
         state = load_state(job_root)
         if result["outcome"] == "incomplete":
@@ -4666,6 +4707,20 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         return None
     if step == "deliver":
         edited = read_json(production_root / f"{prefix}_finalized.json")
+        if not p0 and industry_roundup.enabled(state):
+            blueprint = read_json(job_root / 'blueprints/article_blueprint.json')
+            gate = industry_roundup.audit_body(state, blueprint, edited['article_markdown'])
+            atomic_json(production_root / 'industry_roundup_quality_gate.json', gate)
+            state.setdefault('flags', {})['article_fact_gate'] = {
+                'issue_count': len(gate['issues']), 'publish_ready': gate['publish_ready']}
+            if not gate['publish_ready']:
+                state['pending_action'] = {'action': 'article_fact_repair', 'error': {
+                    'code': 'fact_gate_failed', 'message': '；'.join(gate['issues'][:6])}}
+                save_state(job_root, state)
+                raise WorkflowError('行业盘点正文校验未通过，见 production/industry_roundup_quality_gate.json；使用 continue --repair-facts 返工')
+            if state.get('metadata', {}).get('article_fact_repair_focus'):
+                state['metadata'].pop('article_fact_repair_focus', None)
+                save_state(job_root, state)
         if natural_editor.enabled(state):
             candidate = editorial_contracts.prepare_finalize_input(sys.modules[__name__], job_root, p0=p0)["candidate_markdown"]
             natural_editor.validate_selected(sys.modules[__name__], job_root, candidate, p0=p0)
@@ -4690,12 +4745,17 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
             set_status(job_root, "running_reference_pack_p0_commit", "p0_commit")
             return None
         set_status(job_root, "completed", "E10")
+        selection_pack = state.get("metadata", {}).get("p02_reference_pack_delivery")
+        input_pack = {"pack_id": state["reference_pack"]["pack_id"],
+                      "pack_version": state["reference_pack"]["pack_version"]}
         return emit_completed_delivery({
             "status": "completed", "job_id": state["job_id"],
-            "reference_pack": {
-                "pack_id": state["reference_pack"]["pack_id"],
-                "pack_version": state["reference_pack"]["pack_version"],
-            },
+            "reference_pack": ({"pack_id": selection_pack["pack_id"],
+                                "pack_version": selection_pack["pack_version"],
+                                "path": selection_pack["pack_path"],
+                                "portable_zip": selection_pack["portable_zip_path"]} if selection_pack else input_pack),
+            **({"source_reference_pack": input_pack, "p02_reference_pack_delivery": selection_pack}
+               if selection_pack else {}),
             "pattern_id": state["selected_pattern_id"], "delivery": delivery, "title_count": read_json(Path(delivery["title_map"]))["total_count"],
         }, delivery)
     raise WorkflowError(f"未知生产步骤：{step}")
@@ -4734,6 +4794,8 @@ def run_answer_analysis(job_root: Path) -> int | None:
 
 
 def run_question_positioning(job_root: Path) -> int | None:
+    if not p02_selection.ensure_ready(sys.modules[__name__], job_root):
+        return None
     result = ensure_action(
         job_root, "question_positioning", prompt_question_positioning(job_root),
         fixture_builder=lambda: fixture_question_positioning(job_root),
@@ -5221,8 +5283,15 @@ def start_p0(args: argparse.Namespace) -> int:
 
 
 def start_article(args: argparse.Namespace) -> int:
+    if getattr(args, 'genre', 'default') == 'industry_roundup' and not getattr(args, 'dimension', []):
+        raise WorkflowError('行业盘点需要先指定 2–8 个共同对比维度，可重复传入 --dimension。')
     job_root = ensure_new_job(args.job_dir, "article", job_id=args.job_id, offline=args.offline_fixture)
     state = load_state(job_root)
+    article_focus.configure(state, focus=getattr(args, 'focus', ''),
+                            reader_questions=getattr(args, 'reader_question', []),
+                            excluded_topics=getattr(args, 'exclude_topic', []))
+    industry_roundup.configure(state, getattr(args, 'genre', 'default'), getattr(args, 'subject', []),
+                               dimensions=getattr(args, 'dimension', []))
     state["metadata"]["startup_target"] = "article"
     state["metadata"]["startup_entrypoint"] = "article"
     state["metadata"]["question_period_id"] = getattr(args, "question_period", None)
@@ -5657,6 +5726,11 @@ def handle_pattern_pause(args: argparse.Namespace, job_root: Path) -> int:
 
 def handle_question_positioning_pause(args: argparse.Namespace, job_root: Path) -> int:
     state = load_state(job_root)
+    if p02_selection.enabled(state) and (args.competitor_selection or args.rerun_positioning_research):
+        require_revision(args, state)
+        state['metadata']['p02_selection_pending'] = p02_selection.scope(state)
+        save_state(job_root, state)
+        return p02_selection.handle_selection(sys.modules[__name__], args, job_root)
     if args.confirm_question_positioning:
         require_revision(args, state)
         value = read_json(job_root / "question_positioning/question_positioning.json")
@@ -5664,6 +5738,10 @@ def handle_question_positioning_pause(args: argparse.Namespace, job_root: Path) 
             "revision": state["revision"], "confirmed_at": now(),
             "pattern_id": value["pattern_id"], "confirmed": True,
         }
+        if p02_selection.enabled(state):
+            record = p02_selection.current(state)
+            if record is None: raise WorkflowError('P02须先确认当前名单')
+            decision['p02_selection_hash'] = record['selection_hash']
         state["decisions"]["question_positioning_confirmation"] = decision
         save_state(job_root, state)
         atomic_json(job_root / "decisions/question_positioning_confirmation.json", decision)
@@ -5795,8 +5873,80 @@ def snapshot_completed_job_for_writing(job_root: Path, *, p0: bool) -> dict[str,
     return provenance
 
 
+def restart_p02_for_requirement_scope(job_root: Path, *, changes: dict, scope_changes: dict,
+                                      edits: str, provenance: dict,
+                                      example_confirmation: bool = False) -> int:
+    """A new scope returns to the existing pair-selection and blueprint route.
+
+    The old manuscript and Pack stay in their verified snapshot; no body edit
+    can silently substitute the former trio for the newly submitted request.
+    """
+    durable = writing_requirements.effective(sys.modules[__name__], job_root, p0=False)
+    durable.update(changes)
+    manuscript_revision.clear_revision(sys.modules[__name__], job_root, p0=False)
+    state = load_state(job_root)
+    writing_requirements.merge_changes(state, durable)
+    writing_requirements.record_p02_scope_changes(state, scope_changes)
+    writing_requirements.mark_new_blueprint(state)
+    state["decisions"]["blueprint_edits"] = edits
+    for key in ("question_positioning_confirmation", "blueprint_confirmation", "article_blueprint_confirmation"):
+        state["decisions"].pop(key, None)
+    state["metadata"].setdefault("writing_reruns", []).append(provenance)
+    state["metadata"]["article_production_bindings"] = {}
+    state["metadata"]["p02_scope_change_notice"] = "本轮写作要求改变了介绍范围或主体名单，请按新要求在现有页面确认两家竞品。"
+    state["flags"].pop("article_production_step", None)
+    state["revision"] += 1
+    actions = ("question_positioning", "article_editorial_preparation", "article_blueprint",
+               "article_draft", "article_edit", "article_finalize", "article_repair", "article_polish",
+               "article_titles", "article_title_review")
+    for action in actions:
+        state["flags"].setdefault("model_action_epochs", {})[action] = provenance["rerun_id"]
+    save_state(job_root, state)
+    for action in actions:
+        invalidate_action(job_root, action)
+    if example_confirmation:
+        return render_example_confirmation(job_root, p0=False)
+    set_status(job_root, "running_question_positioning", "question_positioning")
+    return drive(job_root)
+
+
 def continue_workflow(args: argparse.Namespace) -> int:
     job_root = assert_regular_source(args.job_dir, allow_directory=True)
+    if getattr(args, 'reject_fact_claim', []) and not getattr(args, 'repair_facts', False):
+        raise WorkflowError('--reject-fact-claim 须与 --repair-facts 同时使用')
+    if getattr(args, 'repair_facts', False):
+        state = load_state(job_root)
+        require_revision(args, state)
+        allowed = {'command', 'job_dir', 'revision', 'repair_facts', 'reject_fact_claim', 'func'}
+        if any(value for key, value in vars(args).items() if key not in allowed):
+            raise WorkflowError('事实返工请单独提交，不能与其他续跑参数同时使用')
+        if not industry_roundup.enabled(state) or state.get('status') != 'running_article_production' or state.get('flags', {}).get('article_production_step') != 'deliver':
+            raise WorkflowError('事实返工只适用于行业盘点交付校验失败的 Job')
+        gate_path = job_root / 'production/industry_roundup_quality_gate.json'
+        gate = read_json(gate_path) if gate_path.is_file() else {}
+        if gate.get('publish_ready') is not False:
+            raise WorkflowError('没有待返工的事实校验失败记录')
+        blueprint = read_json(job_root / 'blueprints/article_blueprint.json')
+        valid_ids = {row['id'] for row in blueprint['fact_claims']}
+        rejected = list(dict.fromkeys(getattr(args, 'reject_fact_claim', [])))
+        if set(rejected) - valid_ids:
+            raise WorkflowError('否决的事实 ID 不在本篇账本中：' + '、'.join(sorted(set(rejected) - valid_ids)))
+        snapshot = job_root / 'reviews' / ('fact_repair_before_' + uuid.uuid4().hex)
+        shutil.copytree(job_root / 'production', snapshot)
+        state['metadata']['rejected_fact_claims'] = sorted(set(state['metadata'].get('rejected_fact_claims', [])) | set(rejected))
+        state['metadata']['article_fact_repair_focus'] = gate['issues']
+        state['metadata'].setdefault('article_fact_repair_history', []).append({'snapshot': str(snapshot.relative_to(job_root)), 'rejected': rejected, 'at': now()})
+        state['metadata'].setdefault('article_production_bindings', {})
+        for step in ('edit', 'finalize', 'repair', 'polish', 'titles', 'title_review'):
+            state['metadata']['article_production_bindings'].pop(step, None)
+            state['flags'].setdefault('model_action_epochs', {})['article_' + step] = uuid.uuid4().hex
+        state['flags']['article_production_step'] = 'edit'
+        state['pending_action'] = None
+        state['revision'] += 1
+        save_state(job_root, state)
+        for action in ('article_edit', 'article_finalize', 'article_repair', 'article_polish', 'article_titles', 'article_title_review'):
+            invalidate_action(job_root, action)
+        return drive(job_root)
     material_changes = None
     if getattr(args, "writing_materials", None):
         if not getattr(args, "manuscript_edits", None):
@@ -5888,6 +6038,7 @@ def continue_workflow(args: argparse.Namespace) -> int:
         edits = edits_path.read_text(encoding="utf-8")
         if not edits.strip():
             raise WorkflowError("成稿精修委托不能为空")
+        scope_changes = writing_requirements.p02_scope_changes(sys.modules[__name__], job_root, requirement_changes)
         try:
             frozen = manuscript_revision.validate_completed_manuscript(sys.modules[__name__], job_root, p0=p0)
             previous_revision = manuscript_revision.current_revision(sys.modules[__name__], job_root, p0=p0)
@@ -5895,6 +6046,9 @@ def continue_workflow(args: argparse.Namespace) -> int:
         except (ValueError, OSError, KeyError, ProviderActionError) as exc:
             raise WorkflowError("现有成稿未通过精修来源检查：" + str(exc)) from exc
         provenance = snapshot_completed_job_for_writing(job_root, p0=p0)
+        if scope_changes:
+            return restart_p02_for_requirement_scope(job_root, changes=requirement_changes,
+                scope_changes=scope_changes, edits=edits, provenance=provenance)
         prefix = "p0" if p0 else "article"
         previous_titles = state["metadata"].pop(prefix + "_title_revision", None)
         if previous_titles:
@@ -6023,9 +6177,30 @@ def continue_workflow(args: argparse.Namespace) -> int:
         blueprint = read_json(job_root / "blueprints" / f"{prefix}_blueprint.json")
         validate_blueprint(blueprint, p0=rerun_p0)
         writing_context.validate_writing_material(blueprint)
+        scope_changes = writing_requirements.p02_scope_changes(sys.modules[__name__], job_root, requirement_changes)
         if getattr(args, "upgrade_article_editor", False) or supplied_examples:
             manuscript_revision.validate_completed_manuscript(sys.modules[__name__], job_root, p0=rerun_p0)
         provenance = snapshot_completed_job_for_writing(job_root, p0=rerun_p0)
+        if scope_changes:
+            example_confirmation = False
+            if supplied_examples:
+                route = state.get("selected_example_route")
+                ingest_supplied_examples(args, job_root, p0=False)
+                state = load_state(job_root)
+                example_confirmation = bool(state.get("metadata", {}).get("example_acquisition_errors") or route != "A")
+                if not example_confirmation:
+                    state["selected_example_route"] = route
+                    state["decisions"]["example_route"] = {
+                        "route": route, "revision": state["revision"], "confirmed_at": now()}
+                save_state(job_root, state)
+            if args.blueprint_supplement:
+                save_user_material(job_root, args.blueprint_supplement, "question")
+                state = load_state(job_root)
+                prepare_blueprint_material_index(job_root, state, p0=False)
+                save_state(job_root, state)
+            return restart_p02_for_requirement_scope(job_root, changes=requirement_changes,
+                scope_changes=scope_changes, edits=file_or_text(editing), provenance=provenance,
+                example_confirmation=example_confirmation)
         if getattr(args, "upgrade_article_editor", False):
             state["metadata"]["writing_requirements_contract"] = writing_requirements.CONTRACT
             state["metadata"]["writing_editor_contract"] = natural_editor.CONTRACT
@@ -6478,6 +6653,12 @@ def parser() -> argparse.ArgumentParser:
     article.add_argument("--reference-pack", type=Path)
     article.add_argument("--input", type=Path, action="append", default=[])
     article.add_argument("--brand")
+    article.add_argument("--genre", choices=["default", "industry_roundup"], default="default")
+    article.add_argument("--subject", action="append", default=[], help="行业盘点的主体；按文章中的顺序重复填写")
+    article.add_argument("--focus", default="", help="本篇细分主题或功能；留空时以正式问题和已确认委托为准")
+    article.add_argument("--reader-question", action="append", default=[], help="本篇要回答的读者问题；可重复填写")
+    article.add_argument("--exclude-topic", action="append", default=[], help="本篇明确不展开的主题；可重复填写")
+    article.add_argument("--dimension", action="append", default=[], help="行业盘点的共同对比维度；可重复填写")
     article.add_argument("--job-dir", type=Path, required=True)
     article.add_argument("--job-id")
     article.add_argument("--question-id", help="可省略；绑定Pack后从列表选择")
@@ -6492,6 +6673,8 @@ def parser() -> argparse.ArgumentParser:
     cont.add_argument("--job-dir", type=Path, required=True)
     cont.add_argument("--revision", type=int)
     cont.add_argument("--retry-current-action", action="store_true")
+    cont.add_argument("--repair-facts", action="store_true", help="行业盘点事实校验失败后，从全文编辑重新返工")
+    cont.add_argument("--reject-fact-claim", action="append", default=[], help="事实返工时使指定 Fxx 失效，可重复填写")
     cont.add_argument("--example-file", type=Path, action="append", default=[])
     cont.add_argument("--example-url", action="append", default=[])
     cont.add_argument("--provider-output", type=Path, help=argparse.SUPPRESS)

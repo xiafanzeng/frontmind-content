@@ -168,7 +168,8 @@ class ExampleStore:
         staging = Path(tempfile.mkdtemp(prefix=".source-", dir=self.root))
         try:
             (staging / "raw.bin").write_bytes(raw)
-            (staging / "body.md").write_text(text, encoding="utf-8")
+            # 哈希基于UTF-8原始字节；Windows不能把换行自动改写成CRLF。
+            (staging / "body.md").write_bytes(text.encode("utf-8"))
             atomic_json(staging / "record.json", record)
             for p in staging.iterdir():
                 p.chmod(0o444)

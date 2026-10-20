@@ -1,0 +1,102 @@
+// @vitest-environment jsdom
+import React,{act} from "react";
+import {createRoot} from "react-dom/client";
+import {afterEach,expect,it} from "vitest";
+import Process from "../client/ConversationExecutionProcess";
+import {mergeConversationProcesses,readConversationProcesses,type ConversationProcess} from "../contracts/conversation-process";
+import {bindConversationProcesses} from "../server/conversation-process";
+import {publicContentConversation} from "../server/conversations";
+import type {ContentMessage} from "../client/host";
+
+const fixture=(status:ConversationProcess["status"]="running"):ConversationProcess=>({id:"turn-1",userMessageId:"user-1",startedAt:100,status,thinking:[{id:"thought-1",timestamp:100,text:"正在处理：问题文章方案。",status:"recorded"},{id:"thought-2",timestamp:115,text:"正在结合登记材料处理：问题文章方案。",status:"recorded"}],tools:[{id:"tool-1",timestamp:110,text:"已完成读取登记材料。",status:"completed"}]});
+afterEach(()=>{localStorage.clear();document.body.innerHTML="";});
+async function mount(process=fixture()){
+ (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT=true;
+ const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+ const render=async(p:ConversationProcess)=>act(async()=>root.render(<Process process={p}/>));await render(process);
+ return {container,render,close:()=>act(async()=>root.unmount()),toggle:()=>act(async()=>container.querySelector<HTMLButtonElement>(".cp-process-toggle")!.click()),button:()=>container.querySelector(".cp-process-toggle")!};
+}
+it("automatically opens running and waiting, then collapses on success without remounting",async()=>{
+ const view=await mount();const node=view.container.querySelector("section");
+ try{expect(view.button()).toBeNull();expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);expect(view.container.querySelector(".cp-process-spinner")).not.toBeNull();await view.render(fixture("awaiting_input"));expect(view.container.querySelector(".cp-process-spinner")).toBeNull();expect(view.button().getAttribute("aria-expanded")).toBe("true");await view.render(fixture("completed"));expect(view.button().getAttribute("aria-expanded")).toBe("false");expect(view.button().textContent).toContain("展开执行过程");expect(view.container.querySelector("section")).toBe(node);}finally{await view.close();}
+});
+it.each([true,false])("preserves deliberate open=%s through polling, completion and refresh",async(open)=>{
+ const view=await mount(fixture(open?"completed":"awaiting_input"));await view.toggle();await view.render(fixture("completed"));expect(view.button().getAttribute("aria-expanded")).toBe(String(open));await view.close();const reopened=await mount(fixture("completed"));try{expect(reopened.button().getAttribute("aria-expanded")).toBe(String(open));}finally{await reopened.close();}
+});
+it("always shows all running summaries without a collapse control, even with a saved closed choice",async()=>{
+ localStorage.setItem("frontmind-process-open:turn-1","false");const view=await mount();
+ try{expect(view.button()).toBeNull();await view.render(fixture());expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);}finally{await view.close();}
+});
+it("folds recovery output with the completed process and reveals it on demand",async()=>{
+ const view=await mount({...fixture("completed"),recovery:"已沿用原会话恢复。"});
+ try{expect(view.container.querySelector(".cp-process-recovery")).toBeNull();await view.toggle();expect(view.container.querySelector(".cp-process-recovery")?.textContent).toContain("原会话");}finally{await view.close();}
+});
+it.each(["failed","cancelled","unknown"] as const)("does not call %s complete or show a spinner",async(status)=>{
+ const view=await mount({...fixture(status),thinking:[],tools:[],reason:status==="cancelled"?"本次执行已取消。":"执行结果尚未确认。"});try{expect(view.button().getAttribute("aria-expanded")).toBe("true");expect(view.container.querySelector(".cp-process-spinner")).toBeNull();expect(view.container.textContent).toContain("暂无可公开的过程摘要");expect(view.container.textContent).not.toContain("已完成");}finally{await view.close();}
+});
+it("drops arbitrary summary payloads, unsafe identities and private extras on the server boundary",()=>{
+ const input={...fixture(),reason:"SECRET /private/path",nextStep:"read_material(args)",input:"SECRET",thinking:[{...fixture().thinking[0],text:"SECRET internal reasoning"}],tools:[{...fixture().tools[0],args:{key:"SECRET"},result:"SECRET",stack:"SECRET"}]};
+ const safe=JSON.stringify(readConversationProcesses([input]));expect(safe).not.toMatch(/SECRET|read_material|args|result|stack|private/);expect(readConversationProcesses([{...fixture(),id:"/private/path"}])).toEqual([]);
+});
+it("deduplicates replay, preserves terminal states and sorts by stable identity",()=>{
+ const prior={...fixture("completed"),tools:[{...fixture().tools[0],status:"completed" as const,text:"已完成读取登记材料。"}]};
+ const merged=mergeConversationProcesses([prior],[fixture(),fixture()]);expect(merged).toHaveLength(1);expect(merged[0].status).toBe("completed");expect(merged[0].tools).toHaveLength(1);expect(merged[0].tools[0].status).toBe("completed");
+});
+it("keeps UI rounds separate from imported history and anchors processes to users",()=>{
+ const history={...fixture("failed"),id:"attempt-old",startedAt:10};const first={id:"turn-a",userMessageId:"user-a",startedAt:100,baseline:["attempt-old"]};const second={id:"turn-b",userMessageId:"user-b",startedAt:300,baseline:["attempt-old","attempt-a"]};
+ const messages:ContentMessage[]=[{id:"user-a",role:"user",content:"first",timestamp:100},{id:"user-b",role:"user",content:"second",timestamp:300}];
+ const processes=bindConversationProcesses([history,{...fixture("completed"),id:"attempt-a",startedAt:150},{...fixture(),id:"attempt-b",startedAt:350}],messages,[first,second],"running");
+ expect(processes.find(p=>p.id==="turn-a")?.status).toBe("unknown");expect(processes.find(p=>p.id==="turn-b")?.userMessageId).toBe("user-b");expect(processes.find(p=>p.id==="attempt-old")?.userMessageId).toBe("history-attempt-old");expect(messages.at(-1)?.id).toBe("history-attempt-old");
+});
+it("creates a stable pre-session process and keeps old failure frozen during same-session recovery",()=>{
+ const old={...fixture("failed"),id:"attempt-old",userMessageId:"history-attempt-old"};const turn={id:"turn-retry",userMessageId:"retry",startedAt:300,baseline:[old.id],summaryBaseline:["thought-1","thought-2","tool-1"],recoverAttemptId:old.id};
+ const pending=bindConversationProcesses([],[],[turn],"running",[old]);expect(pending.find(p=>p.id===turn.id)?.thinking).toEqual([]);
+ const resumed={...old,status:"completed",thinking:[...old.thinking,{id:"new-judgement",timestamp:400,text:"已提交阶段结果；交付状态另行核验。",status:"recorded"}],recovery:"已沿用原会话恢复。"};
+ const output=bindConversationProcesses([resumed],[],[turn],"completed",[old]);expect(output.find(p=>p.id===old.id)?.status).toBe("failed");expect(output.find(p=>p.id===turn.id)?.thinking.map(r=>r.id)).toEqual(["new-judgement"]);expect(output.find(p=>p.id===turn.id)?.recovery).toContain("原会话");
+});
+
+it("enforces the same summary boundary in the installed module router",()=>{
+ const snapshot=publicContentConversation({id:"content-1",purpose:"content_production",messages:[],execution:{timeline:[{reasoning:"SECRET",functionName:"read_material",arguments:{key:"SECRET"}}]},processes:[{...fixture(),privatePath:"SECRET"}]});
+ expect(snapshot.execution).toBeUndefined();expect(JSON.stringify(snapshot)).not.toMatch(/SECRET|functionName|read_material|arguments/);
+});
+
+it("accepts bounded model summaries at the server boundary and rejects raw protocol or private text",()=>{
+ const base=fixture();
+ const summary={...base.tools[0],text:"已读取官网，温控参数仍需与实际使用场景比对。",summaryOrigin:"model",summaryRevision:2};
+ const safe=readConversationProcesses([{...base,tools:[summary],thinking:[]}]);
+ expect(safe[0]?.tools[0]?.text).toContain("温控参数");
+ for(const text of ["调用 read_material 获取内容。","读取 /Users/test/private.json 完成。","返回 {参数:内容} 后继续。","实际凭据 sk-secretvalue 已返回。"]){
+  expect(readConversationProcesses([{...base,tools:[{...summary,text}]}])[0]?.tools).toEqual([]);
+ }
+ expect(readConversationProcesses([{...base,tools:[{...summary,summaryOrigin:undefined}]}])[0]?.tools).toEqual([]);
+});
+
+it("late model summaries update the same completed row without status or caption regression",()=>{
+ const prior={...fixture("completed"),tools:[{...fixture().tools[0],status:"completed" as const,text:"已完成读取登记材料。"}]};
+ const model={...prior,tools:[{...prior.tools[0],text:"已核对产品材料，噪音数据只适用于指定测试条件。",summaryOrigin:"model" as const,summaryRevision:2}]};
+ const merged=mergeConversationProcesses([prior],[model]);
+ expect(merged[0].tools[0].id).toBe(prior.tools[0].id);expect(merged[0].tools[0].text).toContain("噪音数据");
+ const stale={...fixture(),tools:[{...fixture().tools[0],text:"正在读取产品材料。",summaryOrigin:"model" as const,summaryRevision:1}]};
+ const again=mergeConversationProcesses(merged,[stale]);expect(again[0].status).toBe("completed");expect(again[0].tools[0].status).toBe("completed");expect(again[0].tools[0].text).toContain("噪音数据");
+});
+
+it("late summaries remain in the archived user turn after the next turn starts",()=>{
+ const old={...fixture("completed"),id:"turn-old",userMessageId:"user-old"};
+ const native={...old,id:"attempt-old",startedAt:110,tools:[{...old.tools[0],status:"completed" as const,text:"已核对温控材料，测试范围尚不能代表全部使用场景。",summaryOrigin:"model" as const,summaryRevision:2}]};
+ const messages=[{id:"user-old",role:"user" as const,timestamp:100,content:"旧任务"},{id:"user-new",role:"user" as const,timestamp:300,content:"新任务"}];
+ const turns=[{id:"turn-old",userMessageId:"user-old",startedAt:100,baseline:[]},{id:"turn-new",userMessageId:"user-new",startedAt:300,baseline:["attempt-old"]}];
+ const result=bindConversationProcesses([native],messages,turns,"running",[old]);
+ expect(result.find(p=>p.id==="turn-old")!.tools[0].text).toContain("温控材料");expect(result.find(p=>p.id==="turn-new")!.tools).toEqual([]);
+});
+
+it("shows only a fixed activity hint before the step ends, then keeps its completed summary identity",async()=>{
+ const pending={...fixture(),thinking:[],tools:[{id:"pending-tool",timestamp:110,text:"正在调用工具。",status:"running" as const}]};
+ const view=await mount({...pending,tools:[]});
+ try{
+  expect(view.container.textContent).toBe("正在思考");expect(view.button()).toBeNull();
+  await view.render(pending);expect(view.container.querySelector(".cp-process-status")?.textContent).toBe("正在调用工具");expect(view.container.querySelectorAll("li:not([hidden])")).toHaveLength(0);const pendingNode=view.container.querySelector("li");
+  const complete={...pending,tools:[{...pending.tools[0],text:"已读取示例网页，内容仅用于文档示例说明。",status:"completed" as const,summaryOrigin:"model" as const,summaryRevision:2}]};
+  await view.render(complete);const node=view.container.querySelector("li");expect(node).toBe(pendingNode);expect(view.container.textContent).toContain("正在思考");
+  await view.render(mergeConversationProcesses([complete],[pending])[0]);expect(view.container.querySelector("li")).toBe(node);expect(view.container.textContent).not.toContain("正在调用工具");
+ }finally{await view.close();}
+});

@@ -23,7 +23,8 @@ class CategoryTitleTests(unittest.TestCase):
         state = wf.load_state(job)
         state['selected_pattern_id'] = pattern
         state['question'] = {'question_text': question}
-        state['metadata']['title_strategy'] = dict(title_strategy.DEFAULT)
+        # Freeze the v16.2 policy explicitly; new jobs now use the v2 5+5 policy.
+        state['metadata']['title_strategy'] = dict(title_strategy.LEGACY_POLICY)
         state['metadata']['writing_mission_input_mode'] = writing_context_v14.MODE
         wf.save_state(job, state)
         if brief:

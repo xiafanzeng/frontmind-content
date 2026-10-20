@@ -22,12 +22,16 @@ function state(status = "awaiting_question_selection", stage = "question_selecti
   };
 }
 
-describe("native v16.2 host integration", () => {
+describe("native v16.2 and v16.3 host integration", () => {
   it("uses the frozen release to select native execution and leaves legacy execution intact", () => {
     expect(contentWorkflowRuntimeFor(context)).toBe("native_content_v1");
+    const next = {...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.3"}};
+    expect(contentWorkflowRuntimeFor(next)).toBe("native_content_v1");
+    expect(contentProductionSystemContext(next)).toContain("5 formal plus 5 scenario");
+    expect(contentProductionSystemContext(next)).not.toContain("exactly ten same-topic");
     expect(contentProductionSystemContext(context)).toContain("Never hand-write provider results");
     expect(contentProductionSystemContext(context)).toContain("timeout_seconds=7200");
-    expect(contentProductionSystemContext(context)).toContain("exactly ten same-topic");
+    expect(contentProductionSystemContext(context)).toContain("title policy frozen");
     expect(contentProductionSystemContext(context)).not.toContain("No external provider SDK");
     const legacy = { ...context, contentWorkflow: undefined };
     expect(contentWorkflowRuntimeFor(legacy)).toBeUndefined();
@@ -49,6 +53,18 @@ describe("native v16.2 host integration", () => {
     expect(contentProductionActionSchema.safeParse({ ...action, selection: " " }).success).toBe(false);
     const wrong = state(); wrong.current_pause!.revision = 6;
     expect(parseContentRunnerState(Buffer.from(JSON.stringify(wrong)))).toBeNull();
+  });
+
+  it("projects v16.3 fact-gate failure as an explicit repair action", () => {
+    const raw = {...state("running_article_production","article_production"),
+      flags:{article_production_step:"deliver"},pending_action:{action:"article_fact_repair"}};
+    const parsed = parseContentRunnerState(Buffer.from(JSON.stringify(raw)))!;
+    expect(parsed).not.toBeNull();
+    const progress = reduceContentProductionProgress(null,{providerRank:1,eventId:"gate",artifactId:"state",sha256:"a".repeat(64),state:parsed},"single_article");
+    const dto = contentProductionPublicDto({...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.3"}},
+      {contentProductionProgress:progress});
+    expect(dto?.availableActions).toEqual(["repair_article_facts"]);
+    expect(dto?.factGate?.publishReady).toBe(false);
   });
 
   it.each(["style", "finalize", "repair", "polish", "title_review"])("accepts native substage %s without claiming completion", (step) => {

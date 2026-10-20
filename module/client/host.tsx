@@ -1,9 +1,10 @@
+import type { ConversationProcess } from "../contracts/conversation-process";
 import type { GeneralExecutionDto } from "@frontmind/module-contracts/execution";
 import {createContext,useContext,type ComponentType,type ReactNode} from "react";
 import type {ContentProductionDto,ContentProductionInput,ContentProductionAction} from "../contracts/content-production";
 export type ContentOutputFile={fileUrl:string;fileName:string;mimeType:string};
 export type ContentMessage={id:string;role:"user"|"assistant";content:string;timestamp:number;serverSequence?:number;generalChat?:{turnId:string;providerEventId:string;isFinalAnswer?:boolean};outputFiles?:ContentOutputFile[];attachments?:{id:string;type:"file"|"image";name:string;fileId?:string}[];generalChatDispatch?:Record<string,unknown>};
-export type ContentConversation={id:string;title:string;purpose?:"content_production"|"enterprise_qa";taskId?:string;previousResponseId?:string;status:string;messages:ContentMessage[];execution?:GeneralExecutionDto;createdAt:number;updatedAt:number;executionKind?:"general_chat_v2"|"response_logic"};
+export type ContentConversation={id:string;title:string;purpose?:"content_production"|"enterprise_qa";taskId?:string;previousResponseId?:string;status:string;messages:ContentMessage[];execution?:GeneralExecutionDto;processes?:ConversationProcess[];createdAt:number;updatedAt:number;executionKind?:"general_chat_v2"|"response_logic"};
 export type TaskResponse={id:string;purpose?:"content_production"|"enterprise_qa"|"general";status:string;contentProduction?:ContentProductionDto|null;output?:unknown[];metadata?:{task_title?:string};error?:{message?:string}};
 export type ContentSendOptions={purpose?:"content_production";contentProduction?:ContentProductionInput;contentProductionAction?:ContentProductionAction};
 export interface ContentConversationApi {

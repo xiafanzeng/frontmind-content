@@ -284,7 +284,8 @@ class PatternTaskInputTests(unittest.TestCase):
         for name, value in {
             'load_state': self.state,
             'brand_content_context': {'core_positioning': '合成核心定位', 'p0': '合成品牌P0', 'brand_inputs': '合成品牌输入'},
-            'write_reference_context': Path('/synthetic/facts.md'),
+            # 此黄金请求捕获于POSIX环境，固定合成路径，不依赖执行机器的盘符。
+            'write_reference_context': SimpleNamespace(resolve=lambda: '/synthetic/facts.md'),
             'answer_texts': ['合成答案一', '合成答案二'], 'user_material_text': '合成补充',
             'read_json': {'recommended_pattern_id': 'P01', 'pattern_reasons': {x: '合成原因'+x for x in wf.QUESTION_PATTERN_IDS}},
             'emit_pause': 0,

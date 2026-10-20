@@ -1,3 +1,5 @@
 @import "../vendor/module-ui/src/styles/base.css";
 @source "../module/client";
 @source "../vendor/module-ui/src";
+.cp-local-workspace { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.cp-live-notice { flex: none; padding: 6px 16px; font-size: 12px; background: #fff7e0; color: #704c00; }
