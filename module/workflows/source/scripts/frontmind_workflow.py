@@ -36,7 +36,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared import title_strategy, p01_expression, p02_selection, industry_roundup, article_focus
-from shared import natural_editor, writing_requirements, writing_materials, language_editor_v15, editorial_preparation
+from shared import natural_editor, writing_requirements, writing_materials, language_editor_v15, editorial_preparation, natural_editorial_v165
 
 from shared.workflow_versions import (  # noqa: E402
     ACTIVE_JOB_STATUSES,
@@ -2910,6 +2910,19 @@ def prompt_positioning_value_synthesis(job_root: Path) -> str:
 
 
 
+def prose_context_for(job_root: Path):
+    """Select the writing-context implementation for this job's enabled contract."""
+    state = load_state(job_root)
+    if natural_editorial_v165.enabled(state):
+        from shared import writing_context_v165
+        return writing_context_v165
+    if editorial_preparation.enabled(state):
+        from shared import writing_context_v16
+        return writing_context_v16
+    from shared import writing_context_v15
+    return writing_context_v15
+
+
 def prompt_blueprint(job_root: Path, *, p0: bool) -> str:
     if not p0:
         prepare_own_brand_context(job_root)
@@ -4395,8 +4408,9 @@ def _return_blueprint_after_substantive_edit(job_root: Path, *, p0: bool, reason
 
 def production_signature(job_root: Path, prefix: str, stage: str) -> str:
     from shared.model_runtime import request_fingerprint
-    from shared import writing_context_v15, writing_context_v16
-    prose_context = writing_context_v16 if editorial_preparation.enabled(load_state(job_root)) else writing_context_v15
+    from shared import writing_context_v15, writing_context_v16, writing_context_v165
+    state = load_state(job_root)
+    prose_context = writing_context_v165 if natural_editorial_v165.enabled(state) else writing_context_v16 if editorial_preparation.enabled(state) else writing_context_v15
     v15 = prefix == "article" and language_editor_v15.enabled(load_state(job_root))
     prompt_builders = {"draft": prompt_article, "edit": prompt_edit, "titles": prompt_titles,
                        "style": lambda root, p0: writing_context.prompt_p0_style(sys.modules[__name__], root),
@@ -4457,6 +4471,8 @@ def archive_production_stage(job_root: Path, prefix: str, stage: str) -> None:
 
 def run_production(job_root: Path, *, p0: bool) -> int | None:
     state = load_state(job_root)
+    if not p0 and natural_editorial_v165.enabled(state):
+        return natural_editorial_v165.run_production(sys.modules[__name__], job_root)
     prefix = "p0" if p0 else "article"
     step = state.get("flags", {}).get(f"{prefix}_production_step", "draft")
     production_root = job_root / "production"
@@ -4643,8 +4659,9 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         save_state(job_root, state)
         return None
     if step == "polish" and v15:
-        from shared import writing_context_v15, writing_context_v16
-        prose_context = writing_context_v16 if editorial_preparation.enabled(load_state(job_root)) else writing_context_v15
+        from shared import writing_context_v15, writing_context_v16, writing_context_v165
+        state = load_state(job_root)
+        prose_context = writing_context_v165 if natural_editorial_v165.enabled(state) else writing_context_v16 if editorial_preparation.enabled(state) else writing_context_v15
         archive_production_stage(job_root, prefix, "polish")
         language_editor_v15.bind_input(sys.modules[__name__], job_root, "article_polish")
         result = ensure_action(job_root, "article_polish",
@@ -4808,10 +4825,11 @@ def run_question_positioning(job_root: Path) -> int | None:
 
 
 def run_article_blueprint(job_root: Path) -> int | None:
-    if editorial_preparation.enabled(load_state(job_root)):
-        from shared import writing_context_v16
+    state = load_state(job_root)
+    if natural_editorial_v165.enabled(state) or editorial_preparation.enabled(state):
+        prose_context = prose_context_for(job_root)
         prepared = ensure_action(job_root, editorial_preparation.ACTION,
-            writing_context_v16.prompt_preparation(sys.modules[__name__], job_root),
+            prose_context.prompt_preparation(sys.modules[__name__], job_root),
             fixture_builder=editorial_preparation.fixture)
         if prepared is None:
             return 0
