@@ -35,11 +35,39 @@ const RuntimeContext=createContext<Runtime|null>(null);
 function useRuntime(){const value=useContext(RuntimeContext);if(!value)throw new Error("Content runtime missing");return value;}
 function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessClient;children:ReactNode;workspaceId:string}) {
  const [conversations,setConversations]=useState<ContentConversation[]>([]),[activeId,setActiveId]=useState<string|null>(null),[hydrated,setHydrated]=useState(false),[notice,setNotice]=useState("");
+ const [initialLoadAttempt,setInitialLoadAttempt]=useState(0),[initialLoadPending,setInitialLoadPending]=useState(true),[initialLoadError,setInitialLoadError]=useState("");
+ const initialLoadPendingRef=useRef(true);
  const items=useRef(conversations);items.current=conversations;const current=useRef(activeId);current.current=activeId;const locks=useRef(new Set<string>());
  const storageKey=`frontmind-content-active:${workspaceId}`;
  const update=useCallback((item:ContentConversation)=>{setConversations(previous=>{const next=[item,...previous.filter(entry=>entry.id!==item.id)];items.current=next;return next;});},[]);
  const refresh=useCallback(async()=>{const rows=await client.list();setConversations(previous=>{const remoteIds=new Set(rows.map(row=>row.id));const next=[...rows,...previous.filter(row=>!remoteIds.has(row.id)&&row.messages.length===0)];items.current=next;return next;});},[client]);
- useEffect(()=>{let disposed=false;void client.list().then(rows=>{if(disposed)return;setConversations(rows);items.current=rows;const saved=localStorage.getItem(storageKey);setActiveId(rows.some(row=>row.id===saved)?saved:null);setHydrated(true);}).catch(error=>{if(!disposed)setNotice(error.message);});return()=>{disposed=true};},[client,storageKey]);
+ useEffect(()=>{
+  let disposed=false;
+  initialLoadPendingRef.current=true;
+  setInitialLoadPending(true);
+  // 初始化和重试都只读取任务列表；失败期间保留上次选择的任务编号。
+  void (async()=>{
+   try{
+    const rows=await client.list();
+    if(disposed)return;
+    setConversations(rows);items.current=rows;
+    const saved=localStorage.getItem(storageKey);
+    setActiveId(rows.some(row=>row.id===saved)?saved:null);
+    setInitialLoadError("");setHydrated(true);
+   }catch(error){
+    if(!disposed)setInitialLoadError(error instanceof Error&&error.message?error.message:"读取任务失败，请重试。");
+   }finally{
+    if(!disposed){initialLoadPendingRef.current=false;setInitialLoadPending(false);}
+   }
+  })();
+  return()=>{disposed=true;};
+ },[client,storageKey,initialLoadAttempt]);
+ function retryInitialLoad(){
+  if(initialLoadPendingRef.current)return;
+  initialLoadPendingRef.current=true;
+  setInitialLoadPending(true);
+  setInitialLoadAttempt(attempt=>attempt+1);
+ }
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
  useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const id=activeConversation.taskId;async function poll(){try{await client.task(id!);if(!cancelled)await refresh();}catch(error){if(!cancelled)setNotice(error instanceof Error?error.message:String(error));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}void poll();return()=>{cancelled=true;clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
@@ -67,7 +95,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
   }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{locks.current.delete(conversation.id);}
  },[client,update]);
  const value:Runtime={workspaceId,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
- return <RuntimeContext.Provider value={value}>{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
+ return <RuntimeContext.Provider value={value}>{!hydrated&&initialLoadError&&<div className="cp-notice" role="alert"><p>任务列表加载失败：{initialLoadError}</p><button type="button" className="cp-live-retry" disabled={initialLoadPending} onClick={retryInitialLoad}>{initialLoadPending?"正在重试…":"重试加载任务"}</button></div>}{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
 }
 function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHomeProps) {
  const runtime=useRuntime();
