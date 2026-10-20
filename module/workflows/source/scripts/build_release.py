@@ -22,7 +22,7 @@ from typing import Any, Iterable
 RELEASE_VERSION = "4.13.2"
 WORKFLOW_VERSION = "4.11"
 RELEASE_ROOT_NAME = "FrontMind_Content_Workflow_v4.13.2"
-FINAL_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Final_v16_3.zip"
+FINAL_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Final_v16_4.zip"
 CANDIDATE_ZIP_NAME = "FrontMind_Content_Workflow_v4.13.2_Candidate.zip"
 CHECKSUM_NAME = FINAL_ZIP_NAME + ".sha256"
 REPORT_NAME = "acceptance-report-v4.13.2.md"
@@ -50,6 +50,8 @@ RELEASE_FILES = frozenset({
     "shared/title_strategy.py", "FIX_v4.13.2_Final_v16_2.md",
     "scripts/tests_v411/test_title_count_v162.py", "scripts/tests_v411/test_category_titles_v162.py",
     "shared/writing_context_v16.py", "shared/editorial_preparation.py",
+    "shared/writing_context_fdnv6.py", "shared/writing_context_v165.py", "shared/natural_editorial_v165.py",
+    "FIX_v4.13.2_Final_v16_4.md",
     "scripts/run_taixin_v16_case.py", "scripts/package_v16.py", "FIX_v4.13.2_Final_v16.md", "FIX_v4.13.2_Final_v16_1.md",
     "shared/writing_context_v15.py", "shared/language_editor_v15.py",
     "scripts/run_taixin_v15_case.py", "scripts/package_v15.py", "FIX_v4.13.2_Final_v15.md",

@@ -72,6 +72,8 @@ REQUIRED_FILES = (
     "shared/model_runtime.py", "shared/responses_runtime.py", "shared/host_tools.py",
     "shared/example_acquisition.py", "shared/writing_context.py", "shared/editorial_contracts.py",
     "shared/writing_context_v13.py", "shared/writing_requirements.py", "shared/recommendation_references.py",
+    "shared/writing_context_fdnv6.py", "shared/writing_context_v165.py", "shared/natural_editorial_v165.py",
+    "FIX_v4.13.2_Final_v16_4.md",
     "FIX_v4.13.2_Final_v13.md", "resources/p01_recommendation/manifest.json",
     "shared/natural_editor.py", "FIX_v4.13.2_Final_v12.md", "shared/article_reader.py", "scripts/tests_v411/test_article_reader_final8.py",
     "shared/article_positioning.py", "scripts/tests_v411/test_article_positioning_final9.py",
