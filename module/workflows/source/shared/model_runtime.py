@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import copy
 import hashlib
 import json
 import os
@@ -874,12 +875,15 @@ def _submission_result(arguments):
 def _checked(validator, result, host_tools=None):
     if not isinstance(result, dict):
         raise ValueError("result must be an object")
-    # Controller supplies a single-result validator bound to current action.
-    validated = validator(result)
+    # 校验器可能就地补编号或整理嵌套字段；原始模型参数必须保持不变。
+    # 在副本上生成业务结果，防止工具回执、签名与模型来源证据相互矛盾。
+    candidate = copy.deepcopy(result)
+    validated = validator(candidate)
+    checked = candidate if validated is None else validated
     source_check = getattr(host_tools, "validate_result_sources", None)
     if callable(source_check):
-        source_check(result if validated is None else validated)
-    return result if validated is None else validated
+        source_check(checked)
+    return checked
 
 
 def _safe_deps(host_tools) -> list:

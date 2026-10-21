@@ -120,7 +120,7 @@ print(e.calls)
         p,r=self.latest();rows=[rt._read_json(x) for x in p.glob('tool_*.json')]
         errors=[row for row in rows if row['output'].get('ok') is False]
         self.assertEqual(len(errors),1);self.assertEqual(errors[0]['status'],'completed')
-        self.assertEqual(errors[0]['output']['error'],'tool_error')
+        self.assertEqual(errors[0]['output']['error'],ToolError.code)
         self.assertEqual(r['status'],'succeeded');self.assertEqual(e.calls,4)
         self.assertEqual(t.executions,2)
         # A completed feedback receipt is part of the exact saved result.
