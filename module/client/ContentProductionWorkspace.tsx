@@ -1,7 +1,8 @@
 import {useCallback,useEffect,useRef,useState,type CSSProperties} from "react";
 import {Check,ChevronDown,FileText,Loader2,Plus,RefreshCw,Sparkles,X} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
-import {useContentWorkspaceHost,type TaskResponse} from "./host";
+import {managedLocalAssetContentUrl} from "@frontmind/module-ui/lib/file-preview-source";
+import {useContentWorkspaceHost,type ContentConversation,type TaskResponse} from "./host";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput,type ContentProductionJobKind,type ContentProductionMode} from "../contracts/content-production";
 import ContentProductionConfirmation from "./ContentProductionConfirmation";
 import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionTaskTitle} from "../contracts/content-production-public";
@@ -141,6 +142,15 @@ function fileList(files: File[]) {
 }
 
 type Deliverable = { fileUrl: string; fileName: string; mimeType: string };
+type InputAttachment = NonNullable<NonNullable<ContentConversation["messages"][number]["attachments"]>[number]>;
+function inputAttachmentIdentity(attachment: InputAttachment) {
+  const fileId = attachment.fileId?.trim();
+  const name = attachment.name.trim().toLocaleLowerCase();
+  return { fileId, name };
+}
+function withoutRevisionSuffix(name: string) {
+  return name.replace(/_r\d+(?=\.[^.]+$|$)/i, "").toLocaleLowerCase();
+}
 export function contentArtifactUrl(value: string): string | null {
   try {
     const url = new URL(value, window.location.origin);
@@ -587,15 +597,31 @@ function ContentProductionInner({
             : progress?.source === "runner_job_state"
               ? "当前阶段"
               : "准备开始";
+  const conversationMessages = activeConversation?.messages ?? [];
+  const inputFiles = (() => {
+    const files: InputAttachment[] = [];
+    const seenFileIds = new Set<string>();
+    const seenNames = new Set<string>();
+    for (const attachment of conversationMessages.flatMap((message) => message.attachments ?? [])) {
+      const identity = inputAttachmentIdentity(attachment);
+      if ((identity.fileId && seenFileIds.has(identity.fileId)) || (identity.name && seenNames.has(identity.name))) continue;
+      files.push(attachment);
+      if (identity.fileId) seenFileIds.add(identity.fileId);
+      if (identity.name) seenNames.add(identity.name);
+    }
+    return files;
+  })();
+  const inputFileNames = new Set(inputFiles.map((file) => file.name.toLocaleLowerCase()));
   const deliverables = [
     ...new Map(
-      (activeConversation?.messages ?? [])
+      conversationMessages
         .filter((message) => message.role === "assistant")
         .flatMap((message) => message.outputFiles ?? [])
         .filter(
           (file) =>
             contentArtifactUrl(file.fileUrl) &&
-            !/frontmind_workflow_job_(?:snapshot|state)/i.test(file.fileName),
+            !/frontmind_workflow_job_(?:snapshot|state)/i.test(file.fileName) &&
+            !inputFileNames.has(withoutRevisionSuffix(file.fileName)),
         )
         .map((file) => [file.fileUrl, file]),
     ).values(),
@@ -1018,12 +1044,47 @@ function ContentProductionInner({
                 )}
               </section>
             )}
-            {
-              <section className="cp-deliverables">
-                <header>
+            <section className="cp-deliverables">
+              <header>
+                <strong>所有文件合集</strong>
+                <span>{inputFiles.length + deliverables.length} 项</span>
+              </header>
+              <details open className="cp-file-group">
+                <summary className="cp-file-group-heading">
+                  <strong>输入文件</strong>
+                  <span>{inputFiles.length} 份</span>
+                </summary>
+                {inputFiles.length ? (
+                  inputFiles.map((file, index) => {
+                    const contentUrl = file.fileId ? managedLocalAssetContentUrl(file.fileId) : null;
+                    return contentUrl ? (
+                      <FilePreview
+                        key={file.fileId || `${file.name}-${index}`}
+                        file={{ id: file.fileId!, type: "file", name: file.name, blobUrl: contentUrl }}
+                        className="cp-deliverable-file"
+                      />
+                    ) : (
+                      <div
+                        key={`${file.fileId || file.name}-${index}`}
+                        className="cp-deliverable-file cp-muted"
+                        aria-disabled="true"
+                        title="此附件缺少有效的文件 ID，暂不可打开"
+                      >
+                        <FileText size={16} aria-hidden="true" />
+                        <span>{file.name || "未命名附件"}</span>
+                        <span>暂不可打开</span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p>暂无</p>
+                )}
+              </details>
+              <details open className="cp-file-group">
+                <summary className="cp-file-group-heading">
                   <strong>交付文件</strong>
                   <span>{deliverables.length} 份</span>
-                </header>
+                </summary>
                 {deliverables.length ? (
                   deliverables.map((file) => (
                     <FilePreview
@@ -1040,12 +1101,10 @@ function ContentProductionInner({
                     />
                   ))
                 ) : (
-                  <p>
-                    任务生成的可用附件会显示在当前步骤，完整说明与表格保存在对话中。
-                  </p>
+                  <p>暂无</p>
                 )}
-              </section>
-            }
+              </details>
+            </section>
           </div>
         </aside>
     </div>
