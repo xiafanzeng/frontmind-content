@@ -7,8 +7,8 @@ import type {ContentConversation} from "../client/host";
 import {useContentWorkspaceHost} from "../client/host";
 vi.mock("../client/ContentProductionWorkspace",()=>({default:()=>{const host=useContentWorkspaceHost();const state=host.useConversation();const Home=host.Home;return state.activeConversation?<Home purpose="content_production"/>:null;}}));
 vi.mock("@frontmind/module-ui/components/BusinessChatInput",()=>({default:()=>null}));
-import {ModuleWorkspace} from "../client/runtime";
-afterEach(()=>{vi.useRealTimers();localStorage.clear();document.body.innerHTML="";});
+import {ModuleWorkspace,liveContentClient} from "../client/runtime";
+afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();localStorage.clear();document.body.innerHTML="";});
 const base:ContentConversation={id:"conversation",taskId:"task",title:"离线反馈测试",status:"running",createdAt:1000,updatedAt:1000,messages:[{id:"user",role:"user",content:"离线输入",timestamp:1000}]};
 async function mount(props:any={}){
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
@@ -60,4 +60,12 @@ it("surfaces polling and stop failures in the real runtime without resubmitting 
   await act(async()=>el.querySelector<HTMLButtonElement>(".cp-live-stop")!.click());expect(el.textContent).toContain("停止请求未确认");
   expect(el.textContent).not.toContain("本轮已停止");expect(forbidden).not.toHaveBeenCalled();
  }finally{await act(async()=>root.unmount());}
+});
+it("allows a slow material upload beyond the normal request deadline and still bounds the wait",async()=>{
+ vi.useFakeTimers();let signal:AbortSignal|undefined;
+ vi.spyOn(globalThis,"fetch").mockImplementation(async(_url,init)=>new Promise((_resolve,reject)=>{signal=init?.signal??undefined;signal?.addEventListener("abort",()=>reject(new DOMException("Aborted","AbortError")));}));
+ const pending=liveContentClient.upload(new File(["offline material"],"material.txt"));
+ const rejected=expect(pending).rejects.toThrow("请求超时");
+ await vi.advanceTimersByTimeAsync(25000);expect(signal?.aborted).toBe(false);
+ await vi.advanceTimersByTimeAsync(96000);await rejected;
 });
