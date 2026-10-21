@@ -69,3 +69,10 @@ it("allows a slow material upload beyond the normal request deadline and still b
  await vi.advanceTimersByTimeAsync(25000);expect(signal?.aborted).toBe(false);
  await vi.advanceTimersByTimeAsync(96000);await rejected;
 });
+
+it("reads confirmed terminal status from an old idle conversation without reviving execution",async()=>{
+ for(const [status,label] of [["cancelled","本轮已停止"],["error","本轮执行失败"],["ended","本轮已结束"]]){
+  const conversation:any={...base,status:"idle",execution:{timeline:[{id:"terminal",turnId:"turn",timestamp:3000,kind:"status",status}]}};
+  const view=await mount({conversation});try{expect(view.el.textContent).toContain(label);expect(view.el.querySelector('[role="timer"]')).toBeNull();}finally{await view.unmount();}
+ }
+});

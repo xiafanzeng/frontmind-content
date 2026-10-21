@@ -22,6 +22,9 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  const active=!!submitting||!!stopping||["running","pending"].includes(conversation?.status??"");
  useEffect(()=>{if(!active)return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[active,conversation?.id]);
  if(!conversation)return null;
+ // 旧对话的列表状态可能已回到 idle；执行时间线仍保留已确认的终态。
+ const terminal=conversation.execution?.timeline.findLast(e=>e.kind==="status");
+ const status=conversation.status==="idle"&&terminal?.kind==="status"&&["cancelled","error","ended"].includes(terminal.status)?terminal.status:conversation.status;
  const notices=executionNotices(conversation);
  const entries=conversation.execution?.timeline??[];
  const latest=entries.at(-1),turn=latest?.turnId;
@@ -35,15 +38,15 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  else if(pollFailed)text="状态更新暂时失败，正在重试；当前无法确认服务器进度。";
  else if(conversation.status==="pending")text="任务已接收，正在等待执行。";
  else if(conversation.status==="running")text="任务正在执行，等待下一条服务端记录。";
- else if(conversation.status==="error")text="本轮执行失败，已提交资料和执行记录已保留。";
- else if(conversation.status==="cancelled")text="本轮已停止，已提交资料和执行记录保留。";
+ else if(status==="error")text="本轮执行失败，已提交资料和执行记录已保留。";
+ else if(status==="cancelled")text="本轮已停止，已提交资料和执行记录保留。";
  else if(unacknowledged)text="本次提交尚未确认，请使用“重试本次提交”核对提交结果。";
- else if(conversation.status==="awaiting_input")text="等待你确认或补充材料。";
- else if(conversation.status==="completed")text="本轮已结束，请查看回复、交付文件或下一步确认。";
+ else if(status==="awaiting_input")text="等待你确认或补充材料。";
+ else if(status==="completed"||status==="ended")text="本轮已结束，请查看回复、交付文件或下一步确认。";
  if(!text&&!notices.length)return null;
  const lastRecord=latest?.timestamp??start;
  return <section className="cp-execution-feedback" aria-label="执行状态反馈">
-  {text&&<p role={conversation.status==="error"||pollFailed?"alert":"status"}>{text}</p>}
+  {text&&<p role={status==="error"||pollFailed?"alert":"status"}>{text}</p>}
   {active&&<p className="cp-feedback-time" role="timer" aria-label="本轮等待时长">本轮已等待 {elapsed} 秒{!submitting&&now-lastRecord>=30000?" · 暂未收到新记录，可停止当前执行。":""}</p>}
   {notices.map(notice=><p className="cp-feedback-service" key={notice.id} role={notice.code==="model_failure"?"alert":"status"}>{notice.code==="model_fallback"?"主模型不可用，已切换备用模型（GLM-5.3）。":"模型调用失败。"}{notice.reason!=="unknown"?`原因：${reasons[notice.reason]}。`:notice.code==="model_failure"?"具体原因未提供。":""}</p>)}
  </section>;
