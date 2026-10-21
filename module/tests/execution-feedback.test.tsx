@@ -4,7 +4,11 @@ import {createRoot} from "react-dom/client";
 import {afterEach,expect,it,vi} from "vitest";
 import ExecutionFeedback from "../client/ExecutionFeedback";
 import type {ContentConversation} from "../client/host";
-afterEach(()=>{vi.useRealTimers();document.body.innerHTML="";});
+import {useContentWorkspaceHost} from "../client/host";
+vi.mock("../client/ContentProductionWorkspace",()=>({default:()=>{const host=useContentWorkspaceHost();const state=host.useConversation();const Home=host.Home;return state.activeConversation?<Home purpose="content_production"/>:null;}}));
+vi.mock("@frontmind/module-ui/components/BusinessChatInput",()=>({default:()=>null}));
+import {ModuleWorkspace} from "../client/runtime";
+afterEach(()=>{vi.useRealTimers();localStorage.clear();document.body.innerHTML="";});
 const base:ContentConversation={id:"conversation",taskId:"task",title:"离线反馈测试",status:"running",createdAt:1000,updatedAt:1000,messages:[{id:"user",role:"user",content:"离线输入",timestamp:1000}]};
 async function mount(props:any={}){
  (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
@@ -41,4 +45,19 @@ it("distinguishes an observation failure from confirmed generation progress and 
 it("does not carry a previous turn's fallback into a fresh turn",async()=>{
  const conversation:any={...base,execution:{timeline:[{id:"old",turnId:"old",timestamp:1,kind:"status",status:"retrying",serviceNotice:{code:"model_fallback",reason:"unknown"}},{id:"new",turnId:"new",timestamp:2,kind:"status",status:"running"}]}};
  const view=await mount({conversation});try{expect(view.el.textContent).not.toContain("已切换备用");expect(view.el.textContent).toContain("任务正在执行");}finally{await view.unmount();}
+});
+it("surfaces polling and stop failures in the real runtime without resubmitting generation",async()=>{
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;vi.useFakeTimers();
+ localStorage.setItem("frontmind-content-active:feedback-runtime","conversation");
+ let broken=true;
+ const forbidden=vi.fn(async():Promise<never>=>{throw new Error("Generation is forbidden");});
+ const client={list:async()=>[structuredClone(base)],save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,task:async()=>{if(broken)throw new Error("offline");return {id:"task",status:"running"};},stop:async()=>{throw new Error("offline");}};
+ const el=document.createElement("div");document.body.append(el);const root=createRoot(el);
+ try{
+  await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:"feedback-runtime",ownerUserId:0},marketEdition:"cn",capabilities:[]}} client={client}/>));
+  expect(el.textContent).toContain("无法确认服务器进度");
+  broken=false;await act(async()=>vi.advanceTimersByTimeAsync(3000));expect(el.textContent).toContain("等待下一条服务端记录");
+  await act(async()=>el.querySelector<HTMLButtonElement>(".cp-live-stop")!.click());expect(el.textContent).toContain("停止请求未确认");
+  expect(el.textContent).not.toContain("本轮已停止");expect(forbidden).not.toHaveBeenCalled();
+ }finally{await act(async()=>root.unmount());}
 });
