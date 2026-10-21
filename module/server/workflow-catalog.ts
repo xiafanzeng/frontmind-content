@@ -4,6 +4,15 @@ import { dirname, resolve } from "node:path";
 import release from "../workflows/release.json";
 import type { ContentWorkflowBinding, FrozenContentTaskContext } from "../contracts/task-context";
 
+/** Only explicitly reviewed releases may receive the native provider transport. */
+export function isNativeContentWorkflowVersion(version: string): boolean {
+  return ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4"].includes(version);
+}
+
+export function supportsStructuredContentArticle(version: string): boolean {
+  return ["4.13.2-v16.3", "4.13.2-v16.4"].includes(version);
+}
+
 // Compatibility for tasks created before version binding was introduced.
 export const CONTENT_WORKFLOW_FILENAME = release.legacy.filename;
 export const CONTENT_WORKFLOW_SHA256 = release.legacy.sha256;

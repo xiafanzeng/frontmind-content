@@ -23,9 +23,9 @@ function state(status = "awaiting_question_selection", stage = "question_selecti
 }
 
 describe("native v16.2 and v16.3 host integration", () => {
-  it("uses the frozen release to select native execution and leaves legacy execution intact", () => {
+  it.each(["4.13.2-v16.3", "4.13.2-v16.4"])("connects frozen %s to native providers and preserves legacy execution", (version) => {
     expect(contentWorkflowRuntimeFor(context)).toBe("native_content_v1");
-    const next = {...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.3"}};
+    const next = {...context,contentWorkflow:{...context.contentWorkflow!,version}};
     expect(contentWorkflowRuntimeFor(next)).toBe("native_content_v1");
     expect(contentProductionSystemContext(next)).toContain("5 formal plus 5 scenario");
     expect(contentProductionSystemContext(next)).not.toContain("exactly ten same-topic");
@@ -37,6 +37,24 @@ describe("native v16.2 and v16.3 host integration", () => {
     expect(contentWorkflowRuntimeFor(legacy)).toBeUndefined();
     expect(contentProductionSystemContext(legacy)).toContain("No external provider SDK");
     expect(contentProductionSystemContext(legacy)).not.toContain("This frozen release uses its own OpenAI Agents SDK");
+  });
+
+  it("keeps v16.4 article scope and native preflight instructions together", () => {
+    const input = contentProductionInputSchema.parse({
+      mode: "single_article", enterpriseName: "合成企业", knowledgeSource: "files",
+      genre: "industry_roundup", subjectScope: ["合成企业", "品牌甲", "品牌乙"],
+      comparisonDimensions: ["温控", "售后"], articleFocus: "选购比较",
+    });
+    const current = {...context, contentProduction: input,
+      contentWorkflow: {...context.contentWorkflow!, version: "4.13.2-v16.4"}};
+    const instructions = contentProductionSystemContext(current);
+    expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
+    expect(instructions).toContain("FRONTMIND_CONTENT_PROVIDER_PROXY");
+    expect(instructions).toContain("preflight before model work");
+    expect(instructions).toContain("--genre industry_roundup");
+    expect(instructions).toContain(JSON.stringify({genre: input.genre,
+      subjectScope: input.subjectScope, comparisonDimensions: input.comparisonDimensions}));
+    expect(instructions).not.toContain("No external provider SDK");
   });
 
   it("projects question selection with its real revision and rejects stale or cross-stage submission", () => {
