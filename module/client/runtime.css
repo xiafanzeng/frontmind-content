@@ -5,3 +5,9 @@
 /* Dialog geometry also works when standalone has no Dashboard Tailwind bundle. */
 .cp-modal-overlay { position:fixed; inset:0; }
 .cp-modal[data-slot="dialog-content"] { position:fixed; top:50%; left:50%; translate:none; transform:translate(-50%,-50%); box-sizing:border-box; }
+
+.cp-execution-feedback{margin:8px 20px 12px;padding:12px 16px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;color:#444;flex-shrink:0;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.cp-execution-feedback p{margin:0 0 4px}.cp-execution-feedback p:last-child{margin-bottom:0}
+.cp-execution-feedback .cp-feedback-time{color:#737373;font-size:12px}
+.cp-execution-feedback .cp-feedback-service{color:#775b18}
+.cp-execution-feedback [role=alert]{color:#9f3a30}

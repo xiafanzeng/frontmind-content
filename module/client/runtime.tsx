@@ -1,3 +1,4 @@
+import ExecutionFeedback, {type FeedbackObservation} from "./ExecutionFeedback";
 import {generalExecutionSlots} from "@frontmind/module-ui/lib/general-execution-display";
 import {GeneralExecutionActivity} from "@frontmind/module-ui/components/GeneralExecutionActivity";
 import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
@@ -22,7 +23,13 @@ export interface ContentBusinessClient {
  dispatch(input:Record<string,unknown>,taskId?:string):Promise<TaskResponse>;
  task(id:string,signal?:AbortSignal):Promise<TaskResponse>;stop(id:string):Promise<void>;
 }
-async function json<T>(url:string,init:RequestInit={}):Promise<T>{const response=await fetch(url,{credentials:"same-origin",...init});const value=await response.json();if(!response.ok)throw new Error(value.error?.message??value.error??value.message??`HTTP ${response.status}`);return value;}
+async function json<T>(url:string,init:RequestInit={}):Promise<T>{
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),20000);
+ const abort=()=>controller.abort();init.signal?.addEventListener("abort",abort,{once:true});if(init.signal?.aborted)controller.abort();
+ try{const response=await fetch(url,{credentials:"same-origin",...init,signal:controller.signal});const value=await response.json();if(!response.ok)throw new Error(value.error?.message??value.error??value.message??`HTTP ${response.status}`);return value;}
+ catch(error){if(controller.signal.aborted)throw new Error("请求超时或已取消，请检查连接后重试；提交结果可能已被服务器接收。");throw error;}
+ finally{clearTimeout(timer);init.signal?.removeEventListener("abort",abort);}
+}
 export const liveContentClient:ContentBusinessClient={
  list:()=>json("/api/content/conversations"),
  save:value=>json(`/api/content/conversations/${encodeURIComponent(value.id)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}),
@@ -32,11 +39,12 @@ export const liveContentClient:ContentBusinessClient={
  task:(id,signal)=>json(`/api/frontmind/v2/tasks/${encodeURIComponent(id)}`,{signal}),
  stop:async id=>{await json(`/api/frontmind/v2/tasks/${encodeURIComponent(id)}/stop`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});},
 };
-type Runtime=ContentConversationApi&{workspaceId:string;sendMessage(prompt:string,files?:File[],options?:ContentSendOptions):Promise<boolean>;stop():Promise<void>;notice:string;refresh():Promise<void>};
+type Runtime=ContentConversationApi&{workspaceId:string;sendMessage(prompt:string,files?:File[],options?:ContentSendOptions):Promise<boolean>;stop():Promise<void>;notice:string;submittingIds:ReadonlySet<string>;stoppingId:string|null;observation?:FeedbackObservation;refresh():Promise<void>};
 const RuntimeContext=createContext<Runtime|null>(null);
 function useRuntime(){const value=useContext(RuntimeContext);if(!value)throw new Error("Content runtime missing");return value;}
 function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessClient;children:ReactNode;workspaceId:string}) {
  const [conversations,setConversations]=useState<ContentConversation[]>([]),[activeId,setActiveId]=useState<string|null>(null),[hydrated,setHydrated]=useState(false),[notice,setNotice]=useState("");
+ const [submittingIds,setSubmittingIds]=useState<Set<string>>(new Set()),[stoppingId,setStoppingId]=useState<string|null>(null),[observation,setObservation]=useState<FeedbackObservation>();
  const [initialLoadAttempt,setInitialLoadAttempt]=useState(0),[initialLoadPending,setInitialLoadPending]=useState(true),[initialLoadError,setInitialLoadError]=useState("");
  const initialLoadPendingRef=useRef(true);
  const items=useRef(conversations);items.current=conversations;const current=useRef(activeId);current.current=activeId;const locks=useRef(new Set<string>());const listVersion=useRef(0);
@@ -78,10 +86,12 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  }
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
- useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const id=activeConversation.taskId;async function poll(){try{await client.task(id!);if(!cancelled)await refresh();}catch(error){if(!cancelled)setNotice(error instanceof Error?error.message:String(error));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}void poll();return()=>{cancelled=true;clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
+ useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
+ async function poll(){try{await client.task(id!,controller.signal);if(!cancelled){await refresh();if(!cancelled)setObservation({taskId:id!,checkedAt:Date.now()});}}catch{if(!cancelled)setObservation({taskId:id!,checkedAt:Date.now(),error:true});}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
+ void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;
-  locks.current.add(conversation.id);listVersion.current++;setNotice("");
+  locks.current.add(conversation.id);listVersion.current++;setNotice("");setSubmittingIds(previous=>new Set([...previous,conversation.id]));
   try{
    // Keep the exact persisted envelope for an unacknowledged request. Uploads and
    // task creation are never repeated with a new identity after a lost response.
@@ -100,9 +110,9 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
    const latest=items.current.find(row=>row.id===conversation.id)??conversation;
    const accepted={...latest,taskId:result.id,previousResponseId:result.id,executionKind:"general_chat_v2" as const,status:result.status,updatedAt:Date.now(),messages:latest.messages.map(item=>item.id===message!.id?(({generalChatDispatch:_,...rest})=>rest)(item):item)};
    update(await client.save(accepted));return true;
-  }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{listVersion.current++;locks.current.delete(conversation.id);}
+  }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{listVersion.current++;locks.current.delete(conversation.id);setSubmittingIds(previous=>{const next=new Set(previous);next.delete(conversation.id);return next;});}
  },[client,update]);
- const value:Runtime={workspaceId,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{listVersion.current++;setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(id){await client.stop(id);await refresh();}}};
+ const value:Runtime={workspaceId,submittingIds,stoppingId,observation,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{listVersion.current++;setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(!id||stoppingId)return;setStoppingId(id);setNotice("");try{await client.stop(id);await refresh();}catch{setNotice("停止请求未确认，请重试停止；当前不能确认执行已停止。");throw new Error("STOP_NOT_CONFIRMED");}finally{setStoppingId(null);}}};
  return <RuntimeContext.Provider value={value}>{!hydrated&&initialLoadError&&<div className="cp-notice" role="alert"><p>任务列表加载失败：{initialLoadError}</p><button type="button" className="cp-live-retry" disabled={initialLoadPending} onClick={retryInitialLoad}>{initialLoadPending?"正在重试…":"重试加载任务"}</button></div>}{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
 }
 // Keep the message wrapper's component identity stable across polling updates.
@@ -123,8 +133,9 @@ function ContentDialogue({knowledgeEditingBlocked,conversationFooter}:ContentHom
    {processes.filter(p=>p.userMessageId===message.id).map(process=><ConversationExecutionProcess key={process.id} process={process} onRecover={process.id===processes.at(-1)?.id&&["error","cancelled"].includes(runtime.activeConversation?.status??"")?()=>void runtime.sendMessage("重试当前执行").catch(()=>{}):undefined}/>)}
    {message.generalChatDispatch&&<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>}
   </article>)}</div></div>{showLatest&&<button className="workbench-return-latest" onClick={returnToLatest}>回到最新</button>}{conversationFooter}
+  <ExecutionFeedback conversation={runtime.activeConversation??undefined} submitting={runtime.submittingIds.has(runtime.activeConversation?.id??"")} stopping={runtime.stoppingId===runtime.activeConversation?.taskId} observation={runtime.observation}/>
   <BusinessChatInput runtime={contentComposerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
-  {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" onClick={()=>void runtime.stop().catch(()=>{})}>停止当前执行</button>}
+  {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" disabled={runtime.stoppingId===runtime.activeConversation?.taskId} onClick={()=>void runtime.stop().catch(()=>{})}>{runtime.stoppingId===runtime.activeConversation?.taskId?"正在请求停止…":"停止当前执行"}</button>}
  </div>;
 }
 const pendingDrafts = new Set<() => boolean>();
