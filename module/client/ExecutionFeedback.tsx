@@ -27,7 +27,7 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  const latest=entries.at(-1),turn=latest?.turnId;
  const start=entries.find(e=>e.turnId===turn)?.timestamp??conversation.messages.findLast(m=>m.role==="user")?.timestamp??conversation.updatedAt;
  const elapsed=Math.max(0,Math.floor((now-start)/1000));
- const pollFailed=observation?.taskId===conversation.taskId&&observation.error;
+ const pollFailed=observation?.error&&observation.taskId===conversation.taskId;
  const unacknowledged=conversation.messages.some(m=>m.generalChatDispatch);
  let text="";
  if(stopping)text="正在请求停止，等待服务器确认。";
