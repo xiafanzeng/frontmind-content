@@ -29,6 +29,8 @@ ALLOWED_SUFFIXES = TEXT_SUFFIXES | DOCUMENT_SUFFIXES | IMAGE_SUFFIXES
 FORBIDDEN = {"config", "provider", "attempts", "credentials", "secrets", ".git", "__pycache__"}
 FORBIDDEN_FILES = {"job_state.json", "deepseek.json", "zhipu.json", "xty.json", "agent.json", "host_registry.json", "reference_pack_binding.json"}
 TITLE_REVIEW_ACTIONS = {"p0_title_review", "article_title_review"}
+PRODUCT_SOURCES_MARKER = '<frontmind_product_sources version="16.6" />'
+REFERENCE_SOURCE_CATEGORIES = {"example", "content_background", "length_reference"}
 
 class ToolError(ValueError):
     code = "invalid_tool_arguments"
@@ -44,6 +46,7 @@ class MaterialAmbiguousError(MaterialReferenceError):
 
 class MaterialBoundaryError(ToolError):
     code = "material_boundary_rejected"
+
 
 
 class ToolOutcomeUnknown(ToolError):
@@ -139,6 +142,10 @@ class HostTools:
         self.inline_reads = {}
         self.editorial_searches = []
         self.editorial_web_reads = []
+        self._product_sources_enabled = False
+        self._filtered_acquired_sources = {}
+        self._reference_source_ids = {}
+        self._reference_source_urls = {}
         self._isolated_preparation = False
         self._required = set()
         self._category_title_body_only = False
@@ -163,6 +170,17 @@ class HostTools:
 
     def configure_for_prompt(self, prompt):
         """Bind available operations to this request, never mutable Job defaults."""
+        # The controller places this marker in the request's controlled prefix.
+        # A mention inside an attached original cannot opt an old request in.
+        self._product_sources_enabled = (
+            self.action == "article_editorial_preparation"
+            and isinstance(prompt, str)
+            and prompt.startswith('<frontmind_natural_prose version="16.5">\n')
+            and PRODUCT_SOURCES_MARKER in prompt.splitlines()[:5])
+        if self._product_sources_enabled:
+            for ident in self._filtered_acquired_sources:
+                self._register_acquired(self.store.resolve(ident, require_complete=False))
+            self._register_preparation_reference_purposes()
         from shared import title_strategy
         self._title_strategy_policy = title_strategy.request_policy(prompt)
         self._category_title_body_only = self.action == "article_title_review" and self._title_strategy_policy is not None
@@ -171,8 +189,8 @@ class HostTools:
             self._original_definitions = list(self.definitions)
         self.definitions = CallableDefinitions(selected_tools(self.action, self._original_definitions, prompt))
         self._blueprint_background_optional = self.action.endswith("_blueprint") and matches(prompt)
-        from shared import language_editor_v15
-        if language_editor_v15.matches(prompt):
+        from shared import language_editor_v15, writing_context_v165
+        if language_editor_v15.matches(prompt) or writing_context_v165.matches(prompt):
             if self.action in {"article_finalize", "article_polish"}:
                 self.definitions = CallableDefinitions([])
             elif self.action.endswith("_blueprint"):
@@ -180,6 +198,17 @@ class HostTools:
                 self.definitions = CallableDefinitions([item for item in self._original_definitions if item["function"]["name"] in allowed])
                 self._blueprint_background_optional = True
         from shared import editorial_preparation
+        if writing_context_v165.matches(prompt) and self.action == editorial_preparation.ACTION:
+            # Previous manuscripts and strategy notes guide the commission;
+            # preparation selects content from the original enterprise files.
+            state = json.loads((self.job_root / "job_state.json").read_text(encoding="utf-8"))
+            bound = state.get("reference_pack", {}).get("path")
+            background = (Path(bound).relative_to(self.job_root).as_posix().rstrip("/") + "/strategy/") if bound else None
+            self.artifacts = {key: row for key, row in self.artifacts.items()
+                              if row.get("category") != "brand_background"
+                              and not (background and row["path"].startswith(background))}
+            self.dependencies = {key: value for key, value in self.dependencies.items() if key in self.artifacts}
+            self.read_ranges = {key: value for key, value in self.read_ranges.items() if key in self.artifacts}
         self._isolated_preparation = editorial_preparation.matches(prompt) and self.action == "article_blueprint"
         if self._isolated_preparation:
             editorial_preparation.load(self.job_root)
@@ -312,6 +341,9 @@ class HostTools:
         except (OSError, ValueError):
             state = {}
         binding = state.get("reference_pack") or {}
+        if self.action in {"question_recommendation_draft", "question_recommendation_review"}:
+            source = self.job_root / "inputs/question_recommendation_source.md"
+            self.register_file(source, category="recommendation_source", required=True, persist=False)
         if binding.get("path"):
             active = Path(binding["path"])
             if not _inside(self.job_root, active) or not active.exists():
@@ -354,6 +386,9 @@ class HostTools:
                 if record.get("category") in {"example", "answer", "content_background", "length_reference"}:
                     return path.startswith(("inputs/answer_", "examples/", "answers/", "artifacts/acquired_sources/"))
                 return False
+            self._filtered_acquired_sources = {
+                key: record for key, record in self.artifacts.items()
+                if record.get("category") == "acquired_source" and not selected_record(record)}
             self.artifacts = {key: record for key, record in self.artifacts.items() if selected_record(record)}
             self._required.intersection_update(self.artifacts)
             self.dependencies = {key: value for key, value in self.dependencies.items() if key in self.artifacts}
@@ -365,8 +400,8 @@ class HostTools:
             self._required.clear()
             for record in self.artifacts.values():
                 record["required"] = False
-        from shared import natural_editor, language_editor_v15
-        if language_editor_v15.enabled(state) and self.action in {"article_finalize", "article_polish"}:
+        from shared import natural_editor, language_editor_v15, natural_editorial_v165
+        if (language_editor_v15.enabled(state) or natural_editorial_v165.enabled(state)) and self.action in {"article_finalize", "article_polish"}:
             self._required.clear()
             for record in self.artifacts.values():
                 record["required"] = False
@@ -731,8 +766,80 @@ class HostTools:
 
     def _register_acquired(self, record):
         artifact_id = record["artifact_id"]
-        self.artifacts[artifact_id] = {"artifact_id": artifact_id, "path": record["text_path"], "sha256": record["text_sha256"], "category": "acquired_source", "title": record.get("title", ""), "suffix": ".md", "required": False, "acquisition_status": record["acquisition_status"], "completeness": record["completeness"]}
+        existing = self.artifacts.get(artifact_id, {})
+        category = "acquired_source"
+        if self._product_sources_enabled:
+            category = self._reference_source_ids.get(artifact_id) or next((
+                self._reference_source_urls[url] for url in (record.get("original_url"), record.get("final_url"))
+                if url in self._reference_source_urls), None) or (
+                existing.get("category") if existing.get("category") in REFERENCE_SOURCE_CATEGORIES else category)
+        self.artifacts[artifact_id] = {"artifact_id": artifact_id, "path": record["text_path"], "sha256": record["text_sha256"], "category": category, "title": record.get("title", ""), "suffix": ".md", "required": existing.get("required", False) if self._product_sources_enabled else False, "acquisition_status": record["acquisition_status"], "completeness": record["completeness"]}
         return artifact_id
+
+    def _mark_reference_source(self, ident, category):
+        """Bind reference purpose to immutable identity and its exact origin URLs."""
+        acquired = self.store.resolve(ident, require_complete=False)
+        self._reference_source_ids[ident] = category
+        for url in (acquired.get("original_url"), acquired.get("final_url")):
+            if url:
+                self._reference_source_urls[url] = category
+        for key, row in self.artifacts.items():
+            if not key.startswith("src_"):
+                continue
+            origin = self.store.resolve(key, require_complete=False)
+            if key == ident or any(url and url in self._reference_source_urls
+                                   for url in (origin.get("original_url"), origin.get("final_url"))):
+                row["category"] = self._reference_source_ids.get(key) or next(
+                    self._reference_source_urls[url] for url in (origin.get("original_url"), origin.get("final_url"))
+                    if url in self._reference_source_urls)
+
+    def _register_preparation_reference_purposes(self):
+        # Reapply the selected identity after restoring an older checkpoint:
+        # its saved acquired_source category is not a change of source purpose.
+        style_index = self.job_root / "examples/question/index.json"
+        if _inside(self.job_root, style_index) and style_index.is_file():
+            try:
+                examples = json.loads(style_index.read_text(encoding="utf-8")).get("examples", [])
+            except (OSError, ValueError) as exc:
+                raise ToolError("Selected example index is invalid.") from exc
+            for item in examples:
+                ident = item.get("artifact_id")
+                if not ident or ident not in self.artifacts:
+                    continue
+                acquired = self.store.resolve(ident, require_complete=True)
+                if acquired["text_sha256"] != item.get("text_sha256"):
+                    raise ToolError("Selected example changed.")
+                category = self.artifacts[ident].get("category")
+                self._mark_reference_source(ident, category if category in REFERENCE_SOURCE_CATEGORIES else "example")
+        # Selected style bodies have already been classified by their index.
+        # Processed selected-text snapshots also retain their acquisition purpose,
+        # including when a fresh commission has selected other local originals.
+        for ident, row in list(self.artifacts.items()):
+            if not ident.startswith("src_"):
+                continue
+            acquired = self.store.resolve(ident, require_complete=False)
+            category = row.get("category")
+            if category in REFERENCE_SOURCE_CATEGORIES:
+                self._mark_reference_source(ident, category)
+            elif acquired.get("obtained_via") in {"bundled_user_selected_text", "user_selected_article_text"}:
+                self._mark_reference_source(ident, "example")
+        # Article-pool selections use a separate index from the style examples.
+        # Their IDs and hashes, never a guessed publisher/domain, identify them.
+        from shared import article_pool
+        selected = self.job_root / article_pool.SELECTION
+        if not _inside(self.job_root, selected) or not selected.is_file():
+            return
+        try:
+            value = json.loads(selected.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ToolError("Selected article-pool reference index is invalid.") from exc
+        if value.get("contract") != article_pool.CONTRACT or not value.get("confirmed"):
+            return
+        for item in value.get("examples", []):
+            acquired = self.store.resolve(item.get("artifact_id"), require_complete=True)
+            if acquired["text_sha256"] != item.get("text_sha256"):
+                raise ToolError("Selected article-pool reference changed.")
+            self._mark_reference_source(acquired["artifact_id"], "content_background")
 
     def _text(self, record):
         path = self._artifact_path(record)
@@ -873,7 +980,10 @@ class HostTools:
                 missing.append({"source_ref": ref, "issue": "unregistered_or_invalid_source"})
                 continue
             ident = record["artifact_id"]
-            if preparation and (record.get("category") in {"example", "content_background", "length_reference", "answer", "search_results", "acquired_source"}
+            excluded_categories = REFERENCE_SOURCE_CATEGORIES | {"answer", "search_results"}
+            if not self._product_sources_enabled:
+                excluded_categories.add("acquired_source")
+            if preparation and (record.get("category") in excluded_categories
                     or ident in {self.resolve_artifact(case["source_ref"])["artifact_id"] for case in value["reference_cases"]}):
                 raise ToolError("Reference cases and background prose cannot be submitted as enterprise fact sources.")
             derived = self._derived.get(ident)
@@ -907,6 +1017,8 @@ class HostTools:
                 raise ToolError("Reference case URL does not match its acquired article.")
             if not self._is_complete(ident, len(self._text(record))):
                 raise ToolError("Read each reference case to the end with read_material before submitting.")
+            if self._product_sources_enabled:
+                self._mark_reference_source(ident, "content_background")
             selected.append(ident)
         if len(set(selected)) != 2:
             raise ToolError("Editorial preparation requires two distinct article bodies.")
@@ -960,7 +1072,7 @@ class HostTools:
             offset, limit = arguments.get("offset", 0), arguments.get("limit", 25)
             if not isinstance(offset, int) or offset < 0 or not isinstance(limit, int) or not 1 <= limit <= 100:
                 raise ToolError("invalid inventory pagination")
-            payload = {"artifacts": [self._compact_artifact(row) for row in rows[offset:offset+limit]], "total": len(rows), "next_offset": offset+limit if offset+limit < len(rows) else None, "required_artifacts": sorted(self._required), "reference_help": "Copy artifact_id or registered path exactly. Do not derive IDs from filenames or hashes."}
+            payload = {"artifacts": [self._compact_artifact(row) for row in rows[offset:offset+limit]], "total": len(rows), "next_offset": offset+limit if offset+limit < len(rows) else None, "required_artifacts": sorted(self._required), "reference_help": "Copy artifact_id/path exactly; unique exact title/filename also works. Do not derive IDs from hashes."}
             # Local fix 2026-09-21: category is an exact label; guessing one that
             # does not exist used to return a silent empty list. Point the model
             # at the categories that actually exist in this action.
@@ -1226,5 +1338,7 @@ class HostTools:
                        for key in optional_required)):
             raise ToolError("invalid saved request-specific required sources")
         self._request_optional_required.update(key for key in optional_required if key not in excluded)
+        if self._product_sources_enabled:
+            self._register_preparation_reference_purposes()
         self._apply_blueprint_read_policy()
         self._persist()

@@ -67,7 +67,7 @@ it("allows a slow material upload beyond the normal request deadline and still b
  const pending=liveContentClient.upload(new File(["offline material"],"material.txt"));
  const rejected=expect(pending).rejects.toThrow("请求超时");
  await vi.advanceTimersByTimeAsync(25000);expect(signal?.aborted).toBe(false);
- await vi.advanceTimersByTimeAsync(96000);await rejected;
+ await vi.advanceTimersByTimeAsync(575000);expect(signal?.aborted).toBe(true);await rejected;
 });
 
 it("reads confirmed terminal status from an old idle conversation without reviving execution",async()=>{

@@ -72,10 +72,10 @@ class CategoryTitleTests(unittest.TestCase):
 
     def test_new_default_is_scoped_and_legacy_revision_wins(self):
         state = wf.make_state('new', 'article')
-        for pattern, count in (('P01',10), ('P02',10), ('P03',20), ('P04',20), ('P05',20), ('P06',20)):
+        for pattern, count in (('P01',10), ('P02',10), ('P03',10), ('P04',10), ('P05',10), ('P06',10)):
             state['selected_pattern_id'] = pattern
             self.assertEqual(title_strategy.expected_count(state), count)
-        self.assertEqual(title_strategy.expected_count(wf.make_state('p0', 'p0')), 20)
+        self.assertEqual(title_strategy.expected_count(wf.make_state('p0', 'p0')), 10)
         state['selected_pattern_id'] = 'P01'
         state['metadata']['article_title_revision'] = {'edits_markdown':'旧请求'}
         self.assertEqual(title_strategy.expected_count(state), 20)

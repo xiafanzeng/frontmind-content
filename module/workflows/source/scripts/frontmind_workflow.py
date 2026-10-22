@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared import title_strategy, p01_expression, p02_selection, industry_roundup, article_focus
+from shared import title_strategy, p01_expression, p02_selection, article_pool, question_positioning_handoff, industry_roundup, article_focus
 from shared import natural_editor, writing_requirements, writing_materials, language_editor_v15, editorial_preparation, natural_editorial_v165
 
 from shared.workflow_versions import (  # noqa: E402
@@ -405,7 +405,7 @@ def package_identity(path: Path, prefix: str) -> str:
 
 def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
     timestamp = now()
-    return {
+    value = {
         "schema_version": WORKFLOW_VERSION,
         "artifact_type": "frontmind_content_job_state",
         "workflow_version": WORKFLOW_VERSION,
@@ -424,10 +424,18 @@ def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
         "current_pause": None,
         "pending_action": None,
         "metadata": ({"writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "p0_style_contract": p0_style.DEFAULT_P0_STYLE_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "title_input_mode": writing_requirements.TITLE_INPUT_MODE} if job_kind == "p0" else
-                     {"natural_prose_contract": editorial_preparation.CONTRACT, "writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "article_reader_contract": article_positioning.CURRENT_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "writer_count_contract": "frontmind-writer-count/1", "single_subject_writing_contract": "frontmind-single-subject/3", "title_input_mode": writing_requirements.TITLE_INPUT_MODE, "title_strategy": dict(title_strategy.DEFAULT), "p01_expression_policy": p01_expression.CONTRACT, "p02_selection_policy": p02_selection.CONTRACT} if job_kind == "article" else {}),
+                     {"natural_prose_contract": natural_editorial_v165.CONTRACT, "writing_requirements_contract": writing_requirements.CONTRACT, "writing_editor_contract": natural_editor.CONTRACT, "article_reader_contract": article_positioning.CURRENT_CONTRACT, "blueprint_material_input_mode": writing_requirements.BLUEPRINT_MATERIAL_INPUT_MODE, "writing_outline_input_mode": writing_requirements.WRITING_OUTLINE_INPUT_MODE, "writing_mission_input_mode": writing_requirements.DEFAULT_MISSION_INPUT_MODE, "writer_count_contract": "frontmind-writer-count/1", "single_subject_writing_contract": "frontmind-single-subject/3", "title_input_mode": writing_requirements.TITLE_INPUT_MODE, "title_strategy": dict(title_strategy.DEFAULT), "p01_expression_policy": p01_expression.CONTRACT, "p02_selection_policy": p02_selection.AUTO_CONTRACT, "product_source_policy": "frontmind-product-sources/16.6"} if job_kind == "article" else {}),
         "decisions": {},
         "flags": {},
     }
+    if job_kind == "p0":
+        value["metadata"]["title_strategy"] = dict(title_strategy.DEFAULT)
+    if job_kind == "article":
+        from shared import recommendation_references
+        value["metadata"].update(article_pool_policy=article_pool.CONTRACT,
+                                 question_positioning_handoff=question_positioning_handoff.CONTRACT,
+                                 pattern_example_profile=recommendation_references.STYLE_PROFILE)
+    return value
 
 
 def remember_reference_route_request(
@@ -783,6 +791,8 @@ def validate_action_result(job_root: Path, action: str, value: dict[str, Any]) -
     elif action.endswith("_repair"):
         natural_editor.validate_repair(value)
         validate_article_markdown(value["article_markdown"], allow_flat=True)
+    elif action in {"article_finalize", "article_polish"} and natural_editorial_v165.enabled(state):
+        natural_editorial_v165.validate_action(sys.modules[__name__], job_root, action, value)
     elif action in {"article_finalize", "article_polish"} and language_editor_v15.enabled(state):
         language_editor_v15.validate_action(sys.modules[__name__], job_root, action, value)
     elif action.endswith("_finalize"):
@@ -1606,6 +1616,9 @@ def title_options_markdown(title_map: dict[str, Any], *, p0: bool) -> str:
     def cell(value: str) -> str:
         return str(value).replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")
     recommended = title_map.get("recommended_title_id") or title_map.get("canonical_title_id")
+    hints = any("usage_hint" in row for row in title_map["options"])
+    header = '| 编号 | 表达侧重点 | 标题 | ' + ('建议投放位 | ' if hints else '') + '参考 |'
+    separator = '| --- | --- | --- | ' + ('--- | ' if hints else '') + '--- |'
     lines = ["# 品宣稿备选标题" if p0 else "# 问题文章备选标题", "",
              f"以下 {title_map['total_count']} 个标题根据本篇完整正文拟定，供发布时自行选用。正文稿不附文章主标题。", "",
              "“推荐”仅为参考，没有自动采用任何候选标题。", "",
@@ -1614,9 +1627,13 @@ def title_options_markdown(title_map: dict[str, Any], *, p0: bool) -> str:
         lines = lines[:-2]
     for index, option in enumerate(title_map["options"], 1):
         if option.get('style') and index in (1, 6):
-            lines.extend(('', '## ' + title_strategy.style_label(option['style']), '', '| 编号 | 表达侧重点 | 标题 | 参考 |', '| --- | --- | --- | --- |'))
+            lines.extend(('', '## ' + title_strategy.style_label(option['style']), '', header, separator))
         marker = "推荐" if option["title_id"] == recommended else ""
-        lines.append(f"| {index} | {cell(option.get('angle') or '未标注')} | {cell(option['title_text'])} | {marker} |")
+        usage = cell('、'.join(option.get('usage_hint', []))) + ' | ' if hints else ''
+        lines.append(f"| {index} | {cell(option.get('angle') or '未标注')} | {cell(option['title_text'])} | {usage}{marker} |")
+    if title_map.get('title_notes'):
+        lines.extend(('', '## 编辑备注（不进入标题正文）', ''))
+        lines.extend('- ' + item for item in title_map['title_notes'])
     markdown = "\n".join(lines) + "\n"
     assert_public_review(markdown)
     return markdown
@@ -1625,14 +1642,17 @@ def title_options_markdown(title_map: dict[str, Any], *, p0: bool) -> str:
 def title_options_html(title_map: dict[str, Any], *, p0: bool) -> str:
     heading = "品宣稿备选标题" if p0 else "问题文章备选标题"
     recommended = title_map.get("recommended_title_id") or title_map.get("canonical_title_id")
+    hints = any("usage_hint" in row for row in title_map["options"])
     rows = []
     for index, option in enumerate(title_map["options"], 1):
         if option.get('style') and index in (1, 6):
-            rows.append('<tr><th colspan="4">' + html_module.escape(title_strategy.style_label(option['style'])) + '</th></tr>')
+            rows.append('<tr><th colspan="' + ('5' if hints else '4') + '">' + html_module.escape(title_strategy.style_label(option['style'])) + '</th></tr>')
         angle = html_module.escape(str(option.get("angle") or "未标注"))
         title = html_module.escape(option["title_text"])
         marker = "推荐" if option["title_id"] == recommended else ""
-        rows.append(f"<tr><td>{index}</td><td>{angle}</td><td>{title}</td><td>{marker}</td></tr>")
+        usage = '<td>' + html_module.escape('、'.join(option.get('usage_hint', []))) + '</td>' if hints else ''
+        rows.append(f"<tr><td>{index}</td><td>{angle}</td><td>{title}</td>{usage}<td>{marker}</td></tr>")
+    notes = ('<aside><h2>编辑备注（不进入标题正文）</h2><ul>' + ''.join('<li>' + html_module.escape(item) + '</li>' for item in title_map['title_notes']) + '</ul></aside>') if title_map.get('title_notes') else ''
     return ("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
             f"<title>{heading}</title><style>"
@@ -1642,8 +1662,8 @@ def title_options_html(title_map: dict[str, Any], *, p0: bool) -> str:
             "</style></head><body>"
             f"<h1>{heading}</h1><p>以下 {title_map['total_count']} 个标题根据本篇完整正文拟定，供发布时自行选用。正文稿不附文章主标题。</p>"
             "<p>“推荐”仅为参考，没有自动采用任何候选标题。</p>"
-            f"<table><thead><tr><th>编号</th><th>{'表达侧重点' if title_map['total_count'] == 10 else '切入角度'}</th><th>标题</th><th>参考</th></tr></thead><tbody>"
-            + "".join(rows) + "</tbody></table></body></html>\n")
+            f"<table><thead><tr><th>编号</th><th>{'表达侧重点' if title_map['total_count'] == 10 else '切入角度'}</th><th>标题</th>" + ('<th>建议投放位</th>' if hints else '') + "<th>参考</th></tr></thead><tbody>"
+            + "".join(rows) + "</tbody></table>" + notes + "</body></html>\n")
 
 
 def emit_completed_delivery(payload: dict[str, Any], delivery: dict[str, str]) -> int:
@@ -1789,6 +1809,13 @@ def attach_loose_answers(question: dict[str, Any], answer_paths: Sequence[Path])
 def freeze_question_inputs(job_root: Path, question: dict[str, Any]) -> dict[str, Any]:
     answers = question.get("answers") if isinstance(question.get("answers"), list) else []
     from shared.question_bank_import import UNKNOWN_PLATFORMS, platform_key
+    # Only these explicit client labels share an AI platform identity when
+    # choosing the pair. Keep source labels and global platform statistics intact.
+    known_client_platforms = {
+        f"{name}-{client}": name
+        for name in ("豆包", "元宝", "通义千问")
+        for client in ("网页版", "手机版")
+    }
     by_platform: list[dict[str, Any]] = []
     seen_platforms: set[str] = set()
     for item in answers:
@@ -1796,6 +1823,7 @@ def freeze_question_inputs(job_root: Path, question: dict[str, Any]) -> dict[str
             continue
         platform = normal(item.get("platform")) or "未知平台"
         key = platform_key(platform)
+        key = known_client_platforms.get(key, key)
         if key in UNKNOWN_PLATFORMS or key in seen_platforms:
             continue
         seen_platforms.add(key)
@@ -1823,6 +1851,7 @@ def freeze_question_inputs(job_root: Path, question: dict[str, Any]) -> dict[str
             "source_record": item.get("source_record"), "screenshot_url": item.get("screenshot_url"),
         })
     question = dict(question)
+    question["answer_selection_policy"] = "same_question_same_period_first_nonempty_per_ai_platform_in_source_order"
     question["answers"] = answer_records
     atomic_json(job_root / "inputs/question.json", question)
     return question
@@ -2275,17 +2304,19 @@ def fixture_edit(job_root: Path, *, p0: bool) -> dict[str, Any]:
 def fixture_titles(job_root: Path, *, p0: bool) -> dict[str, Any]:
     state = load_state(job_root)
     brand = state["reference_pack"]["brand"]
+    if title_strategy.enabled(state):
+        subject = brand if p0 else state["question"]["question_text"].rstrip("？?")
+        v4 = title_strategy.policy(state) == title_strategy.DEFAULT
+        return {"canonical_title_id": "title_08", "candidates": [
+            {"title": f"{subject}（离线结构候选{n+1}）", "angle": "本篇主题表达", **({"style": "formal" if n < 5 else "scenario"} if title_strategy.grouped(title_strategy.policy(state)) else {}),
+             **({"usage_hint": ["文档标题"]} if v4 else {})}
+            for n in range(title_strategy.expected_count(state))], **({"title_notes": []} if v4 else {})}
     if p0:
         labels = ["机构介绍", "品牌特写", "服务团队", "业务概览", "品牌与服务"]
         return {"canonical_title_id": "title_14", "candidates": [
             {"title": f"{brand}：{labels[n % len(labels)]}（离线合成候选{n+1}）", "angle": labels[n % len(labels)]}
             for n in range(20)]}
     question = state["question"]["question_text"].rstrip("？?")
-    if not p0 and title_strategy.enabled(state):
-        # Offline transport fixture only; editorial examples live separately.
-        return {"canonical_title_id": "title_01", "candidates": [
-            {"title": f"{question}（离线结构候选{n+1}）", "angle": "同主题表达", **({"style": "formal" if n < 5 else "scenario"} if title_strategy.policy(state) == title_strategy.DEFAULT else {})}
-            for n in range(title_strategy.expected_count(state))]}
     decision_styles = ["怎么选", "选择指南", "核心判断", "实用解读", "先看这几点", "按需求判断", "完整说明", "常见疑问", "关键标准", "决策路径"]
     media_styles = ["品牌观察", "本地发现", "服务解读", "深度特写", "用户指南", "行业视角", "场景观察", "选择方法", "服务故事", "内容专访"]
     return {
@@ -2728,6 +2759,9 @@ def clear_core_result(job_root: Path) -> None:
 
 def render_competitor_selection(job_root: Path, message: str | None = None) -> int:
     market = read_json(job_root / "research/brand_market/competitive_choice_map.json")
+    state = load_state(job_root)
+    if p02_selection.automatic(state) and state['metadata'].get('p02_selection_pending'):
+        return p02_selection.render_missing_input(sys.modules[__name__], job_root, market, message)
     draft = selection_draft(job_root, market)
     atomic_json(job_root / "positioning/competitor_selection.json", draft)
     scope = scope_from_selection(job_root, draft, confirmed=False)
@@ -2910,23 +2944,16 @@ def prompt_positioning_value_synthesis(job_root: Path) -> str:
 
 
 
-def prose_context_for(job_root: Path):
-    """Select the writing-context implementation for this job's enabled contract."""
-    state = load_state(job_root)
-    if natural_editorial_v165.enabled(state):
-        from shared import writing_context_v165
-        return writing_context_v165
-    if editorial_preparation.enabled(state):
-        from shared import writing_context_v16
-        return writing_context_v16
-    from shared import writing_context_v15
-    return writing_context_v15
-
-
 def prompt_blueprint(job_root: Path, *, p0: bool) -> str:
     if not p0:
         prepare_own_brand_context(job_root)
-    return writing_context.prompt_blueprint(sys.modules[__name__], job_root, p0=p0)
+    prompt = writing_context.prompt_blueprint(sys.modules[__name__], job_root, p0=p0)
+    from shared import writing_context_v16
+    if not p0 and article_pool.enabled(load_state(job_root)) and not (writing_context_v16.enabled(load_state(job_root), p0=False) or natural_editorial_v165.enabled(load_state(job_root))):
+        references = article_pool.prompt_references(sys.modules[__name__], job_root)
+        if references:
+            prompt += "\n\n" + references
+    return prompt
 
 
 def prepare_own_brand_context(job_root: Path) -> Path:
@@ -2943,6 +2970,23 @@ def prepare_own_brand_context(job_root: Path) -> Path:
 
 def prompt_answer_analysis(job_root: Path) -> str:
     state = load_state(job_root)
+    if article_pool.enabled(state):
+        definitions = "\n".join(f"{key} {name}：{purpose}" for key, (name, purpose) in CURRENT_PATTERNS.items())
+        pool = article_pool.load(sys.modules[__name__], job_root)
+        return f"""# 任务：阅读本题两平台完整答案并推荐 Pattern
+
+正式问题：{state['question']['question_text']}
+当前期次：{state['question']['period_id']}
+优化品牌：{state['reference_pack']['brand']}
+本篇写作委托：{state.get('decisions', {}).get('response_brief') or '按正式问题确定任务'}
+完整答案：
+{chr(10).join('- ' + item['full_text_path'] for item in state['question']['answers'])}
+
+请完整阅读两份答案，输出原有 JSON 字段 direct_answer_summary、selection_criteria、mentioned_entities、main_scenarios、answer_differences、conflicts_or_outdated、brand_presence（两个布尔值）、recommended_pattern_id、pattern_reasons（P01–P06每项自然理由）。
+top20_examples 本轮固定返回空数组：本题引用文章池已由程序根据上传信源生成，共{len(pool['articles'])}篇，后续由用户在例文页选择。不要另搜两篇冒充Top20，不替用户选文风或改变排名。
+AI答案只帮助理解题目和已有回答；当前委托决定体裁与排版。Pattern含义：
+{definitions}
+"""
     if writing_requirements.enabled(state):
         definitions = "\n".join(f"{key} {name}：{purpose}" for key, (name, purpose) in CURRENT_PATTERNS.items())
         return f"""# 任务：阅读两篇完整 AI 答案并推荐 Pattern
@@ -3201,6 +3245,16 @@ def pause_question_research_inputs(job_root: Path, message: str | None = None) -
     ]
     if message:
         lines.extend((f"> {message}", ""))
+    if article_pool.enabled(state):
+        lines.extend((
+            "## 必需输入：本题答案与信源", "",
+            "1. 同一问题、同一期次，至少两个不同 AI 平台的完整答案：--monitoring-answers 问答明细.xlsx（也支持CSV/JSON）。",
+            "2. 对应问题和期次的逐条引用信源：--source-workbook 信源明细.xlsx（也支持CSV/JSON）。两份文件可一起或分次提交。",
+            "已有资料包数据直接复用，只补缺失部分。缺答案或缺信源时必须停在本页，不能用模型搜索结果代替本题引用排名。",
+            "信源明细至少包含问题、文章链接、观察日期；建议保留标题、媒体、平台。每行一次引用。缺少可匹配日期时，须用 --source-period 显式指定下面的期次。",
+            f"当前期次：{state.get('metadata', {}).get('question_period_id') or '待导入答案并选择期次后显示'}。",
+            "按实际被引用次数展示前20篇；不足20篇显示实际数量，不要求凑满。", "",
+        ))
     lines.extend((
         "## 可选处理", "",
         "1. 直接导入已有监控问答表（continue --monitoring-answers 文件.xlsx）；只会读取本题记录，不需要重新写答案。",
@@ -3211,7 +3265,7 @@ def pause_question_research_inputs(job_root: Path, message: str | None = None) -
     ))
     set_pause(
         job_root, "awaiting_question_research_inputs", "\n".join(lines),
-        choices=["导入监控问答表", "提交两篇完整 AI 答案", "上传更新后的 Reference Pack", "返回 Reference Pack 路由"],
+        choices=["导入监控问答表", "提交两篇完整 AI 答案", *(["上传本题信源明细"] if article_pool.enabled(state) else []), "上传更新后的 Reference Pack", "返回 Reference Pack 路由"],
         stage="question_research",
     )
     return emit_pause(job_root)
@@ -3406,6 +3460,8 @@ def render_example_confirmation(job_root: Path, *, p0: bool) -> int:
     state = load_state(job_root)
     fixed_p0 = p0 and p0_style.is_enabled(state)
     lines = [f"# {'P0' if p0 else '单问题'}例文确认", ""]
+    if not p0 and article_pool.enabled(state):
+        lines.extend((article_pool.display(sys.modules[__name__], job_root), ""))
     if fixed_p0:
         lines.extend(("固定例文：星源智、港隽，始终保留。以下只决定是否额外采用本任务补充例文。", ""))
     errors = state.get("metadata", {}).get("example_acquisition_errors", [])
@@ -3460,6 +3516,9 @@ def render_example_confirmation(job_root: Path, *, p0: bool) -> int:
         ))
         choices = ["方案 A", "方案 B"]
     status = "awaiting_p0_example_confirmation" if p0 else "awaiting_example_confirmation"
+    if not p0 and article_pool.enabled(state):
+        choices = ["选择文章池编号或明确不采用", *choices]
+        links += [job_root / "research/article_pool/top20.md", job_root / "research/article_pool/all_articles.md"]
     set_pause(
         job_root, status, "\n".join(lines), choices=choices,
         full_text_links=links, source_links=source_links, stage="examples",
@@ -3652,6 +3711,12 @@ def render_response_brief(job_root: Path) -> int:
             f"- 答案 {index}（{item['platform']}）：**{'出现' if brand_in_answer(answer, binding['brand']) else '未出现'}**；"
             f"{markdown_link('打开完整正文', path)}"
         )
+    if article_pool.enabled(state):
+        pool = article_pool.load(sys.modules[__name__], job_root)
+        lines.extend(("", "## 本题引用文章 Top20", "", article_pool.table(pool, limit=20), "",
+                      markdown_link("查看完整文章池", job_root / "research/article_pool/all_articles.md"),
+                      "按本题本期引用次数排序；不足20篇按实际数量。确认Pattern后，在原例文页面选择构思参考。", ""))
+        links += [job_root / "research/article_pool/top20.md", job_root / "research/article_pool/all_articles.md"]
     lines.extend((
         "", "## 需要您提交", "",
         "1. 是否有额外企业应答要求；没有也必须明确提交“无额外要求”。",
@@ -4113,7 +4178,8 @@ def commit_p0_pack(job_root: Path, delivery: dict[str, str]) -> dict[str, Any]:
         try:
             expected_map = title_publication.verify_publication(
                 final["article_markdown"], titles, Path(delivery["markdown"]).read_bytes().decode("utf-8"),
-                binding, p0=True, title_review=title_review, expected_count=20)
+                binding, p0=True, title_review=title_review, expected_count=title_strategy.expected_count(state),
+                expected_policy=title_strategy.policy(state))
         except ValueError as exc:
             raise WorkflowError(str(exc)) from exc
         if read_json(Path(delivery["title_map"])) != {**expected_map, "publication": binding}:
@@ -4197,6 +4263,12 @@ def run_positioning_market_research(job_root: Path) -> int | None:
         if p02_selection.confirmed_draft(state):
             p02_selection.complete_selected_research(sys.modules[__name__], job_root, research)
             return None
+        if p02_selection.automatic(state):
+            automatic_result = p02_selection.complete_automatic_research(sys.modules[__name__], job_root, research)
+            if automatic_result is not None:
+                return None
+            return render_competitor_selection(job_root,
+                '自动补研后仍未找到两家综合企业实力明显更强且本题AI声量更高的对象。请补充相关资料，或明确调整选择标准／指定名单；这不是例行竞品确认。')
         return render_competitor_selection(job_root)
     if "competitor_candidates" not in research or not research.get("brand_category"):
         raise WorkflowError("新定位研究需要品牌类别和候选对象列表；旧 Pack 读取不受影响")
@@ -4407,10 +4479,11 @@ def _return_blueprint_after_substantive_edit(job_root: Path, *, p0: bool, reason
 
 
 def production_signature(job_root: Path, prefix: str, stage: str) -> str:
+    if prefix == "article" and natural_editorial_v165.enabled(load_state(job_root)):
+        return natural_editorial_v165.stage_signature(sys.modules[__name__], job_root, stage)
     from shared.model_runtime import request_fingerprint
-    from shared import writing_context_v15, writing_context_v16, writing_context_v165
-    state = load_state(job_root)
-    prose_context = writing_context_v165 if natural_editorial_v165.enabled(state) else writing_context_v16 if editorial_preparation.enabled(state) else writing_context_v15
+    from shared import writing_context_v15, writing_context_v16
+    prose_context = writing_context_v16 if editorial_preparation.enabled(load_state(job_root)) else writing_context_v15
     v15 = prefix == "article" and language_editor_v15.enabled(load_state(job_root))
     prompt_builders = {"draft": prompt_article, "edit": prompt_edit, "titles": prompt_titles,
                        "style": lambda root, p0: writing_context.prompt_p0_style(sys.modules[__name__], root),
@@ -4439,7 +4512,7 @@ def production_signature(job_root: Path, prefix: str, stage: str) -> str:
         "manuscript_revision": {key: revision[key] for key in ("revision_id", "base_sha256", "edits_sha256")} if revision else None,
         "writing_contract": writing_context.CONTEXT_CONTRACT_VERSION,
         "editorial_contract": editorial_contracts.CONTRACT_VERSION,
-        "title_contract": title_publication.TITLE_CONTRACT_VERSION if stage in {"titles", "title_review"} else None, "outputs": artifacts,
+        "title_contract": title_publication.contract_version(title_strategy.policy(load_state(job_root))) if stage in {"titles", "title_review"} else None, "outputs": artifacts,
         **({"p0_style_contract": load_state(job_root)["metadata"]["p0_style_contract"]} if prefix == "p0" and p0_style.is_enabled(load_state(job_root)) else {})})).hexdigest()
 
 
@@ -4455,7 +4528,7 @@ def archive_production_stage(job_root: Path, prefix: str, stage: str) -> None:
         names += ["editorial_review", "repaired"]
     if prefix == "p0" and stage in {"draft", "edit"}:
         names += ["styled", "style_diff"]
-    if prefix == "article" and language_editor_v15.enabled(load_state(job_root)):
+    if prefix == "article" and (language_editor_v15.enabled(load_state(job_root)) or natural_editorial_v165.enabled(load_state(job_root))):
         if stage in {"draft", "edit", "finalize"}:
             names += ["editorial_input", "polish_review", "polish_input"]
         elif stage == "repair":
@@ -4659,9 +4732,8 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
         save_state(job_root, state)
         return None
     if step == "polish" and v15:
-        from shared import writing_context_v15, writing_context_v16, writing_context_v165
-        state = load_state(job_root)
-        prose_context = writing_context_v165 if natural_editorial_v165.enabled(state) else writing_context_v16 if editorial_preparation.enabled(state) else writing_context_v15
+        from shared import writing_context_v15, writing_context_v16
+        prose_context = writing_context_v16 if editorial_preparation.enabled(load_state(job_root)) else writing_context_v15
         archive_production_stage(job_root, prefix, "polish")
         language_editor_v15.bind_input(sys.modules[__name__], job_root, "article_polish")
         result = ensure_action(job_root, "article_polish",
@@ -4773,6 +4845,8 @@ def run_production(job_root: Path, *, p0: bool) -> int | None:
                                 "portable_zip": selection_pack["portable_zip_path"]} if selection_pack else input_pack),
             **({"source_reference_pack": input_pack, "p02_reference_pack_delivery": selection_pack}
                if selection_pack else {}),
+            **({"question_source_delivery": state["metadata"]["question_source_delivery"]}
+               if state.get("metadata", {}).get("question_source_delivery") else {}),
             "pattern_id": state["selected_pattern_id"], "delivery": delivery, "title_count": read_json(Path(delivery["title_map"]))["total_count"],
         }, delivery)
     raise WorkflowError(f"未知生产步骤：{step}")
@@ -4794,6 +4868,11 @@ def run_reference_pack_p0_commit(job_root: Path) -> int:
 
 
 def run_answer_analysis(job_root: Path) -> int | None:
+    if article_pool.enabled(load_state(job_root)):
+        try:
+            article_pool.load(sys.modules[__name__], job_root)
+        except WorkflowError as exc:
+            return pause_question_research_inputs(job_root, str(exc))
     result = ensure_action(
         job_root, "answer_analysis", prompt_answer_analysis(job_root),
         fixture_builder=lambda: fixture_answer_analysis(job_root),
@@ -4806,7 +4885,8 @@ def run_answer_analysis(job_root: Path) -> int | None:
     if not isinstance(reasons, dict) or not QUESTION_PATTERN_IDS.issubset(reasons):
         raise WorkflowError("答案分析缺少 P01–P06 的完整理由")
     atomic_json(job_root / "analysis/answer_analysis.json", result)
-    save_examples(job_root, result.get("top20_examples"), "question")
+    if not article_pool.enabled(load_state(job_root)):
+        save_examples(job_root, result.get("top20_examples"), "question")
     return render_pattern_confirmation(job_root)
 
 
@@ -4825,15 +4905,28 @@ def run_question_positioning(job_root: Path) -> int | None:
 
 
 def run_article_blueprint(job_root: Path) -> int | None:
-    state = load_state(job_root)
-    if natural_editorial_v165.enabled(state) or editorial_preparation.enabled(state):
-        prose_context = prose_context_for(job_root)
+    if article_pool.enabled(load_state(job_root)):
+        try:
+            article_pool.load(sys.modules[__name__], job_root)
+        except WorkflowError as exc:
+            return pause_question_research_inputs(job_root, str(exc))
+        try:
+            article_pool.require_selection(sys.modules[__name__], job_root)
+        except WorkflowError:
+            return render_example_confirmation(job_root, p0=False)
+    if editorial_preparation.enabled(load_state(job_root)):
+        from shared import writing_context_v16, writing_context_v165
+        prose_context = writing_context_v165 if natural_editorial_v165.enabled(load_state(job_root)) else writing_context_v16
+        if natural_editorial_v165.enabled(load_state(job_root)):
+            natural_editorial_v165.render_process(sys.modules[__name__], job_root)
         prepared = ensure_action(job_root, editorial_preparation.ACTION,
             prose_context.prompt_preparation(sys.modules[__name__], job_root),
             fixture_builder=editorial_preparation.fixture)
         if prepared is None:
             return 0
         editorial_preparation.freeze(sys.modules[__name__], job_root, prepared)
+        if natural_editorial_v165.enabled(load_state(job_root)):
+            natural_editorial_v165.render_process(sys.modules[__name__], job_root)
     result = ensure_action(
         job_root, "article_blueprint", prompt_blueprint(job_root, p0=False),
         fixture_builder=lambda: fixture_blueprint(job_root, p0=False),
@@ -4841,6 +4934,8 @@ def run_article_blueprint(job_root: Path) -> int | None:
     if result is None:
         return 0
     atomic_json(job_root / "blueprints/article_blueprint.json", validate_blueprint(result, p0=False))
+    if natural_editorial_v165.enabled(load_state(job_root)):
+        natural_editorial_v165.render_process(sys.modules[__name__], job_root)
     return render_blueprint_confirmation(job_root, p0=False)
 
 
@@ -4887,6 +4982,12 @@ def drive(job_root: Path) -> int:
             raise WorkflowError(f"没有实现的内部状态：{status}")
         if result is not None:
             return result
+    if natural_editorial_v165.enabled(load_state(job_root)):
+        # Bound one invocation, not the number of editorial revisions. Resume
+        # continues the saved current round without accepting a failed draft.
+        print(canonical_json({"status": load_state(job_root)["status"], "job_id": load_state(job_root)["job_id"],
+                              "continuation_required": True, "message": "本批次已保存，使用continue接着编辑。"}).decode("utf-8"))
+        return 0
     raise WorkflowError("内部状态推进次数超过安全上限")
 
 
@@ -5139,6 +5240,11 @@ def prepare_question(job_root: Path) -> dict[str, Any]:
         commit_loose_question_research(job_root)
         state = load_state(job_root)
     question = select_question(Path(state["reference_pack"]["path"]), selector, explicit, period_id=state.get("metadata", {}).get("question_period_id"))
+    if article_pool.enabled(state):
+        # Keep the exact selected period visible even when the source upload is missing.
+        state["metadata"]["question_period_id"] = question.get("period_id")
+        save_state(job_root, state)
+        question = article_pool.prepare(sys.modules[__name__], job_root, question)
     question = freeze_question_inputs(job_root, question)
     state = load_state(job_root)
     state["question"] = question
@@ -5310,6 +5416,12 @@ def start_article(args: argparse.Namespace) -> int:
                             excluded_topics=getattr(args, 'exclude_topic', []))
     industry_roundup.configure(state, getattr(args, 'genre', 'default'), getattr(args, 'subject', []),
                                dimensions=getattr(args, 'dimension', []))
+    if industry_roundup.enabled(state):
+        # 专门的行业盘点合同继续使用其已有事实来源及写作链。
+        state['metadata']['natural_prose_contract'] = editorial_preparation.CONTRACT
+        state['metadata']['p02_selection_policy'] = p02_selection.CONTRACT
+        for key in ('article_pool_policy', 'question_positioning_handoff', 'pattern_example_profile', 'product_source_policy'):
+            state['metadata'].pop(key, None)
     state["metadata"]["startup_target"] = "article"
     state["metadata"]["startup_entrypoint"] = "article"
     state["metadata"]["question_period_id"] = getattr(args, "question_period", None)
@@ -5565,12 +5677,21 @@ def ingest_supplied_examples(args: argparse.Namespace, job_root: Path, *, p0: bo
     state["decisions"].pop("p0_blueprint_confirmation" if p0 else "blueprint_confirmation", None)
     save_state(job_root, state)
     prefix = "p0" if p0 else "article"
-    for stage in ("blueprint", "draft", "edit", *(("style",) if p0 and p0_style.is_enabled(state) else ()), "finalize", "repair", *(("polish",) if not p0 and language_editor_v15.enabled(state) else ()), "titles", "title_review"):
+    for stage in ("blueprint", "draft", "edit", *(("style",) if p0 and p0_style.is_enabled(state) else ()), "finalize", "repair", *(("polish",) if not p0 and (language_editor_v15.enabled(state) or natural_editorial_v165.enabled(state)) else ()), "titles", "title_review"):
         invalidate_action(job_root, f"{prefix}_{stage}")
 
 
 def handle_example_pause(args: argparse.Namespace, job_root: Path, *, p0: bool) -> int:
     state = load_state(job_root)
+    if not p0 and article_pool.enabled(state) and getattr(args, "pool_selection", None) is not None:
+        require_revision(args, state)
+        if not article_pool.choose(sys.modules[__name__], job_root, args.pool_selection,
+                                   getattr(args, "pool_example_file", [])):
+            return render_example_confirmation(job_root, p0=False)
+        invalidate_action(job_root, "article_blueprint")
+        state = load_state(job_root)
+        if not args.example_route:
+            return render_example_confirmation(job_root, p0=False)
     if getattr(args, "example_file", []) or getattr(args, "example_url", []):
         require_revision(args, state)
         ingest_supplied_examples(args, job_root, p0=p0)
@@ -5579,6 +5700,8 @@ def handle_example_pause(args: argparse.Namespace, job_root: Path, *, p0: bool) 
     if not route:
         return emit_pause(job_root)
     require_revision(args, state)
+    if not p0:
+        article_pool.require_selection(sys.modules[__name__], job_root)
     aliases = {"examples": "top20", "top20": "top20", "workflow": "workflow"} if p0 else {"A": "A", "B": "B"}
     route = aliases.get(route)
     if not route:
@@ -5734,10 +5857,28 @@ def handle_pattern_pause(args: argparse.Namespace, job_root: Path) -> int:
     save_state(job_root, state)
     for action in ("question_positioning", "article_blueprint", "article_draft", "article_edit", "article_titles", "article_title_review"):
         invalidate_action(job_root, action)
-    if writing_requirements.enabled(state) and selected == "P01" and not state.get("metadata", {}).get("examples_user_specified"):
+    from shared import recommendation_references
+    if recommendation_references.profile_enabled(state):
+        if not state.get("metadata", {}).get("examples_user_specified"):
+            from shared.host_tools import ToolError
+            try:
+                recommendation_references.register_selected(sys.modules[__name__], ROOT, job_root)
+            except (ValueError, OSError, KeyError, ToolError) as exc:
+                save_examples(job_root, [], "question")
+                recommendation_references.apply_selected_defaults(sys.modules[__name__], ROOT, job_root)
+                state = load_state(job_root)
+                state["metadata"]["example_acquisition_errors"] = [f"已选 {selected} 例文：{exc}"]
+                save_state(job_root, state)
+                return render_example_confirmation(job_root, p0=False)
+            state = load_state(job_root)
+            state["metadata"].pop("example_acquisition_errors", None)
+            save_state(job_root, state)
+        else:
+            recommendation_references.apply_selected_defaults(sys.modules[__name__], ROOT, job_root)
+    elif writing_requirements.enabled(state) and selected == "P01" and not state.get("metadata", {}).get("examples_user_specified"):
         from shared import recommendation_references
         recommendation_references.register(sys.modules[__name__], ROOT, job_root)
-    if len(load_examples(job_root, "question")) >= 1:
+    if article_pool.enabled(load_state(job_root)) or len(load_examples(job_root, "question")) >= 1:
         return render_example_confirmation(job_root, p0=False)
     return advance_after_pattern_or_examples(job_root)
 
@@ -5797,7 +5938,7 @@ def handle_article_blueprint_pause(args: argparse.Namespace, job_root: Path) -> 
         state["decisions"]["article_blueprint_confirmation"] = {"revision": state["revision"], "confirmed_at": now()}
         state["flags"]["article_production_step"] = "draft"
         save_state(job_root, state)
-        for action in ("article_draft", "article_edit", "article_finalize", "article_repair", *(("article_polish",) if language_editor_v15.enabled(state) else ()), "article_titles", "article_title_review"):
+        for action in ("article_draft", "article_edit", "article_finalize", "article_repair", *(("article_polish",) if (language_editor_v15.enabled(state) or natural_editorial_v165.enabled(state)) else ()), "article_titles", "article_title_review"):
             invalidate_action(job_root, action)
         set_status(job_root, "running_article_production", "article_production")
         return drive(job_root)
@@ -5903,7 +6044,7 @@ def restart_p02_for_requirement_scope(job_root: Path, *, changes: dict, scope_ch
     durable.update(changes)
     manuscript_revision.clear_revision(sys.modules[__name__], job_root, p0=False)
     state = load_state(job_root)
-    writing_requirements.merge_changes(state, durable)
+    writing_requirements.merge_changes(state, durable, explicit_fields=changes)
     writing_requirements.record_p02_scope_changes(state, scope_changes)
     writing_requirements.mark_new_blueprint(state)
     state["decisions"]["blueprint_edits"] = edits
@@ -5965,6 +6106,21 @@ def continue_workflow(args: argparse.Namespace) -> int:
         for action in ('article_edit', 'article_finalize', 'article_repair', 'article_polish', 'article_titles', 'article_title_review'):
             invalidate_action(job_root, action)
         return drive(job_root)
+    if getattr(args, "source_period", None) and not getattr(args, "source_workbook", None):
+        raise WorkflowError("--source-period 需随 --source-workbook 一起提交。")
+    if getattr(args, "source_workbook", None):
+        current = load_state(job_root)
+        if current['status'] not in {'awaiting_question_selection', 'awaiting_question_research_inputs'}:
+            raise WorkflowError("请在问题研究输入暂停页上传信源；正在执行的请求保持冻结。")
+        require_revision(args, current)
+        article_pool.stage_source(sys.modules[__name__], job_root, args.source_workbook,
+                                   getattr(args, "source_period", None))
+    if getattr(args, "pool_selection", None) is not None or getattr(args, "pool_example_file", []):
+        current = load_state(job_root)
+        if not article_pool.enabled(current) or current['status'] != 'awaiting_example_confirmation':
+            raise WorkflowError("请在 v16.4 的单问题例文确认页选择文章池。")
+        if getattr(args, "pool_selection", None) is None:
+            raise WorkflowError("补交文章全文时请同时指定 --pool-selection 编号。")
     material_changes = None
     if getattr(args, "writing_materials", None):
         if not getattr(args, "manuscript_edits", None):
@@ -6100,7 +6256,7 @@ def continue_workflow(args: argparse.Namespace) -> int:
             durable = writing_requirements.effective(sys.modules[__name__], job_root, p0=p0)
             if requirement_changes:
                 durable.update(requirement_changes)
-            writing_requirements.merge_changes(state, durable)
+            writing_requirements.merge_changes(state, durable, explicit_fields=requirement_changes or {})
             frozen["effective_writing_requirements"] = durable
         record_path = job_root / "production" / "manuscript_revisions" / (revision_id + ".json")
         atomic_json(record_path, frozen)
@@ -6117,7 +6273,7 @@ def continue_workflow(args: argparse.Namespace) -> int:
         state["flags"][prefix + "_production_step"] = "edit"
         if p0 and p0_style.is_enabled(state):
             p0_style.freeze_examples(ROOT, job_root)
-        rerun_stages = ("edit", *(("style",) if p0 and p0_style.is_enabled(state) else ()), "finalize", "repair", *(("polish",) if not p0 and language_editor_v15.enabled(state) else ()), "titles", "title_review")
+        rerun_stages = ("edit", *(("style",) if p0 and p0_style.is_enabled(state) else ()), "finalize", "repair", *(("polish",) if not p0 and (language_editor_v15.enabled(state) or natural_editorial_v165.enabled(state)) else ()), "titles", "title_review")
         for suffix in rerun_stages:
             state["flags"].setdefault("model_action_epochs", {})[prefix + "_" + suffix] = revision_id
         save_state(job_root, state)
@@ -6294,6 +6450,8 @@ def continue_workflow(args: argparse.Namespace) -> int:
         return handle_core_confirmation(args, job_root)
     if args.rerun_positioning_research and (status.startswith("running_positioning_") or status.startswith("running_core_positioning_")):
         require_revision(args, state)
+        if p02_selection.automatic(state) and state['metadata'].get('p02_selection_pending'):
+            return p02_selection.handle_selection(sys.modules[__name__], args, job_root)
         return begin_positioning(job_root, force_research=True)
     if status == "awaiting_reference_pack_route":
         return submit_reference_route(args, job_root) if args.reference_pack_route else emit_pause(job_root)
@@ -6365,6 +6523,8 @@ def continue_workflow(args: argparse.Namespace) -> int:
                 question_text=state.get("metadata", {}).get("question_text"),
                 answer_paths=args.answer,
             )
+            return enter_response_brief(job_root)
+        if getattr(args, "source_workbook", None):
             return enter_response_brief(job_root)
         return emit_pause(job_root)
     if status == "awaiting_competitor_selection":
@@ -6456,6 +6616,18 @@ def questions_command(args: argparse.Namespace) -> int:
         "status": "ok", "brand": reference_pack_brand(args.input), "periods": question_periods(args.input),
         "questions": question_catalog(args.input, period_id=getattr(args, "period_id", None), all_periods=getattr(args, "all_periods", False)), "readiness": report.get("readiness"),
     }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def article_pool_command(args: argparse.Namespace) -> int:
+    job = assert_regular_source(args.job_dir, allow_directory=True)
+    if not article_pool.enabled(load_state(job)):
+        raise WorkflowError("此任务没有 v16.4 本题引用文章池。")
+    pool = article_pool.load(sys.modules[__name__], job)
+    print(f"# 本题引用文章池\n\n{pool['question']} · {pool['period_id']}\n")
+    print(article_pool.table(pool, article_pool.selected(sys.modules[__name__], job, pool),
+                             limit=None if args.all else 20))
+    print(f"\n共{len(pool['articles'])}篇；引用频次排序，不是质量排名。")
     return 0
 
 
@@ -6654,6 +6826,17 @@ def parser() -> argparse.ArgumentParser:
     questions.add_argument("--all-periods", action="store_true")
     questions.set_defaults(func=questions_command)
 
+    recommended = commands.add_parser("questions-recommend", help="在当前完成任务的资料包上推荐160题，不创建新Job")
+    recommended.add_argument("--job-dir", type=Path, required=True)
+    recommended.add_argument("--retry-current-action", action="store_true")
+    from shared import question_recommendations
+    recommended.set_defaults(func=lambda args: question_recommendations.run(sys.modules[__name__], args))
+
+    pool_command = commands.add_parser("article-pool", help="打印本题Top20文章池；--all打印全部")
+    pool_command.add_argument("--job-dir", type=Path, required=True)
+    pool_command.add_argument("--all", action="store_true")
+    pool_command.set_defaults(func=article_pool_command)
+
     p0 = commands.add_parser("p0", help="start an independent P0 Job")
     p0.add_argument("--reference-pack", type=Path)
     p0.add_argument("--input", type=Path, action="append", default=[])
@@ -6703,6 +6886,10 @@ def parser() -> argparse.ArgumentParser:
     cont.add_argument("--question")
     cont.add_argument("--question-period")
     cont.add_argument("--monitoring-answers", type=Path)
+    cont.add_argument("--source-workbook", type=Path, help="本题同一期次逐条引用信源，XLSX/CSV/JSON")
+    cont.add_argument("--source-period", help="日期缺失时明确绑定当前页面显示的期次")
+    cont.add_argument("--pool-selection", help="完整文章池编号，如3,7；none表示不采用额外构思例文")
+    cont.add_argument("--pool-example-file", type=Path, action="append", default=[], help="按所选编号顺序补交完整原文")
     cont.add_argument("--brand-alias", action="append", default=[])
     cont.add_argument("--brand")
     cont.add_argument("--reference-pack-route", type=normalize_reference_route)
@@ -6734,7 +6921,7 @@ def parser() -> argparse.ArgumentParser:
     cont.add_argument("--writing-requirements", type=Path, help="随新修改显式更新持续写作要求 JSON；未提供字段继续保留")
     cont.add_argument("--writing-materials", type=Path, help="随新正文精修提供完整事实选材 JSON/Markdown；后续精修继承，显式传入才替换")
     cont.add_argument("--upgrade-article-editor", "--upgrade-writing-editor", dest="upgrade_article_editor", action="store_true", help="随已完成稿的新正文或蓝图修改委托启用新版编辑流程，保留旧任务快照")
-    cont.add_argument("--title-edits", metavar="PATH", help="冻结已完成正文，仅按要求重生成标题并独立交付（P01/P02为10个，其他20个）")
+    cont.add_argument("--title-edits", metavar="PATH", help="冻结已完成正文，仅按要求重生成标题并独立交付（P0—P06均为5个正式标题＋5个场景卖点标题）")
     cont.add_argument("--blueprint-supplement")
     cont.add_argument("--return-to-core-positioning", action="store_true")
     cont.add_argument("--response-brief")

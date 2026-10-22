@@ -1,0 +1,31 @@
+{
+  "contract": "frontmind-natural-prose/16.5",
+  "resource_kind": "locally_authored_editorial_methods",
+  "sources": [
+    {
+      "repository": "Weijinchen/humanizer-zh",
+      "commit": "a012cacd55c482f368c241e75ff0b24ec6f73e01",
+      "skill_url": "https://github.com/Weijinchen/humanizer-zh/blob/a012cacd55c482f368c241e75ff0b24ec6f73e01/SKILL.md",
+      "license": "No LICENSE at the inspected commit",
+      "use": "Only independently rephrased methods: native Chinese sentence structure, varied paragraph functions, concrete actions, natural cadence. No source text, examples or academic guardrails are copied."
+    },
+    {
+      "repository": "Kiterlin/anti-defensive-writing",
+      "commit": "c7edf8fc91ae9c4f7e58345bd12934bb4cf41c46",
+      "skill_url": "https://github.com/Kiterlin/anti-defensive-writing/blob/c7edf8fc91ae9c4f7e58345bd12934bb4cf41c46/SKILL.md",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Kiterlin",
+      "use": "Locally adapted editorial method: classify sentence purpose, state positive scope, remove explanations aimed only at imagined objections, rebuild the whole affected paragraph."
+    },
+    {
+      "repository": "Windy3f3f3f3f/readable-writing",
+      "commit": "a3dd884e50bac4c48dd8294ba56e56238b2e34fc",
+      "skill_url": "https://github.com/Windy3f3f3f3f/readable-writing/blob/a3dd884e50bac4c48dd8294ba56e56238b2e34fc/SKILL.md",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 Windy3f3f3f3f",
+      "use": "Locally adapted methods: protect genre and an already natural voice, distinguish publishable prose from working notes, understand meaning before rewriting an awkward paragraph. Detector scripts, scores, density thresholds and release gates are not integrated."
+    }
+  ],
+  "precedence": "The user's request allows colloquial language and imperfect news-release prose; that request overrides upstream academic restraint, non-colloquial defaults and machine-audit gates.",
+  "local_reference": "Existing P0 full-text editorial contracts and local P0 prose resources informed the generic editorial method. This does not claim that historical tasks executed a newer pinned resource."
+}

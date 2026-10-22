@@ -115,7 +115,6 @@ class ProseOnlyTests(unittest.TestCase):
             self.assertEqual(rt.build_payload(action, 'synthetic task')['response_format'], {'type': 'json_object'})
         self.assertEqual(rt.build_payload('p0_style', bs.MARKER + '\nlegacy')['response_format'], {'type': 'json_object'})
 
-    @unittest.skipUnless((ROOT/"customer_inputs/yihang/rewrite_requirements.md").is_file(), "Private upstream customer material is intentionally excluded from public source")
     def test_bundled_rewrite_requirements_do_not_restore_old_reports(self):
         text=(ROOT/'customer_inputs/yihang/rewrite_requirements.md').read_text()
         for phrase in ('第三遍须对照','给出对应段落的实际编辑说明','editorial_plan','reference_alignment'):
@@ -281,7 +280,7 @@ class ProseOnlyTests(unittest.TestCase):
         self.assertEqual(json.loads((dest/'production/p0_styled.json').read_text()), {'article_markdown':BODY})
         self.assertEqual(json.loads((dest/'production/p0_finalized.json').read_text())['article_markdown'],BODY)
         self.assertTrue((dest/'deliverables/article.docx').is_file())
-        self.assertEqual(len(json.loads((dest/'deliverables/titles.json').read_text())['candidates']),20)
+        self.assertEqual(len(json.loads((dest/'deliverables/titles.json').read_text())['candidates']),10)
 
 
 if __name__=='__main__': unittest.main()

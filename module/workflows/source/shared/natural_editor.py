@@ -21,7 +21,8 @@ def enabled(state):
 
 def matches(prompt):
     from .language_editor_v15 import matches as v15_matches
-    if v15_matches(prompt):
+    from .writing_context_v165 import matches as v165_matches
+    if v15_matches(prompt) or v165_matches(prompt):
         return True
     from .writing_requirements import MARKER as CURRENT_MARKER, MISSION_MARKER
     from .writing_context_v14 import MARKER as GENERAL_MARKER
@@ -29,6 +30,9 @@ def matches(prompt):
 
 
 def system(action, prompt=""):
+    from . import writing_context_v165
+    if writing_context_v165.matches(prompt):
+        return writing_context_v165.system(action, prompt)
     from . import writing_context_v16
     if writing_context_v16.matches(prompt):
         return writing_context_v16.system(action, prompt)
@@ -125,6 +129,9 @@ def select_final(wf, job, *, p0):
 
 
 def validate_selected(wf, job, candidate, *, p0):
+    from . import natural_editorial_v165
+    if not p0 and natural_editorial_v165.enabled(wf.load_state(job)):
+        return natural_editorial_v165.validate_selected(wf, job)
     from . import language_editor_v15
     if not p0 and language_editor_v15.enabled(wf.load_state(job)):
         return language_editor_v15.validate_selected(wf, job)

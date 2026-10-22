@@ -72,7 +72,7 @@ class CommandError(AssertionError):
 
 def run_cli(*arguments: str, expect: int = 0) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        [str(LAUNCHER), *arguments], cwd=ROOT, text=True, capture_output=True,
+        ([str(PYTHON), str(ROOT / "scripts/frontmind_workflow.py")] if os.name == "nt" else [str(LAUNCHER)]) + list(arguments), cwd=ROOT, text=True, capture_output=True,
         env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}, check=False,
     )
     if result.returncode != expect:
@@ -233,6 +233,12 @@ class WorkflowV411Tests(unittest.TestCase):
                 "--answer", str(FIXTURE / "answer_02.md"),
             ])
         run_cli(*command)
+        # These v4.11 fixtures model pre-v16.4 jobs with answer-only inputs.
+        # New upload/selection requirements are covered by test_article_pool_v164.
+        legacy = state(job)
+        legacy['metadata'].pop('article_pool_policy', None)
+        legacy['metadata'].pop('question_positioning_handoff', None)
+        CONTROLLER.atomic_json(job / 'job_state.json', legacy)
         return job
 
     def advance_to_pattern(self, job: Path) -> None:
@@ -543,6 +549,8 @@ class WorkflowV411Tests(unittest.TestCase):
         self.advance_to_pattern(job)
         resume(job, "--pattern", "P02")
         resume(job, "--example-route", "A")
+        if state(job)['status'] == 'awaiting_competitor_selection':
+            resume(job, '--competitor-selection', json.dumps({'comparison_targets':['合成竞品甲','合成竞品乙'],'peer_examples':[]}), '--confirm-competitors')
         self.assertEqual("awaiting_question_positioning_confirmation", state(job)["status"])
         text = page(job)
         for token in ("本题需求", "替代选择", "其他路径", "并列说明"):
@@ -550,12 +558,35 @@ class WorkflowV411Tests(unittest.TestCase):
         for token in CONTROLLER.PUBLIC_FORBIDDEN_TOKENS:
             self.assertNotIn(token.casefold(), text.casefold())
 
+    def test_v163_p02_selected_pair_reaches_final_delivery(self) -> None:
+        case = self.manifest["cases"][2]
+        job = self.start_article("p02-v163-delivery", case)
+        self.advance_to_pattern(job)
+        resume(job, "--pattern", "P02")
+        resume(job, "--example-route", "A")
+        self.assertEqual("awaiting_competitor_selection", state(job)["status"])
+        resume(job, "--competitor-selection", json.dumps({"comparison_targets":["合成竞品甲","合成竞品乙"],"peer_examples":[]}), "--confirm-competitors")
+        resume(job, "--confirm-question-positioning")
+        self.assertEqual("awaiting_blueprint_confirmation", state(job)["status"])
+        resume(job, "--accept-blueprint")
+        current = state(job)
+        self.assertEqual("completed", current["status"])
+        delivery = current['metadata']['delivery']
+        title_map = json.loads(Path(delivery['title_map']).read_text())
+        self.assertEqual([x['style'] for x in title_map['options']], ['formal']*5+['scenario']*5)
+        body = Path(delivery['markdown']).read_text()
+        from shared import p02_selection
+        p02_selection.check_body(current, body)
+        self.assertTrue(current['metadata']['p02_reference_pack_delivery']['readiness']['p0_ready'])
+
     def test_18_p03_to_p06_skip_question_positioning(self) -> None:
         case = self.manifest["cases"][1]
         job = self.start_article("p06-no-positioning", case)
         self.advance_to_pattern(job)
         resume(job, "--pattern", "P06")
         resume(job, "--example-route", "A")
+        if state(job)['status'] == 'awaiting_competitor_selection':
+            resume(job, '--competitor-selection', json.dumps({'comparison_targets':['合成竞品甲','合成竞品乙'],'peer_examples':[]}), '--confirm-competitors')
         self.assertEqual("awaiting_blueprint_confirmation", state(job)["status"])
         self.assertFalse((job / "question_positioning/question_positioning.json").exists())
 
@@ -565,6 +596,8 @@ class WorkflowV411Tests(unittest.TestCase):
         self.advance_to_pattern(job)
         resume(job, "--pattern", "P02")
         resume(job, "--example-route", "A")
+        if state(job)['status'] == 'awaiting_competitor_selection':
+            resume(job, '--competitor-selection', json.dumps({'comparison_targets':['合成竞品甲','合成竞品乙'],'peer_examples':[]}), '--confirm-competitors')
         previous_revision = state(job)["revision"]
         resume(job, "--question-positioning-edits", "让每一档的取舍更清楚")
         current = state(job)
@@ -578,6 +611,8 @@ class WorkflowV411Tests(unittest.TestCase):
         self.advance_to_pattern(job)
         resume(job, "--pattern", "P02")
         resume(job, "--example-route", "A")
+        if state(job)['status'] == 'awaiting_competitor_selection':
+            resume(job, '--competitor-selection', json.dumps({'comparison_targets':['合成竞品甲','合成竞品乙'],'peer_examples':[]}), '--confirm-competitors')
         stale_revision = state(job)["revision"]
         resume(job, "--question-positioning-edits", "修改当前表述")
         current = state(job)

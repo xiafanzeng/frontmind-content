@@ -211,6 +211,14 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "advantage_level": {
+                "enum": [
+                  "clear",
+                  "modest",
+                  "unknown"
+                ],
+                "description": "本题相关综合企业实力差距；clear表示明显更强，不能仅由AI声量推断。"
               }
             },
             "required": [
@@ -266,6 +274,14 @@
           "items": {
             "type": "string"
           }
+        },
+        "advantage_level": {
+          "enum": [
+            "clear",
+            "modest",
+            "unknown"
+          ],
+          "description": "本题相关综合企业实力差距；clear表示明显更强，不能仅由AI声量推断。"
         }
       },
       "required": [

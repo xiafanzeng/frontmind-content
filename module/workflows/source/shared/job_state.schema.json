@@ -163,6 +163,14 @@
     "metadata": {
       "type": "object",
       "properties": {
+        "article_pool_policy": {
+          "type": "string",
+          "const": "frontmind-article-pool/1"
+        },
+        "question_positioning_handoff": {
+          "type": "string",
+          "const": "frontmind-confirmed-question-positioning/1"
+        },
         "article_reader_contract": {
           "type": "string",
           "enum": [

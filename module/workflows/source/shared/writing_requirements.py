@@ -19,7 +19,7 @@ EDITORIAL_REVIEW_SCOPE_MODE = 'actual-claims-v2'
 TITLE_INPUT_MODE = 'final-body-v1'
 MISSION_MARKER = '<frontmind_natural_editor version="4.13.2-editorial1">'
 FIELDS = {'article_brief', 'estimated_length', 'candidate_order', 'brand_positioning_use',
-          'recommendation_relationships', 'formatting', 'reference_roles', 'question', 'pattern_id'}
+          'recommendation_relationships', 'formatting', 'reference_roles', 'question', 'pattern_id', 'body_character_range', 'title_ammo_extra'}
 P02_SCOPE_FIELDS = frozenset({'article_brief', 'candidate_order', 'recommendation_relationships'})
 
 
@@ -45,10 +45,6 @@ def effective(wf, job, *, p0):
     if not p0:
         from . import p02_selection
         value = p02_selection.project(state, value)
-        from . import industry_roundup
-        if industry_roundup.enabled(state):
-            value.update(industry_roundup.commission(state))
-            value['candidate_order'] = industry_roundup.validate_scope(state)
     return value
 
 
@@ -60,13 +56,22 @@ def read_changes(path):
         raise ValueError('正式题目和 Pattern 请使用已有选题与 Pattern 入口修改，不能通过写作要求覆盖身份')
     if any(v is None or v == '' or v == [] or v == {} for v in value.values()):
         raise ValueError('写作要求不能用空值撤销原要求；请明确填写新要求')
+    if 'body_character_range' in value:
+        from .language_editor_v15 import validate_body_character_range
+        validate_body_character_range(value['body_character_range'])
+    if 'title_ammo_extra' in value:
+        extra = value['title_ammo_extra']
+        if not isinstance(extra, list) or any(not isinstance(item, (str, dict)) for item in extra):
+            raise ValueError('title_ammo_extra 须为明确的标题素材文字或对象组成的数组')
     return value
 
 
-def merge_changes(state, changes):
+def merge_changes(state, changes, *, explicit_fields=None):
     current = dict(state.get('metadata', {}).get('effective_writing_requirements', {}))
     current.update(changes)
     state['metadata']['effective_writing_requirements'] = current
+    for field in changes if explicit_fields is None else explicit_fields:
+        state['metadata'].get('pattern_example_defaults', {}).pop(field, None)
 
 
 def p02_scope_changes(wf, job, changes):

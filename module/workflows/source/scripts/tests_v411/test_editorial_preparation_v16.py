@@ -22,6 +22,10 @@ class PreparationTests(unittest.TestCase):
         (self.job / 'inputs').mkdir()
         (self.job / 'inputs/facts.md').write_text('企业提供业务甲，使用技术乙，面向需求丙。')
         state = wf.make_state('editorial-v16', 'article')
+        # Frozen v16 fixture; v16.4 intake gates have separate integration tests.
+        state['metadata']['natural_prose_contract'] = writing_context_v16.CONTRACT
+        state['metadata'].pop('article_pool_policy', None)
+        state['metadata'].pop('question_positioning_handoff', None)
         state.update(selected_pattern_id='P01', selected_example_route='default', question={'question_text': '业务介绍'})
         state['metadata']['blueprint_material_roots'] = ['inputs']
         state['reference_pack'] = {'brand': '合成企业'}

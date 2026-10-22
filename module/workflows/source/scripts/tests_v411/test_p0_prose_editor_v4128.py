@@ -272,10 +272,7 @@ class P0ProseEditorTests(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_packaging_includes_runtime_skill_manifest_and_manual_cases(self):
-        # The hosted distribution intentionally excludes private customer trees.
-        public_roots = tuple(p for p in release.RELEASE_TREE_ROOTS if not p.startswith("customer_inputs/"))
-        with patch.object(release, "RELEASE_TREE_ROOTS", public_roots):
-            files = release.release_file_set(ROOT)
+        files = release.release_file_set(ROOT)
         for relative in ('shared/p0_prose_editor.py', 'resources/p0_prose_editor/SKILL.md',
                          'resources/p0_prose_editor/manifest.json', 'resources/p0_prose_editor/ADAPTATION.md',
                          'acceptance_fixtures/p0_prose_editor_v4128/cases.json',

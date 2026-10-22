@@ -57,6 +57,106 @@ class ManuscriptRevisionTests(unittest.TestCase):
         with patch.object(wf,'drive',return_value=0):
             return wf.continue_workflow(self.args(job,'--manuscript-edits',str(self.request)))
 
+    def completed_external_p0(self,*,zip_output=False):
+        """Move the synthetic latest delivery to the real --output target."""
+        job=self.completed('p0');state=wf.load_state(job)
+        previous=Path(state['metadata']['reference_pack_delivery']['portable_zip_path'])
+        requested=self.root/'outputs'/('explicit-pack.zip' if zip_output else 'explicit-pack')
+        state['metadata']['requested_reference_output']=str(requested)
+        wf.save_state(job,state)
+        _,external=wf._pack_output_targets(job,4)
+        external.parent.mkdir(parents=True,exist_ok=True)
+        external.write_bytes(previous.read_bytes())
+        self.pack_roots[str(external.resolve())]=self.pack_roots[str(previous.resolve())].copy()
+        previous.unlink()
+        state['metadata']['reference_pack_delivery'].update(
+            portable_zip_path=str(external),portable_zip_sha256='sha256:'+revisions.file_hash(external))
+        wf.save_state(job,state)
+        self.assertFalse(external.resolve().is_relative_to(job.resolve()))
+        return job,external
+
+    def assert_external_p0_revision(self,*,zip_output):
+        job,external=self.completed_external_p0(zip_output=zip_output)
+        before_state=wf.load_state(job);before_pack=external.read_bytes()
+        untouched={name:(job/name).read_bytes() for name in
+                   ('00_input/reference_pack.zip','production/p0_draft.json','blueprints/p0_blueprint.json')}
+        self.assertEqual(self.start(job),0)
+        state=wf.load_state(job);frozen=revisions.current_revision(wf,job,p0=True)
+        self.assertEqual(frozen['base_markdown'],self.fixture.final)
+        self.assertEqual(frozen['edits_markdown'],self.request.read_text())
+        self.assertEqual(frozen['source_pack'],{
+            'path':str(external.resolve()),'sha256':revisions.file_hash(external),
+            'pack_id':'synthetic-pack','pack_version':4})
+        self.assertTrue(Path(frozen['source_snapshot']).is_dir())
+        self.assertEqual(state['flags']['p0_production_step'],'edit')
+        self.assertEqual(contracts.edit_base_input(wf,job,p0=True)['article_markdown'],self.fixture.final)
+        self.assertEqual(state['reference_pack'],before_state['reference_pack'])
+        self.assertEqual(state['decisions'],before_state['decisions'])
+        for name,body in untouched.items():self.assertEqual((job/name).read_bytes(),body)
+        with patch.object(wf,'create_next_reference_pack_version',return_value={
+                'readiness':{'p0_ready':True},'pack_version':5,'pack_id':'synthetic-pack'}) as commit:
+            result=wf.commit_p0_pack(job,state['metadata']['delivery'])
+        self.assertEqual(result['pack_version'],5)
+        self.assertEqual(commit.call_args.kwargs['pack'],external.resolve())
+        self.assertEqual(commit.call_args.kwargs['output'],wf.writing_delivery_root(job)/'Reference_Pack_v5')
+        self.assertEqual(commit.call_args.kwargs['portable_zip'],wf.writing_delivery_root(job)/'Reference_Pack_v5.zip')
+        self.assertEqual(external.read_bytes(),before_pack)
+        self.assertEqual(self.fixture.payloads,[])
+
+    def test_p0_explicit_external_directory_export_can_be_frozen_and_inherited_for_revision(self):
+        self.assert_external_p0_revision(zip_output=False)
+
+    def test_p0_explicit_external_zip_export_can_be_frozen_and_inherited_for_revision(self):
+        self.assert_external_p0_revision(zip_output=True)
+
+    def test_p0_undeclared_mismatched_or_symlink_external_export_rejected_before_snapshot(self):
+        job,external=self.completed_external_p0();saved=wf.load_state(job)
+        wrong=external.parent/'unexpected.zip';wrong.write_bytes(external.read_bytes())
+        self.pack_roots[str(wrong.resolve())]=self.pack_roots[str(external.resolve())].copy()
+        alias=external.parent/'linked-pack.zip';alias.symlink_to(external)
+        for case in ('undeclared','wrong_destination','substituted_path','symlink'):
+            with self.subTest(case=case):
+                state=json.loads(json.dumps(saved))
+                if case=='undeclared':state['metadata'].pop('requested_reference_output')
+                elif case=='wrong_destination':state['metadata']['requested_reference_output']=str(wrong)
+                elif case=='substituted_path':state['metadata']['reference_pack_delivery']['portable_zip_path']=str(wrong)
+                else:
+                    state['metadata']['requested_reference_output']=str(alias)
+                    state['metadata']['reference_pack_delivery']['portable_zip_path']=str(alias)
+                wf.save_state(job,state);before=(job/'job_state.json').read_bytes()
+                with patch.object(wf,'snapshot_completed_job_for_writing',side_effect=AssertionError('must not snapshot')) as snapshot:
+                    with self.assertRaisesRegex(wf.WorkflowError,'可继承资料包'):self.start(job)
+                snapshot.assert_not_called()
+                self.assertEqual((job/'job_state.json').read_bytes(),before)
+                self.assertNotIn('writing_reruns',wf.load_state(job)['metadata'])
+        self.assertEqual(self.fixture.payloads,[])
+
+    def test_p0_declared_external_export_keeps_hash_series_version_readiness_and_body_checks(self):
+        job,external=self.completed_external_p0();saved=wf.load_state(job)
+        original=external.read_bytes();pack_root=self.pack_roots[str(external.resolve())].copy()
+        cases={'changed_bytes':'资料包哈希','other_series':'资料包无效','wrong_version':'资料包无效',
+               'not_ready':'资料包无效','changed_body':'正文与当前完成稿'}
+        for case,message in cases.items():
+            with self.subTest(case=case):
+                wf.save_state(job,json.loads(json.dumps(saved)));external.write_bytes(original)
+                self.pack_roots[str(external.resolve())]=pack_root.copy()
+                validation={'status':'pass','readiness':{'p0_ready':True}}
+                body=self.fixture.final.encode()
+                if case=='changed_bytes':external.write_text('tampered external delivery')
+                elif case=='other_series':self.pack_roots[str(external.resolve())]['pack_id']='other-pack'
+                elif case=='wrong_version':self.pack_roots[str(external.resolve())]['pack_version']=3
+                elif case=='not_ready':validation['readiness']['p0_ready']=False
+                else:body=(self.fixture.final+'unpublished change').encode()
+                before=(job/'job_state.json').read_bytes()
+                with patch.object(wf,'validate_reference_pack',return_value=validation),\
+                     patch.object(wf,'read_reference_member',return_value=body),\
+                     patch.object(wf,'snapshot_completed_job_for_writing',side_effect=AssertionError('must not snapshot')) as snapshot:
+                    with self.assertRaisesRegex(wf.WorkflowError,message):self.start(job)
+                snapshot.assert_not_called()
+                self.assertEqual((job/'job_state.json').read_bytes(),before)
+                self.assertNotIn('writing_reruns',wf.load_state(job)['metadata'])
+        self.assertEqual(self.fixture.payloads,[])
+
     def test_title_only_revision_calls_only_titles_and_preserves_body_both_routes(self):
         for prefix in ('p0','article'):
             with self.subTest(prefix=prefix):
@@ -68,7 +168,12 @@ class ManuscriptRevisionTests(unittest.TestCase):
                 self.assertEqual(frozen['base_markdown'],self.fixture.final)
                 self.assertTrue(Path(frozen['source_snapshot']).is_dir())
                 self.assertEqual(wf.load_state(job)['flags'][prefix+'_production_step'],'titles')
-                titles={'canonical_title_id':'media_title_03' if prefix=='p0' else 'decision_title_04','families':{'decision_search':[{'title':f'业务{i}'} for i in range(10)],'media_pr':[{'title':f'项目{i}'} for i in range(10)]}}
+                # Explicit title-only continuation upgrades the synthetic old job.
+                # Supply the current 5+5 result, not its old dual-family artifact.
+                titles={'canonical_title_id':'title_03','title_notes':[],
+                        'candidates':[{'title':f'合成品牌的服务与项目观察{i:02}', 'angle':f'内容入口{i}',
+                                       'style':'formal' if i<5 else 'scenario', 'usage_hint':['文档标题']}
+                                      for i in range(10)]}
                 with patch.object(wf,'ensure_action',return_value=titles) as action:
                     wf.run_production(job,p0=prefix=='p0')
                 self.assertEqual(action.call_args.args[1],prefix+'_titles')

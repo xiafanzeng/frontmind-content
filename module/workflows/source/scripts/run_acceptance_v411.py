@@ -214,6 +214,15 @@ def build_article(output: Path, pack: Path, case: dict) -> tuple[Path, dict, dic
     if len(state(job)["current_pause"].get("full_text_links") or []) != 4:
         raise AcceptanceError(f"{case['case_id']}: example page does not link four complete texts")
     resume(job, "--example-route", "A")
+    if case["pattern_id"] == "P02" and state(job)["status"] == "awaiting_competitor_selection":
+        selection_state = require_status(job, "awaiting_competitor_selection")
+        if not selection_state["current_pause"]["must_stop"]:
+            raise AcceptanceError(f"{case['case_id']}: P02 selection did not require confirmation")
+        # This runner acts as the synthetic fixture user. A suggested pair is
+        # not a confirmation, and missing visibility must not invent one.
+        resume(job, "--competitor-selection", json.dumps({
+            "comparison_targets": ["合成竞品甲", "合成竞品乙"], "peer_examples": [],
+        }, ensure_ascii=False), "--confirm-competitors")
     if case["question_positioning"]:
         require_status(job, "awaiting_question_positioning_confirmation")
         positioning_page = Path(state(job)["current_pause"]["review_markdown_path"]).read_text(encoding="utf-8")
@@ -232,7 +241,10 @@ def build_article(output: Path, pack: Path, case: dict) -> tuple[Path, dict, dic
     if final.get("selected_pattern_id") != case["pattern_id"]:
         raise AcceptanceError(f"{case['case_id']}: Pattern mismatch")
     validate_public_reviews(job)
-    next_pack = Path(final["reference_pack"]["path"])
+    selection_pack = final.get("metadata", {}).get("p02_reference_pack_delivery") or {}
+    next_pack = Path(selection_pack.get("pack_path") or final["reference_pack"]["path"])
+    if not next_pack.exists():
+        raise AcceptanceError(f"{case['case_id']}: latest Reference Pack is missing")
     return job, final, validate_delivery(job, "article", output), next_pack
 
 
@@ -315,16 +327,25 @@ def create_acceptance(output: Path) -> dict:
         versions = [1, 2]
         for case in fixture["cases"]:
             job, article_state, delivery, current_pack = build_article(output, current_pack, case)
-            version = int(article_state["reference_pack"]["pack_version"])
-            versions.append(version)
+            source_version = int(article_state["reference_pack"]["pack_version"])
+            if source_version != versions[-1] + 1:
+                raise AcceptanceError(f"{case['case_id']}: question import skipped a Reference Pack version")
+            versions.append(source_version)
+            selection_pack = article_state.get("metadata", {}).get("p02_reference_pack_delivery") or {}
+            version = int(selection_pack.get("pack_version", source_version))
+            if selection_pack:
+                if version != source_version + 1:
+                    raise AcceptanceError(f"{case['case_id']}: P02 selection Pack is not the next version")
+                versions.append(version)
             records.append({
                 "case_id": case["case_id"], "kind": "question",
                 "pattern_id": case["pattern_id"], "question": case["question"],
                 "question_positioning": (job / "question_positioning/question_positioning.json").is_file(),
                 "job": relative(job, output), "pack_version": version,
+                **({"source_pack_version": source_version} if selection_pack else {}),
                 "deliverables": delivery, "title_count": title_strategy.expected_count(article_state),
             })
-        if versions != list(range(1, 10)):
+        if versions != list(range(1, versions[-1] + 1)):
             raise AcceptanceError(f"Reference Pack versions are not sequential: {versions}")
         pack_ids = {
             positioning_state["metadata"]["reference_pack_delivery"]["pack_id"],
@@ -342,7 +363,8 @@ def create_acceptance(output: Path) -> dict:
             "pack_versions": versions, "final_pack": relative(current_pack, output),
             "counts": {
                 "p0": 1, "question_articles": 7, "markdown": 8,
-                "html": 8, "docx": 8, "title_maps": 8, "titles": 160,
+                "html": 8, "docx": 8, "title_maps": 8,
+                "titles": sum(record["title_count"] for record in records),
             },
             "docx_visual_qa": {"status": qa["status"], "document_count": len(qa["documents"])},
             "cases": records,

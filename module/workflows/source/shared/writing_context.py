@@ -275,6 +275,9 @@ def blueprint_edit_candidate(value: Any, *, p0: bool) -> dict[str, Any] | None:
 
 
 def prompt_blueprint(wf: Any, job_root: Path, *, p0: bool) -> str:
+    from . import writing_context_v165
+    if writing_context_v165.enabled(wf.load_state(job_root), p0=p0):
+        return writing_context_v165.prompt_blueprint(wf, job_root, p0=p0)
     from . import writing_context_v16
     if writing_context_v16.enabled(wf.load_state(job_root), p0=p0):
         return writing_context_v16.prompt_blueprint(wf, job_root, p0=p0)
@@ -465,6 +468,9 @@ def natural_author_context(wf: Any, job_root: Path, *, p0: bool, finalizing: boo
 
 
 def prompt_article(wf: Any, job_root: Path, *, p0: bool) -> str:
+    from . import writing_context_v165
+    if writing_context_v165.enabled(wf.load_state(job_root), p0=p0):
+        return writing_context_v165.prompt_article(wf, job_root, p0=p0)
     from . import writing_context_v16
     if writing_context_v16.enabled(wf.load_state(job_root), p0=p0):
         return writing_context_v16.prompt_article(wf, job_root, p0=p0)
@@ -487,6 +493,9 @@ def prompt_article(wf: Any, job_root: Path, *, p0: bool) -> str:
 
 
 def prompt_edit(wf: Any, job_root: Path, *, p0: bool) -> str:
+    from . import writing_context_v165
+    if writing_context_v165.enabled(wf.load_state(job_root), p0=p0):
+        return writing_context_v165.prompt_edit(wf, job_root, p0=p0)
     from . import writing_context_v16
     if writing_context_v16.enabled(wf.load_state(job_root), p0=p0):
         return writing_context_v16.prompt_edit(wf, job_root, p0=p0)
@@ -638,6 +647,9 @@ def _deep_finalize_prompt(wf: Any, job_root: Path, candidate: dict[str, Any], bl
 
 
 def prompt_finalize(wf: Any, job_root: Path, *, p0: bool) -> str:
+    from . import writing_context_v165
+    if writing_context_v165.enabled(wf.load_state(job_root), p0=p0):
+        return writing_context_v165.prompt_finalize(wf, job_root, p0=p0)
     from . import writing_context_v16
     if writing_context_v16.enabled(wf.load_state(job_root), p0=p0):
         return writing_context_v16.prompt_finalize(wf, job_root, p0=p0)
@@ -687,7 +699,7 @@ accepted：保持待验读正文一致，editorial_notes=[]。revised：返回�
 
 def prompt_titles(wf: Any, job_root: Path, *, p0: bool, final_markdown: str | None = None) -> str:
     from . import writing_context_v14, title_strategy
-    if (not p0 and title_strategy.enabled(wf.load_state(job_root))) or writing_context_v14.enabled(wf.load_state(job_root)):
+    if title_strategy.enabled(wf.load_state(job_root)) or writing_context_v14.enabled(wf.load_state(job_root)):
         return writing_context_v14.prompt_titles(wf, job_root, p0=p0, final_markdown=final_markdown)
     from . import writing_requirements, writing_context_v13
     if writing_requirements.enabled(wf.load_state(job_root)):
@@ -744,7 +756,7 @@ def prompt_titles(wf: Any, job_root: Path, *, p0: bool, final_markdown: str | No
 def prompt_title_review(wf: Any, job_root: Path, *, p0: bool,
                         final_markdown: str | None = None, title_result: dict | None = None) -> str:
     from . import writing_context_v14, title_strategy
-    if (not p0 and title_strategy.enabled(wf.load_state(job_root))) or writing_context_v14.enabled(wf.load_state(job_root)):
+    if title_strategy.enabled(wf.load_state(job_root)) or writing_context_v14.enabled(wf.load_state(job_root)):
         return writing_context_v14.prompt_title_review(wf, job_root, p0=p0, final_markdown=final_markdown, title_result=title_result)
     from . import writing_requirements, writing_context_v13
     if writing_requirements.enabled(wf.load_state(job_root)):
@@ -1044,6 +1056,9 @@ def _natural_review_prompt(wf: Any, job_root: Path, *, p0: bool) -> str:
 
 
 def prompt_repair(wf: Any, job_root: Path, *, p0: bool) -> str:
+    from . import writing_context_v165
+    if writing_context_v165.enabled(wf.load_state(job_root), p0=p0):
+        return writing_context_v165.prompt_repair(wf, job_root, p0=p0)
     from . import writing_context_v16
     if writing_context_v16.enabled(wf.load_state(job_root), p0=p0):
         return writing_context_v16.prompt_repair(wf, job_root, p0=p0)

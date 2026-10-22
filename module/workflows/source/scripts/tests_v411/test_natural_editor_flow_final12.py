@@ -58,11 +58,14 @@ class NaturalEditorFlowTests(unittest.TestCase):
                     return {'article_markdown': self.repaired}
                 if action.endswith('_titles'):
                     state = wf.load_state(job)
-                    grouped = title_strategy.grouped(title_strategy.policy(state))
+                    policy = title_strategy.policy(state)
+                    grouped = title_strategy.grouped(policy)
+                    v4 = policy == title_strategy.DEFAULT
                     return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍',
-                                            **({'style': title_strategy.STYLE_SEQUENCE[i]} if grouped else {})}
+                                            **({'style': title_strategy.STYLE_SEQUENCE[i]} if grouped else {}),
+                                            **({'usage_hint': ['文档标题']} if v4 else {})}
                                            for i in range(title_strategy.expected_count(state))],
-                            'canonical_title_id': 'title_03'}
+                            'canonical_title_id': 'title_03', **({'title_notes': []} if v4 else {})}
                 return fixture_builder()
             return original_ensure(job, action, prompt, fixture_builder=fixture)
         for target, name, value in (

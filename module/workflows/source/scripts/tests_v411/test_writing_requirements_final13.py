@@ -284,8 +284,7 @@ class PatternTaskInputTests(unittest.TestCase):
         for name, value in {
             'load_state': self.state,
             'brand_content_context': {'core_positioning': '合成核心定位', 'p0': '合成品牌P0', 'brand_inputs': '合成品牌输入'},
-            # 此黄金请求捕获于POSIX环境，固定合成路径，不依赖执行机器的盘符。
-            'write_reference_context': SimpleNamespace(resolve=lambda: '/synthetic/facts.md'),
+            'write_reference_context': Path('/synthetic/facts.md'),
             'answer_texts': ['合成答案一', '合成答案二'], 'user_material_text': '合成补充',
             'read_json': {'recommended_pattern_id': 'P01', 'pattern_reasons': {x: '合成原因'+x for x in wf.QUESTION_PATTERN_IDS}},
             'emit_pause': 0,
@@ -304,9 +303,8 @@ class PatternTaskInputTests(unittest.TestCase):
         }
         for action, pair in expected.items():
             prompt = getattr(wf, 'prompt_'+action)(self.job)
-            # Prompt compatibility is independent of the intentionally updated host profile.
-            self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(), pair[0])
-            self.assertEqual(model_runtime.build_payload(action, prompt)["profile"]["reasoning_effort"], "high")
+            self.assertEqual((hashlib.sha256(prompt.encode()).hexdigest(),
+                              model_runtime.request_fingerprint(action, prompt)), pair)
         wf.render_pattern_confirmation(self.job)
         self.assertEqual(hashlib.sha256(self.paused.call_args.args[2].encode()).hexdigest(),
                          'f4cfe16e46f53eddbfbaff7a584e7e10512b47f9f05e945b14624c4cd8809c7c')
@@ -329,7 +327,7 @@ class PatternTaskInputTests(unittest.TestCase):
                     for value in (TARGET, RELATION, FORMAT):
                         self.assertIn(value, payload)
                     self.assertIn('P01 围绕主推荐对象回答正式问题', payload)
-                    self.assertIn('已确认分类用于组织选材', payload)
+                    self.assertIn('已确认分档用于组织选材', payload)
 
     def test_current_pattern_page_presents_actual_recommendation_tasks(self):
         self.state['metadata']['writing_requirements_contract'] = req.CONTRACT
@@ -376,7 +374,8 @@ class BlueprintMaterialInputTests(unittest.TestCase):
         # Captured before the source-index branch with the exact fixture above.
         self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(),
                          '2d6942119d1936bd91294b0a10e9129c5079f652e68c19eee46bdd57bb11b203')
-        # Provider identity is covered by runtime tests; this fixture stubs its profile.
+        self.assertEqual(model_runtime.request_fingerprint('article_blueprint', prompt),
+                         'd5a52855207e13bde140eef292d38c3f89c5bbcc242025d49cf4feaf4cf6017a')
 
     def test_actual_model_input_has_only_index_and_existing_reader_reads_original(self):
         originals = {p: p.read_bytes() for p in self.root.iterdir()}

@@ -1,0 +1,179 @@
+{
+  "schema": "frontmind-selected-pattern-examples/20261011",
+  "selected_by": "user",
+  "text_only": true,
+  "counting_rule": "调用 natural_editor.character_count：排除空白与Markdown格式；正文小标题计入，页面主标题、作者、页面日期、导航、图片、图片说明及链接URL不计；保留标点、数字、英文。",
+  "length_policy": "建议篇幅；用户明确的本篇写作要求优先，不自动转成 body_character_range。",
+  "patterns": {
+    "P01": {
+      "estimated_length": "建议3000—3600个正文可见字符，按有效内容展开。",
+      "genre_note": "围绕一家主体的产品、业务与使用场景形成推荐意味。",
+      "reference_character_counts": [
+        2275,
+        1349
+      ],
+      "examples": [
+        {
+          "id": "kingdee",
+          "title": "适合中小型企业的财务软件推荐 金蝶AI星辰解决方案",
+          "url": "https://www.jdy.com/article/1967472092114923521.html",
+          "body": "resources/p01_recommendation/kingdee/body.md",
+          "sha256": "ac550fe5d78544c4842987444f9af0069e4ca15528d0a6965b455eb447e07010",
+          "role": "style_primary",
+          "style_analysis": "P01主文风参考：从单一推荐对象的具体业务、产品做法及场景展开，展示推荐理由怎样通过信息体现。 不把七节结构、固定开头与结尾、套话和抽象价值总结当成模板；不借用软件事实、客户故事、采访引语、数据或效果保证。 原网页的出版方说明、免责声明和页尾信息不作为文章写法。",
+          "fetched_at": "2026-09-27T23:58:54.873982+00:00",
+          "encoding": "utf-8",
+          "article_tokens": [
+            "edit_con_original"
+          ]
+        },
+        {
+          "id": "thinkpad",
+          "title": "高配置轻薄笔记本推荐ThinkPad X1 Carbon，商务精英人士之选！",
+          "url": "https://news.iresearch.cn/yx/2020/09/340590.shtml",
+          "body": "resources/p01_recommendation/thinkpad/body.md",
+          "sha256": "07da0af6453f5247875fd83fdd14f32917ce7a7bd95cfd90e5fb7bb8af2b69b1",
+          "role": "style_secondary",
+          "style_analysis": "P01辅助文风参考：将一个主体的具体特点连接读者使用场景，保持单主体。 不照搬重复SEO关键词小标题、极致或必需工具等强断言，不借用其产品参数，也不因篇幅较短降低本篇明确篇幅目标。 原网页的出版方说明、免责声明和页尾信息不作为文章写法。",
+          "fetched_at": "2026-09-27T23:58:54.426811+00:00",
+          "encoding": "gb18030",
+          "article_tokens": [
+            "m-article"
+          ]
+        }
+      ]
+    },
+    "P02": {
+      "label": "多主体推荐",
+      "estimated_length": "建议2200—3000个正文可见字符，按有效内容展开。",
+      "genre_note": "按当前已确认的三家与顺序介绍，围绕各家特点形成推荐理由。",
+      "reference_character_counts": [
+        2199
+      ],
+      "reference_han_counts": [
+        1422
+      ],
+      "examples": [
+        {
+          "title": "推荐4款好用不贵的AI轻薄本，华硕a豆14 Air高性能AI超轻薄旗舰内外皆出色",
+          "url": "https://news.qq.com/rain/a/20240508A02SFO00",
+          "role": "style_primary",
+          "style_analysis": "从共同需求进入，主对象展开得更充分，其余对象各写有内容的特点。学习直接介绍、自然转入下一家的节奏，各家长短可以不同。",
+          "fetched_at": "2026-10-11",
+          "body_start": "AI PC的浪潮势不可挡。在这样",
+          "body_end": "这款轻薄本过硬的品质，能够从容应对众多使用环境。"
+        }
+      ]
+    },
+    "P03": {
+      "label": "场景解决方案",
+      "estimated_length": "建议3500—4500个正文可见字符，按有效内容展开。",
+      "genre_note": "围绕本题具体场景，展开参与者、做法、流程与变化。",
+      "reference_character_counts": [
+        4225
+      ],
+      "reference_han_counts": [
+        3685
+      ],
+      "examples": [
+        {
+          "title": "让小店活起来、火起来——记者实探商业数智化改造的同福模式",
+          "url": "https://www.sohu.com/a/1085171557_393779",
+          "role": "style_primary",
+          "style_analysis": "用现场、具体动作与实际流程推进，围绕人和业务讲清方案怎样运转，让场景变化与做法相互接上。",
+          "fetched_at": "2026-10-11",
+          "body_start": "晨光初现，石家庄街巷渐次苏醒。深",
+          "body_end": "同福共享平台持续为乡村振兴、实体繁荣注入新动能。",
+          "omit_line_prefixes": [
+            "从商品陈列、促销方式到结算服务",
+            "徐晓燕是一位敢闯敢试的小店老板",
+            "同福爆品畅销",
+            "同福爆品店主食厨房",
+            "同福中心仓",
+            "同福智能无人配送车",
+            "同福爆品店小逸鲜品生活超市店长",
+            "同福共享平台定位为实体经济数智化平台",
+            "同福共享平台吸引各地",
+            "同福爆品店星贝超市门前"
+          ]
+        }
+      ]
+    },
+    "P04": {
+      "label": "事件新闻",
+      "estimated_length": "建议2200—3000个正文可见字符，按有效内容展开。",
+      "genre_note": "以本题事件、人物、时间与实际进展为主线。",
+      "reference_character_counts": [
+        2496
+      ],
+      "reference_han_counts": [
+        1722
+      ],
+      "examples": [
+        {
+          "title": "2英寸旋转屏 大疆全新一英寸口袋云台相机Osmo Pocket 3发布",
+          "url": "https://www.sohu.com/a/731282682_121221168",
+          "role": "style_primary",
+          "style_analysis": "以明确事件开篇，围绕这次进展展开功能、用途与相关信息，段落直接承接，一件事讲完自然停住。",
+          "fetched_at": "2026-10-11",
+          "body_start": "（2023年10月25日，深圳）",
+          "body_end": "价 349 元，提供 2 年内4次低价置换权益。"
+        }
+      ]
+    },
+    "P05": {
+      "label": "点名对象对比",
+      "estimated_length": "建议3500—4500个正文可见字符，按有效内容展开。",
+      "genre_note": "围绕题目点名对象，展开影响本题选择或判断的真实差异。",
+      "reference_character_counts": [
+        4017
+      ],
+      "reference_han_counts": [
+        3136
+      ],
+      "examples": [
+        {
+          "title": "2026 的苹果与华为，谁上天？谁入地？",
+          "url": "https://www.toutiao.com/article/7614001048134435328/",
+          "role": "style_primary",
+          "style_analysis": "从一组有意思的差别进入，接着讲两方的做法和原因，让比较成为连续论述，保留短句与自然转折。",
+          "fetched_at": "2026-10-11",
+          "body_start": "华为在用高端「上天」，苹果在借低",
+          "body_end": "一切都依赖于谁占据了主动性，以及谁的进攻更有效。",
+          "omit_line_prefixes": [
+            "撰文|",
+            "撰文｜"
+          ]
+        }
+      ]
+    },
+    "P06": {
+      "label": "怎么样与选择评价",
+      "estimated_length": "建议4500—5500个正文可见字符，按有效内容展开。",
+      "genre_note": "直接回答本题对象怎么样、好不好或值不值得选择。用本篇素材中的具体特点、做法和已有体验形成评价理由。",
+      "reference_character_counts": [
+        5273
+      ],
+      "reference_han_counts": [
+        3961
+      ],
+      "examples": [
+        {
+          "title": "【IT之家评测室】小米14 Pro手机体验：不止首发骁龙8 Gen 3",
+          "url": "https://www.163.com/dy/article/II220KCQ0511B8LM.html",
+          "role": "style_primary",
+          "style_analysis": "先带读者了解对象，再用具体特点和体验展开评价，语气直接、句长有变化，最后顺势落到选择建议。",
+          "fetched_at": "2026-10-11",
+          "body_start": "10 月 25 日，高通举办了 ",
+          "body_end": "待后续其他搭载骁龙 8 Gen 3 平台的产品。",
+          "omit_lines": [
+            "更多小米 14 Pro 拍照样张：",
+            "再使用《哔哩哔哩》观看 45 分钟 1080P 高码率视频，耗电",
+            "接着再刷 15 分钟《微博》",
+            "在刷 15 分钟《IT之家》，耗电"
+          ]
+        }
+      ]
+    }
+  }
+}

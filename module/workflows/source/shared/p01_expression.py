@@ -7,7 +7,7 @@ def enabled(state):
     return (state.get('job_kind') == 'article' and state.get('selected_pattern_id') == 'P01'
             and state.get('metadata', {}).get('p01_expression_policy') == CONTRACT)
 def matches(prompt):
-    return isinstance(prompt, str) and prompt.startswith('<frontmind_natural_prose version="16">\n' + MARKER + '\n')
+    return isinstance(prompt, str) and prompt.startswith(tuple(prefix + MARKER + '\n' for prefix in ('<frontmind_natural_prose version="16">\n', '<frontmind_natural_prose version="16.5">\n')))
 def role(stage, original):
     if stage == 'edit':
         original = original.replace('让段落在最后一项具体内容处收住。无需再解释前面这些业务如何共同构成体系、延伸服务或方便选择。', '让项目、用途和特点融入连贯介绍，可以写出与这些事实直接相关的价值和吸引力；已经表达清楚的意思不再追加同义总结。')

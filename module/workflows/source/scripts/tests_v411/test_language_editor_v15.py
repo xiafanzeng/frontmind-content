@@ -96,6 +96,8 @@ class RuntimeBindingTests(unittest.TestCase):
 
     def test_only_new_p01_p02_jobs_enable_the_new_contract(self):
         state = wf.make_state('new', 'article')
+        # This assertion owns the frozen v15 branch, not today's default.
+        state['metadata']['natural_prose_contract'] = editor.CONTRACT
         for pattern in ('P01', 'P02'):
             state['selected_pattern_id'] = pattern;self.assertTrue(editor.enabled(state))
         state['selected_pattern_id'] = 'P03';self.assertFalse(editor.enabled(state))
@@ -135,8 +137,15 @@ class LanguageEditorFlowTests(unittest.TestCase):
                 if action == 'article_repair': return {'article_markdown': self.repaired}
                 if action == 'article_polish': return review(structural=self.polish_incomplete, edits=self.polish_edits)
                 if action.endswith('_titles'):
-                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍', **({'style': title_strategy.STYLE_SEQUENCE[i]} if title_strategy.grouped(title_strategy.policy(wf.load_state(job))) else {})} for i in range(title_strategy.expected_count(wf.load_state(job)))],
-                            'canonical_title_id': 'title_03'}
+                    state = wf.load_state(job)
+                    policy = title_strategy.policy(state)
+                    grouped = title_strategy.grouped(policy)
+                    v4 = policy == title_strategy.DEFAULT
+                    return {'candidates': [{'title': f'合成服务的项目安排与业务观察{i:02}', 'angle': '服务介绍',
+                                            **({'style': title_strategy.STYLE_SEQUENCE[i]} if grouped else {}),
+                                            **({'usage_hint': ['文档标题']} if v4 else {})}
+                                           for i in range(title_strategy.expected_count(state))],
+                            'canonical_title_id': 'title_03', **({'title_notes': []} if v4 else {})}
                 return fixture_builder()
             return original_ensure(job, action, prompt, fixture_builder=fixture)
         for target, name, callback in [(wf, 'ensure_action', ensure), (wf, 'answer_texts', lambda *_: []),
@@ -150,6 +159,8 @@ class LanguageEditorFlowTests(unittest.TestCase):
         state = wf.make_state('v15-test', 'article')
         state['metadata']['natural_prose_contract'] = editor.CONTRACT
         state['metadata'].pop('title_strategy', None)  # historical v15 request; title-edits upgrades explicitly
+        state['metadata'].pop('p01_expression_policy', None)
+        state['metadata'].pop('p02_selection_policy', None)
         if legacy: state['metadata'].pop('natural_prose_contract')
         state.update(status='running_article_production', stage='production', selected_pattern_id='P02',
                      selected_example_route='default', question={'question_text': '本地有哪些机构？'})

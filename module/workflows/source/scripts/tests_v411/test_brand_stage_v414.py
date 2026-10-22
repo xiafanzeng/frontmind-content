@@ -166,7 +166,7 @@ class BrandStageTests(unittest.TestCase):
         from docx import Document
         d=Document(dest/'deliverables/article.docx')
         self.assertGreater(len(d.paragraphs),0)
-        self.assertEqual(len(json.loads((dest/'deliverables/titles.json').read_text())['candidates']),20)
+        self.assertEqual(len(json.loads((dest/'deliverables/titles.json').read_text())['candidates']),10)
 
     def test_live_entry_rejects_symlink(self):
         original=Path(self.tmp.name)/'real.md';original.write_text(BODY);link=Path(self.tmp.name)/'alias.md';link.symlink_to(original)
