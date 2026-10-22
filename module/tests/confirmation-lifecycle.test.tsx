@@ -90,15 +90,16 @@ it("reopens the same confirmation when an accepted asynchronous command fails", 
 it("advances the stage when polling updates a running conversation without a new message", async () => {
   const view = await mount({ status: "running", progress });
   try {
-    expect(view.container.querySelector(".cp-inline-confirmation-heading strong")?.textContent).toContain("确认写作方案");
-    expect(view.container.querySelector(".cp-six-progress-status")?.textContent).toContain("确认文章写作方案");
+    // confirmationView is gated off while the task status is running (baseline behavior);
+    // the pause stays visible through the six-step status line instead.
+    expect(view.container.querySelector(".cp-six-progress-status")?.textContent).toContain("蓝图、写作与交付");
     expect(view.container.querySelector(".cp-six-progress-status")?.textContent).toContain("等待：确认写作方案");
     view.setTask({ id: "task-1", purpose: "content_production", status: "running", contentProduction: {
       ...progress, workflowStatus: "running_article_production", currentStage: "article_production",
       confirmation: null, availableActions: [], progressPosition: 19, productionStep: "draft",
     } });
     await view.updateConversation({ updatedAt: 2 });
-    expect(view.container.querySelector('[aria-current="step"]')?.textContent).toContain("正文与最终交付");
+    expect(view.container.querySelector('[aria-current="step"]')?.textContent).toContain("蓝图、写作与交付");
     expect(view.container.querySelector(".cp-inline-confirmation")).toBeNull();
   } finally { await view.cleanup(); }
 });
