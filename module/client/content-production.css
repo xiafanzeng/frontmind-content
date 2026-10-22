@@ -1057,3 +1057,92 @@
 .cp-entry-landing .cp-entry-actions {
   justify-content: center;
 }
+
+/* Six-step continuous conversation: presentation-only wrapper around the existing task and pause contracts. */
+.cp-six-progress {
+  margin: 0 0 14px;
+  padding: 12px 14px 11px;
+  border: 1px solid var(--cp-border, #e8e3d8);
+  border-radius: 12px;
+  background: var(--cp-surface, #fff);
+}
+.cp-six-progress > ol {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cp-six-progress > ol > li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--cp-muted, #77736b);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.cp-six-step-marker {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--cp-border, #ded8cc);
+  border-radius: 50%;
+  background: var(--cp-surface, #fff);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.cp-six-step-title { min-width: 0; overflow-wrap: anywhere; }
+.cp-six-progress > ol > li.is-current { color: var(--cp-primary, #8a6100); font-weight: 600; }
+.cp-six-progress > ol > li.is-current .cp-six-step-marker { color: #fff; border-color: var(--cp-primary, #8a6100); background: var(--cp-primary, #8a6100); }
+.cp-six-progress > ol > li.is-done { color: var(--cp-primary, #8a6100); }
+.cp-six-progress > ol > li.is-done .cp-six-step-marker { border-color: #d8c89e; background: #f7f0dc; }
+.cp-six-progress-status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--cp-border, #eee9df);
+  font-size: 12px;
+}
+.cp-six-progress-status strong { color: var(--cp-primary, #8a6100); font-weight: 600; }
+.cp-six-progress-status span { color: var(--cp-muted, #77736b); }
+.cp-confirmed-context { margin-top: 8px; font-size: 11px; color: var(--cp-muted, #77736b); }
+.cp-confirmed-context > summary { cursor: pointer; display: flex; gap: 8px; align-items: center; width: fit-content; }
+.cp-confirmed-context > summary span { padding: 1px 6px; border-radius: 99px; background: #f5f0e4; color: var(--cp-primary, #8a6100); }
+.cp-confirmed-context ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.cp-confirmed-context li { padding: 4px 8px; border: 1px solid var(--cp-border, #e8e3d8); border-radius: 6px; background: var(--cp-surface, #fff); }
+.cp-inline-confirmation { margin: 12px 0 0; padding: 12px; border: 1px solid #e5d8b7; border-radius: 10px; background: #fffdf7; }
+.cp-inline-confirmation-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 8px; font-size: 12px; }
+.cp-inline-confirmation-heading span { color: var(--cp-muted, #77736b); }
+.cp-inline-confirmation-heading strong { color: var(--cp-primary, #8a6100); font-weight: 600; }
+.cp-inline-confirmation .cp-confirmation { margin: 0; }
+.cp-six-step-start { min-width: 0; padding: clamp(14px, 2.5vw, 24px); }
+.cp-six-start-intro { max-width: 720px; margin: 0 auto 18px; }
+.cp-six-start-kicker { display: block; margin-bottom: 7px; color: var(--cp-primary, #8a6100); font-size: 11px; letter-spacing: .04em; }
+.cp-six-start-intro h2 { margin: 0 0 8px; font-size: clamp(19px, 2vw, 25px); font-weight: 600; line-height: 1.4; }
+.cp-six-start-intro p { margin: 0; color: var(--cp-muted, #77736b); font-size: 13px; line-height: 1.7; }
+.cp-six-step-start .cp-task-create-form { max-width: 760px; margin: 0 auto; border: 1px solid var(--cp-border, #e8e3d8); border-radius: 12px; background: var(--cp-surface, #fff); overflow: hidden; }
+.cp-six-step-start .cp-task-center-body { padding: 16px; }
+.cp-six-step-start .cp-mode-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-bottom: 16px; }
+.cp-six-step-start .cp-mode-list legend { grid-column: 1 / -1; margin-bottom: 5px; }
+.cp-six-step-start .cp-mode-list label { min-width: 0; }
+.cp-six-step-start .cp-task-create-form > footer { display: flex; justify-content: flex-end; gap: 9px; padding: 12px 16px; border-top: 1px solid var(--cp-border, #e8e3d8); background: #fcfaf6; }
+.cp-six-start-existing { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; color: var(--cp-muted, #77736b); font-size: 12px; }
+@media (max-width: 760px) {
+  .cp-six-progress { padding: 10px; }
+  .cp-six-progress > ol { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; }
+  .cp-six-progress > ol > li { align-items: flex-start; }
+  .cp-six-step-marker { flex-basis: 20px; width: 20px; height: 20px; }
+  .cp-six-step-title { padding-top: 3px; }
+}
+@media (max-width: 520px) {
+  .cp-six-step-start .cp-mode-list { grid-template-columns: minmax(0, 1fr); }
+  .cp-six-step-start .cp-task-center-body { padding: 12px; }
+  .cp-six-step-start .cp-task-create-form > footer { padding: 10px 12px; }
+}
