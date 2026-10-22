@@ -48,15 +48,17 @@ function confirmButton(container: HTMLElement) {
 it("consumes an accepted confirmation, refreshes state, and allows a new revision", async () => {
   const view = await mount();
   try {
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation-heading")?.textContent).toContain("当前需要确认");
     await act(async () => confirmButton(view.container).click());
     expect(view.send).toHaveBeenCalledWith(expect.any(String), [], { contentProductionAction: { kind: "confirm_blueprint", revision: 7 } });
     expect(view.retrieveTask).toHaveBeenCalledTimes(2);
     // A stale snapshot of the accepted revision must not reopen its controls.
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).toBeNull();
     view.setTask({ id: "task-1", purpose: "content_production", status: "awaiting_input", contentProduction: { ...progress, runnerRevision: 8 } });
     await act(async () => view.container.querySelector<HTMLButtonElement>('[aria-label="刷新制作阶段"]')!.click());
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation-heading")?.textContent).toContain("当前需要确认");
   } finally { await view.cleanup(); }
 });
 
@@ -64,7 +66,8 @@ it("keeps a rejected confirmation available for retry", async () => {
   const view = await mount({ send: async () => false });
   try {
     await act(async () => confirmButton(view.container).click());
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation-heading")?.textContent).toContain("当前需要确认");
     expect(confirmButton(view.container).disabled).toBe(false);
     expect(view.container.textContent).toContain("本轮提交尚未确认成功");
     expect(view.retrieveTask).toHaveBeenCalledTimes(1);
@@ -75,10 +78,11 @@ it("reopens the same confirmation when an accepted asynchronous command fails", 
   const view = await mount();
   try {
     await act(async () => confirmButton(view.container).click());
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).toBeNull();
     view.setTask({ id: "task-1", purpose: "content_production", status: "error", contentProduction: progress });
     await act(async () => view.container.querySelector<HTMLButtonElement>('[aria-label="刷新制作阶段"]')!.click());
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).not.toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation-heading")?.textContent).toContain("当前需要确认");
     expect(confirmButton(view.container).disabled).toBe(false);
   } finally { await view.cleanup(); }
 });
@@ -86,14 +90,16 @@ it("reopens the same confirmation when an accepted asynchronous command fails", 
 it("advances the stage when polling updates a running conversation without a new message", async () => {
   const view = await mount({ status: "running", progress });
   try {
-    expect(view.container.querySelector('[aria-current="step"]')?.textContent).toContain("确认文章写作方案");
+    expect(view.container.querySelector(".cp-inline-confirmation-heading strong")?.textContent).toContain("确认写作方案");
+    expect(view.container.querySelector(".cp-six-progress-status")?.textContent).toContain("确认文章写作方案");
+    expect(view.container.querySelector(".cp-six-progress-status")?.textContent).toContain("等待：确认写作方案");
     view.setTask({ id: "task-1", purpose: "content_production", status: "running", contentProduction: {
       ...progress, workflowStatus: "running_article_production", currentStage: "article_production",
       confirmation: null, availableActions: [], progressPosition: 19, productionStep: "draft",
     } });
     await view.updateConversation({ updatedAt: 2 });
     expect(view.container.querySelector('[aria-current="step"]')?.textContent).toContain("正文与最终交付");
-    expect(view.container.querySelector(".cp-confirmation-disclosure")).toBeNull();
+    expect(view.container.querySelector(".cp-inline-confirmation")).toBeNull();
   } finally { await view.cleanup(); }
 });
 
@@ -102,6 +108,6 @@ it.each([
   { status: "completed", progress: { ...progress, confirmation: null, availableActions: [] } },
 ])("does not leave an empty or stale confirmation disclosure when status is $status", async options => {
   const view = await mount(options);
-  try { expect(view.container.querySelector(".cp-confirmation-disclosure")).toBeNull(); }
+  try { expect(view.container.querySelector(".cp-inline-confirmation")).toBeNull(); }
   finally { await view.cleanup(); }
 });

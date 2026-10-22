@@ -5,7 +5,7 @@ import {managedLocalAssetContentUrl} from "@frontmind/module-ui/lib/file-preview
 import {useContentWorkspaceHost,type ContentConversation,type TaskResponse} from "./host";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput,type ContentProductionJobKind,type ContentProductionMode} from "../contracts/content-production";
 import ContentProductionConfirmation from "./ContentProductionConfirmation";
-import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionTaskTitle} from "../contracts/content-production-public";
+import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionPauseTitle,contentProductionPublicText,contentProductionTaskTitle} from "../contracts/content-production-public";
 import "./content-production.css";
 import "./content-workbench.css";
 const contentTheme = {"--module-accent":"#8a6100","--module-color":"#8a6100"} as CSSProperties;
@@ -162,6 +162,52 @@ export function contentArtifactUrl(value: string): string | null {
     return null;
   }
 }
+const CONTENT_SIX_STEPS = [
+  "企业资料与范围",
+  "确认定位与资料包",
+  "品牌长文",
+  "问题与监控数据",
+  "选题、类型与参考",
+  "蓝图、写作与交付",
+] as const;
+
+/** Map the existing Runner status contract to the six presentation stages.
+ * This is display-only: it does not change task routing or confirmation actions. */
+export function contentProductionSixStep(
+  progress: ContentProductionDto | null,
+  modeKnown: boolean,
+  mode: ContentProductionMode,
+): number {
+  if (!progress) {
+    if (!modeKnown) return 0;
+    if (mode === "p0" || mode === "foundation_article" || mode === "import_foundation") return 2;
+    if (mode === "single_article") return 1;
+    return 0;
+  }
+  const status = progress.confirmation ?? progress.workflowStatus ?? "";
+  const position = contentProductionStagePosition(progress.currentStage, progress.workflowStatus);
+  if (progress.jobKind === "reference_pack" || progress.jobKind === "reference_pack_refresh") {
+    return ["awaiting_core_positioning_direction", "awaiting_core_positioning_confirmation"].includes(status) || position >= 5 ? 1 : 0;
+  }
+  if (progress.jobKind === "p0") return position >= 8 ? 2 : 1;
+  if (progress.jobKind === "article") {
+    if (position >= 17) return 5;
+    if (position >= 15) return 4;
+    if (position >= 13) return 3;
+    return 1;
+  }
+  if (["awaiting_core_positioning_direction", "awaiting_core_positioning_confirmation"].includes(status)) return 1;
+  if (["awaiting_p0_route", "awaiting_p0_example_confirmation", "awaiting_p0_blueprint_confirmation"].includes(status)) return 2;
+  if (["awaiting_question_selection", "awaiting_question_research_inputs", "awaiting_response_brief"].includes(status)) return 3;
+  if (["awaiting_pattern_confirmation", "awaiting_example_confirmation", "awaiting_competitor_selection"].includes(status)) return 4;
+  if (["awaiting_question_positioning_confirmation", "awaiting_blueprint_confirmation"].includes(status)) return 5;
+  if (position === 0) {
+    if (mode === "p0" || mode === "foundation_article" || mode === "import_foundation") return 2;
+    if (mode === "single_article") return 1;
+  }
+  return position >= 17 ? 5 : position >= 15 ? 4 : position >= 13 ? 3 : position >= 8 ? 2 : position >= 5 ? 1 : 0;
+}
+
 export function contentProductionFinished(
   progress: ContentProductionDto | null,
 ) {
@@ -578,6 +624,7 @@ function ContentProductionInner({
           0,
           steps.findLastIndex((step) => position >= step.position),
         );
+  const sixStepIndex = contentProductionSixStep(progress, modeKnown, activeMode);
   const statusLabel = !modeKnown
     ? taskId
       ? "任务信息待读取"
@@ -628,6 +675,36 @@ function ContentProductionInner({
   ];
   const packFiles = deliverables.filter((file) =>
     /\.zip$/i.test(file.fileName),
+  );
+  const sixStepProgress = (
+    <section className="cp-six-progress" aria-label="内容制作六步进度">
+      <ol>
+        {CONTENT_SIX_STEPS.map((title, index) => {
+          const done = index < sixStepIndex || (finished && index === sixStepIndex);
+          const current = !done && index === sixStepIndex;
+          return (
+            <li key={title} className={done ? "is-done" : current ? "is-current" : ""} aria-current={current ? "step" : undefined}>
+              <span className="cp-six-step-marker">{done ? <Check size={13} aria-hidden="true" /> : index + 1}</span>
+              <span className="cp-six-step-title">{title}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <div className="cp-six-progress-status" role="status">
+        <strong>{CONTENT_SIX_STEPS[sixStepIndex]}</strong>
+        <span>{activeConversation ? (progress?.pauseTitle ? `等待：${progress.pauseTitle}` : busy ? "正在处理当前步骤" : finished ? "当前任务已完成" : refreshing ? "正在读取阶段" : statusLabel) : "从企业资料与范围开始；选择目标后，后续确认会在当前对话中继续。"}</span>
+      </div>
+      {progress?.completedConfirmations.length ? (
+        <details className="cp-confirmed-context">
+          <summary>已完成的确认节点 <span>{progress.completedConfirmations.length}</span></summary>
+          <ul>
+            {progress.completedConfirmations.map((item) => (
+              <li key={item}>{contentProductionPauseTitle(item, null) ?? contentProductionPublicText(item)}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+    </section>
   );
 
   async function prepareNextTask(
@@ -977,7 +1054,6 @@ function ContentProductionInner({
                 </ol>
               )}
             </details>
-          {!workbench && confirmationView}
             {handoffAvailable && (
               <section className="cp-handoff">
                 <strong>
@@ -1118,6 +1194,7 @@ function ContentProductionInner({
         </div>
         <span>FrontMind 内容智能体</span>
       </div>
+      {sixStepProgress}
       {activeConversation ? (
         <>
           {failedStart?.id === activeConversation.id && (
@@ -1154,42 +1231,24 @@ function ContentProductionInner({
               purpose="content_production"
               contentProduction={input}
               standardWelcomeVariant="simple"
-              conversationFooter={workbench && confirmationView ? <details className="cp-confirmation-disclosure"><summary><span>写作下一步</span><strong>{statusLabel}</strong><ChevronDown size={16}/></summary>{confirmationView}</details> : undefined}
+              conversationFooter={confirmationView ? <section className="cp-inline-confirmation"><div className="cp-inline-confirmation-heading"><span>当前需要确认</span><strong>{progress?.pauseTitle ?? statusLabel}</strong></div>{confirmationView}</section> : undefined}
             />
           </div>
         </>
       ) : (
-        <div className="cp-entry-landing">
-          <div>
-            <h2>
-              {state.conversations.length
-                ? "继续一个内容任务"
-                : "把品牌资料，写成好文章"}
-            </h2>
-            <p>从一个真实问题出发，研究资料、确认写作方案，再一起打磨正文。</p>
+        <div className="cp-six-step-start">
+          <div className="cp-six-start-intro">
+            <span className="cp-six-start-kicker">FrontMind · 内容工作台</span>
+            <h2>{state.conversations.length ? "继续一个内容任务，或从这里开始新一轮" : "从企业资料开始，一路完成内容交付"}</h2>
+            <p>先选择现有业务目标并提供企业名称；创建后，研究、确认、写作和修改都在同一条对话中继续。旧会话可从任务中心恢复。</p>
           </div>
-          <div className="cp-entry-route" aria-label="内容制作流程"><span>明确任务</span><span>研究选材</span><span>确认方案</span><span>写作修改</span><span>交付稿件</span></div>
-          <div className="cp-entry-actions">
-            <button
-              type="button"
-              className="cp-primary"
-              onClick={() => openTaskCenter("new")}
-              disabled={!hydrated || handoffPending}
-            >
-              <Plus size={16} />
-              新建任务
-            </button>
-            {state.conversations.length > 0 && (
-              <button
-                type="button"
-                className="cp-secondary"
-                onClick={() => openTaskCenter("existing")}
-                disabled={!hydrated || Boolean(pendingStart) || handoffPending}
-              >
-                已有任务
-              </button>
-            )}
-          </div>
+          {createForm}
+          {state.conversations.length > 0 && (
+            <div className="cp-six-start-existing">
+              <span>已有会话？</span>
+              <button type="button" className="cp-secondary" onClick={() => openTaskCenter("existing")} disabled={!hydrated || Boolean(pendingStart) || handoffPending}>打开已有任务</button>
+            </div>
+          )}
         </div>
       )}
     </div>
