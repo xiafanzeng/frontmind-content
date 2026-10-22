@@ -166,9 +166,10 @@ def _verified_action(wf: Any, job: Path, action: str, production: Path, validato
 
 def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
     """Verify the existing chain without calling providers or rewriting results."""
-    from . import editorial_contracts as contracts, natural_editor, language_editor_v15
+    from . import editorial_contracts as contracts, natural_editor, language_editor_v15, natural_editorial_v165
     job = Path(job_root);prefix = "p0" if p0 else "article";state = wf.load_state(job)
     v15 = not p0 and language_editor_v15.enabled(state)
+    v165 = not p0 and natural_editorial_v165.enabled(state)
     if state.get("status") != ("p0_ready" if p0 else "completed"):
         raise ValueError("成稿精修仅用于已完成的文章任务")
     offline = state.get("flags", {}).get("offline_fixture") is True
@@ -206,7 +207,8 @@ def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
     if final["outcome"] not in ("accepted", "revised"):
         raise ValueError("原稿尚未完成宿主验读")
     wf.validate_article_markdown(final["article_markdown"], allow_flat=natural_editor.enabled(state))
-    review_validator = ((lambda value: language_editor_v15.validate_action(wf, job, "article_finalize", value))
+    review_validator = (natural_editorial_v165.validate_review if v165 else
+                        (lambda value: language_editor_v15.validate_action(wf, job, "article_finalize", value))
                         if v15 else natural_editor.validate_review)
     actions = [
         _verified_action(wf, job, prefix + "_draft", draft_path, draft_validator, offline=offline),
@@ -226,7 +228,14 @@ def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
         actions.insert(0, _verified_action(wf, job, editorial_preparation.ACTION,
             local_file(job, editorial_preparation.PATH), editorial_preparation.validate, offline=offline))
     source = wf.read_json(local_file(job, f"production/{prefix}_final_source.json"))
-    if v15:
+    if v165:
+        if source.get("action") == "article_repair":
+            actions.append(_verified_action(wf, job, "article_repair", local_file(job, "production/article_repaired.json"), natural_editor.validate_repair, offline=offline))
+            actions.append(_verified_action(wf, job, "article_polish", local_file(job, "production/article_polish_review.json"), natural_editorial_v165.validate_review, offline=offline))
+        actual_host = next(item for item in actions if item["action"] == source.get("action"))
+        if source.get("contract") != natural_editorial_v165.CONTRACT or source.get("attempt_id") != actual_host.get("attempt_id"):
+            raise ValueError("最终正文的作者请求记录不一致")
+    elif v15:
         review = review_validator(wf.read_json(local_file(job, "production/article_editorial_review.json")))
         if review["needs_revision"]:
             actions.append(_verified_action(wf, job, "article_repair", local_file(job, "production/article_repaired.json"), natural_editor.validate_repair, offline=offline))
@@ -313,7 +322,13 @@ def validate_completed_manuscript(wf: Any, job_root: Path, *, p0: bool) -> dict:
         pack = state.get("metadata", {}).get("reference_pack_delivery") or {}
         path = Path(pack.get("portable_zip_path", ""))
         if not path.is_absolute():path = job / path
-        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(job.resolve()):
+        # P0 may have been explicitly exported outside its Job with --output.
+        # Accept that declared destination while keeping unregistered external
+        # paths out of revision inputs; series, hash and body checks follow.
+        declared_zip = wf._pack_output_targets(job, pack.get("pack_version", 0))[1]
+        allowed_location = (path.resolve().is_relative_to(job.resolve())
+                            or path.resolve() == declared_zip.resolve())
+        if path.is_symlink() or not path.is_file() or not allowed_location:
             raise ValueError("缺少最近交付的可继承资料包")
         digest = file_hash(path)
         if pack.get("portable_zip_sha256") != "sha256:" + digest:

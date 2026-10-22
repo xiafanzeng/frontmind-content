@@ -24,7 +24,7 @@ export interface ContentBusinessClient {
  task(id:string,signal?:AbortSignal):Promise<TaskResponse>;stop(id:string):Promise<void>;
 }
 async function json<T>(url:string,init:RequestInit={}):Promise<T>{
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),init.body instanceof Blob?120000:20000);
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),init.body instanceof Blob?600000:20000);
  const abort=()=>controller.abort();init.signal?.addEventListener("abort",abort,{once:true});if(init.signal?.aborted)controller.abort();
  try{const response=await fetch(url,{credentials:"same-origin",...init,signal:controller.signal});const value=await response.json();if(!response.ok)throw new Error(value.error?.message??value.error??value.message??`HTTP ${response.status}`);return value;}
  catch(error){if(controller.signal.aborted)throw new Error("请求超时或已取消，请检查连接后重试；提交结果可能已被服务器接收。");throw error;}
@@ -178,7 +178,7 @@ const contentComposerRuntime: BusinessComposerRuntime<ContentProductionInput, ne
  KnowledgeBaseManagedUploadRecovery:()=>null,
  generalSuggestions:[],
  formatKnowledgeBaseUploadBytes:bytes=>`${(bytes/1024/1024).toFixed(1)} MB`,
- chatAttachmentSizeError:file=>file.size>100*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 100 MB`:null,
+ chatAttachmentSizeError:file=>file.size>512*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 512 MB`:null,
  knowledgeLogoNoticeCode:"unused-content-knowledge-logo",
 };
 function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host=useMemo<ContentWorkspaceHost>(()=>({connections:{publishedKnowledge:false},ConversationPurposeProvider:ContentMessageActions,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector}),[client]);return <ContentWorkspaceHostProvider value={host}><ContentProductionWorkspace workbench/></ContentWorkspaceHostProvider>}

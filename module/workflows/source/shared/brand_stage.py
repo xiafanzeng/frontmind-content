@@ -66,7 +66,7 @@ def matches(prompt):
 def _header(stage, state=None):
     marker = (editor.BRAND_MARKER if state is not None and editor.enabled(state)
               else reader.BRAND_MARKER if state is not None and reader.enabled(state) else MARKER)
-    return marker + '\n' + f'# P0 {stage}\n\n'
+    return marker + '\n' + f'# P0 {stage}\n\n' 
 
 
 def _instructions(wf, root):

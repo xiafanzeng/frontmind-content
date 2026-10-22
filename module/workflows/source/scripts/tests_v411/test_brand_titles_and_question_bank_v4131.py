@@ -18,7 +18,7 @@ from Reference_Pack_Workflow.shared import reference_pack_builder as builder
 from scripts.tests_v411 import test_workflow_v411 as old
 
 ROOT = Path(__file__).resolve().parents[2]
-# Public regression fixtures are generated below; customer exports are never required.
+REAL_TABLE = ROOT/'customer_inputs/taixin/东莞台心医院-正式初始-问答明细-20260830-180117.xlsx'
 
 
 def dump(path, obj):
@@ -82,18 +82,7 @@ class TitleContract4131Tests(unittest.TestCase):
 class MonitoringImport4131Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from datetime import datetime
-        from openpyxl import Workbook
-        temp = tempfile.TemporaryDirectory(); cls.addClassCleanup(temp.cleanup)
-        cls.table = Path(temp.name) / 'synthetic-export-20260830.xlsx'
-        workbook = Workbook(); sheet = workbook.active
-        sheet.append(['监控问题', 'AI大模型', '回答内容', '监控日期'])
-        for q in range(1, 34):
-            for n in range(12 if q == 33 else 10):
-                sheet.append([f'合成企业服务问题{q}', '平台甲' if n % 2 else '平台乙',
-                              f'第{q}题第{n}份合成回答。\n\n完整第二段。', datetime(2026, 6, 22)])
-        workbook.save(cls.table)
-        cls.artifacts,cls.index,cls.report=bank.build_artifacts(cls.table,brand='合成企业')
+        cls.artifacts,cls.index,cls.report=bank.build_artifacts(REAL_TABLE,brand='东莞台心医院')
 
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -106,27 +95,27 @@ class MonitoringImport4131Tests(unittest.TestCase):
         builder.create_reference_pack(brand_name='合成企业',knowledge_base=[f],output=self.root/'old')
         return self.root/'old'
 
-    def test_synthetic_table_33_questions_332_answers(self):
+    def test_real_table_33_questions_332_answers(self):
         self.assertEqual((33,332,332),(self.report['question_count'],self.report['row_count'],self.report['answer_count']))
         self.assertEqual(33,len(self.index['questions']))
 
-    def test_synthetic_dates_are_cell_dates_not_filename(self):
+    def test_real_dates_are_cell_dates_not_filename(self):
         self.assertEqual(['2026-06-22'],self.report['observed_dates'])
         self.assertEqual('2026-06-22',self.index['periods'][0]['observed_to'])
 
-    def test_synthetic_platforms_provenance_and_full_answers(self):
+    def test_real_platforms_provenance_and_full_answers(self):
         observed=[a for s in self.index['slices'] for a in self.artifacts[s['monitoring_path']]['answers']]
-        raw=bank.export_rows(self.table)
+        raw=bank.export_rows(REAL_TABLE)
         byrow={r['__frontmind_source_row__']:r for _,r in raw if r.get('监控问题') and r.get('回答内容')}
-        self.assertEqual({'平台甲','平台乙'},{a['platform'] for a in observed})
+        self.assertEqual({'元宝-网页版','通义千问-网页版'},{a['platform'] for a in observed})
         for a in observed:
             self.assertEqual(byrow[a['source_record']['row']]['回答内容'],a['answer_text'])
             self.assertTrue(a['source_record']['file_sha256'].startswith('sha256:'))
         self.assertEqual(332,len(observed))
 
-    def test_synthetic_source_order_and_last_question_preserved(self):
+    def test_real_source_order_and_last_question_preserved(self):
         self.assertEqual('q000033',self.index['questions'][-1]['question_uid'])
-        self.assertIn('合成企业服务问题33',self.index['questions'][-1]['question_text'])
+        self.assertIn('腰腹吸脂',self.index['questions'][-1]['question_text'])
         self.assertTrue(all(q['question_id'] is None for q in self.index['questions']))
 
     def test_no_source_workbook_needed_and_citations_not_invented(self):

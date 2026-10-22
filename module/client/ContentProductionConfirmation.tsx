@@ -59,6 +59,7 @@ return function ContentProductionConfirmation({
   >("");
   const [edits, setEdits] = useState("");
   const [revisions, setRevisions] = useState("");
+  const [poolSelection, setPoolSelection] = useState("");
   useWorkspaceDraftGuard({
     dirty:
       pending ||
@@ -72,7 +73,8 @@ return function ContentProductionConfirmation({
           noExtra ||
           recognition ||
           edits ||
-          revisions,
+          revisions ||
+          poolSelection,
       ),
     label: "内容阶段确认",
   });
@@ -109,6 +111,7 @@ return function ContentProductionConfirmation({
         setRecognition("");
         setEdits("");
         setRevisions("");
+        setPoolSelection("");
       }
     } catch (error) {
       if (liveRef.current)
@@ -153,6 +156,19 @@ return function ContentProductionConfirmation({
         {hint && <small>{hint}</small>}
       </label>
     );
+  }
+  const poolRequired = progress.choices.some((choice) => choice.includes("文章池"));
+  const modernStyle = progress.workflowVersion?.startsWith("4.13.2-v16.");
+  function submitExamples(route: "A" | "B") {
+    if (poolRequired && !poolSelection.trim()) {
+      onNotice("请填写 1—2 个文章池编号，或明确填写“不采用”。文风与构思参考分别选择。");
+      return;
+    }
+    const note = modernStyle
+      ? route === "A" ? "我选择方案 A，采用本轮所选完整例文的文风；AI 答案仅作内容背景。" : "我选择方案 B，使用工作流写作规范；AI 答案不作为文风样本。"
+      : route === "A" ? "我选择参考例文的文风。" : "我选择参考 AI 答案的文风。";
+    void submit({ kind: "choose_examples", revision: revision ?? 0, route },
+      note + (poolSelection.trim() ? `\n文章池构思参考选择：${poolSelection.trim()}。请保留独立文风选择，按当前修订号提交。` : ""));
   }
   const revisionValue = revision ?? 0;
   const isInput =
@@ -253,10 +269,10 @@ return function ContentProductionConfirmation({
           <>
             {upload(
               has("provide_question_research_inputs")
-                ? "监控问答表、本题 AI 答案或品牌资料包"
+                ? "监控问答表、引用信源表或品牌资料包"
                 : "企业材料或品牌资料包",
               has("provide_question_research_inputs")
-                ? "可上传监控问答表、两个不同 AI 平台的完整答案及来源说明，或已含问题研究的新版资料包。"
+                ? "可一起或分次上传问答明细和逐条引用信源表（Excel／CSV／JSON）。请注明各文件用途及同一期次；同一 AI 的网页与手机端仍算一个平台。"
                 : "上传本轮需要的企业资料或正确版本的品牌资料包。",
             )}
             <label className="cp-field">
@@ -552,33 +568,17 @@ return function ContentProductionConfirmation({
           </>
         )}
         {has("choose_examples") && (
-          <div className="cp-confirm-actions">
-            {button(
-              "参考例文的文风",
-              () =>
-                void submit(
-                  {
-                    kind: "choose_examples",
-                    revision: revisionValue,
-                    route: "A",
-                  },
-                  "我选择参考例文的文风：两篇参考例文作为文风参考，两篇 AI 答案固定作为内容参考。",
-                ),
-            )}
-            {button(
-              "参考 AI 答案的文风",
-              () =>
-                void submit(
-                  {
-                    kind: "choose_examples",
-                    revision: revisionValue,
-                    route: "B",
-                  },
-                  "我选择参考 AI 答案的文风：两篇 AI 答案同时作为内容和文风参考。",
-                ),
-              true,
-            )}
-          </div>
+          <>
+            {poolRequired && <label className="cp-field">
+              文章池构思参考
+              <input aria-label="文章池构思参考" value={poolSelection} onChange={(event) => setPoolSelection(event.target.value)} placeholder="例如：1、5；或填写“不采用”" />
+              <small>先查看回复中的 Top20 或完整文章池；这里选择构思参考，下面独立选择文风。</small>
+            </label>}
+            <div className="cp-confirm-actions">
+              {button("参考例文的文风", () => submitExamples("A"))}
+              {button(modernStyle ? "使用工作流写作规范" : "参考 AI 答案的文风", () => submitExamples("B"), true)}
+            </div>
+          </>
         )}
         {has("confirm_question_positioning") && (
           <div className="cp-confirm-actions">
@@ -620,7 +620,7 @@ return function ContentProductionConfirmation({
                     },
                     edits.trim()
                       ? `请修改写作方案并再次展示供我确认：\n${edits.trim()}`
-                      : "我确认当前写作方案，请开始正文制作并按原流程完成编辑、20 个标题和最终交付。",
+                      : "我确认当前写作方案，请开始正文制作并按当前任务冻结的流程完成编辑、候选标题和最终交付。",
                   ),
               )}
             </div>

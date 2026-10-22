@@ -659,7 +659,7 @@ function ContentProductionInner({
       const blob = await response.blob();
       rest.assertActive();
       if (currentId.current !== conversationId) return;
-      if (!blob.size || blob.size > 64 * 1024 * 1024)
+      if (!blob.size || blob.size > 512 * 1024 * 1024)
         throw new Error("资料包为空或超过可复用的文件大小，请检查交付文件。");
       const signature = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
       rest.assertActive();

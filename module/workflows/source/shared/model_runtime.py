@@ -6,8 +6,8 @@ validated identically on arrival and recovery; paid failures never auto-retry.
 from __future__ import annotations
 
 import contextlib
-import contextvars
 import copy
+import contextvars
 import hashlib
 import json
 import os
@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-HOST_ACTIONS = frozenset({"positioning_market_research", "positioning_value_synthesis", "p0_example_discovery", "p0_blueprint", "answer_analysis", "question_positioning", "article_editorial_preparation", "article_blueprint", "p0_finalize", "article_finalize", "article_polish", "p0_title_review", "article_title_review"})
+HOST_ACTIONS = frozenset({"positioning_market_research", "positioning_value_synthesis", "p0_example_discovery", "p0_blueprint", "answer_analysis", "question_positioning", "article_editorial_preparation", "article_blueprint", "p0_finalize", "article_finalize", "article_polish", "p0_title_review", "article_title_review", "question_recommendation_draft", "question_recommendation_review"})
 GLM_ACTIONS = HOST_ACTIONS  # Historical alias; default host is the local Agents SDK.
 DEEPSEEK_ACTIONS = frozenset(f"{kind}_{step}" for kind in ("p0", "article") for step in ("draft", "edit", "repair", "titles")) | frozenset({"p0_style"})
 CONTRACT_VERSION = "frontmind-model-runtime/4.11.6-1"
@@ -123,6 +123,7 @@ def host_provider() -> str:
     if provider not in {"xty", "zhipu"}:
         raise ProviderActionError("invalid_host_provider", "FRONTMIND_CONTENT_HOST_PROVIDER 仅支持 xty 或 zhipu。")
     return provider
+
 
 
 def legacy_managed_profile() -> dict[str, Any]:
@@ -408,6 +409,9 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
     """
     tool = json.loads(json.dumps(SUBMIT_TOOL))
     result = tool["function"]["parameters"]["properties"]["result"]
+    if action in {"question_recommendation_draft", "question_recommendation_review"}:
+        from .question_recommendations import schema
+        result.clear();result.update(schema());return tool
     if action == "article_editorial_preparation":
         from .editorial_preparation import schema
         result.clear()
@@ -420,6 +424,15 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
                 'required': ['id', 'subject', 'model', 'claim', 'source_ref', 'source_quote', 'as_of'],
                 'additionalProperties': False}}
             result['required'].append('fact_claims')
+        from . import writing_context_v165
+        if writing_context_v165.matches(prompt):
+            result["properties"]["writing_material_markdown"]["description"] = writing_context_v165.MATERIAL_FIELD_DESCRIPTION
+            result["properties"]["blueprint_suggestions"]["description"] = (
+                "基于两篇已读案例，简短安排本篇内容怎样进入、哪些细节展开、怎样承接和结束。"
+                "只讲产品、业务或事件的正向内容组织；作者使用提醒与审读取舍存material_adjustments。")
+            result["properties"]["material_adjustments"]["description"] = (
+                "后台工作备注：来源取舍、作者使用提醒和待核对事项，供工作记录保存。"
+                "不进入作者素材、构思建议、章节任务或正文；没有额外备注时为空数组。")
         return tool
     if action in {"p0_blueprint", "article_blueprint"}:
         result.update({
@@ -491,8 +504,19 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
             result["description"] += " 前5项style=formal、后5项style=scenario；incomplete时保留空候选。"
             candidate = result["properties"]["candidates"]["items"]
             candidate["properties"]["style"] = {"type": "string", "enum": ["formal", "scenario"],
-                "description": "固定前5项formal严肃推荐、后5项scenario场景卖点。"}
+                "description": ("固定前5项formal正式标题、后5项scenario场景卖点；正式标题按当前文章体裁命名。" if policy in (title_strategy.DEFAULT, title_strategy.V3_POLICY) else "固定前5项formal严肃推荐、后5项scenario场景卖点。")}
             candidate["required"].append("style")
+            if policy == title_strategy.DEFAULT:
+                from .title_editorial_v168 import USAGE_HINTS
+                candidate["properties"]["usage_hint"] = {"type": "array", "minItems": 1, "maxItems": 2,
+                    "items": {"type": "string", "enum": list(USAGE_HINTS)},
+                    "description": "后台建议投放位，不进入标题正文。"}
+                candidate["required"].append("usage_hint")
+                # A single ordered shape avoids duplicated outcome keys in
+                # model-emitted tool arguments; older request schemas stay frozen.
+                fields = result["properties"]
+                fields["outcome"] = fields.pop("outcome")
+                result["required"] = ["candidates", "canonical_title_id", "title_notes", "reason", "outcome"]
     from . import natural_editor
     if action.endswith("_blueprint") and natural_editor.matches(prompt):
         fields = result["properties"]
@@ -531,7 +555,21 @@ def submit_tool_for(action: str, *, deep: bool = False, prompt: str = "") -> dic
             for name, description in p01_writing_v2.blueprint_descriptions(prompt).items():
                 fields[name]["description"] = description
             fields["sections"]["items"]["properties"]["task"]["description"] = p01_writing_v2.section_task(prompt)
-    from . import writing_context_v16, editorial_preparation
+    from . import writing_context_v165, natural_editorial_v165, editorial_preparation
+    if writing_context_v165.matches(prompt):
+        if action == "article_blueprint":
+            fields = result["properties"]
+            for name, description in writing_context_v165.BLUEPRINT_FIELDS_DESCRIPTIONS.items():
+                fields.setdefault(name, {"type": "string"})["description"] = description
+            fields["sections"]["items"]["properties"]["task"]["description"] = writing_context_v165.SECTION_TASK
+            for name in editorial_preparation.FIELDS:
+                fields.pop(name, None)
+            result["required"] = [name for name in result["required"] if name not in editorial_preparation.FIELDS]
+        elif action in {"article_finalize", "article_polish"}:
+            result.clear()
+            result.update(natural_editorial_v165.review_schema())
+            return tool
+    from . import writing_context_v16
     if writing_context_v16.matches(prompt):
         if action == "article_blueprint":
             fields = result["properties"]
@@ -696,7 +734,8 @@ def _payload_with_profile(action, profile, messages, tools=None):
     if editorial_preparation.matches(prompt) and action == "article_blueprint":
         definitions = [submit_tool_for(action, deep=deep, prompt=prompt)]
     from . import language_editor_v15
-    if language_editor_v15.matches(prompt) and action in {"article_finalize", "article_polish"}:
+    from . import writing_context_v165
+    if (language_editor_v15.matches(prompt) or writing_context_v165.matches(prompt)) and action in {"article_finalize", "article_polish"}:
         definitions = [submit_tool_for(action, deep=deep, prompt=prompt)]
     from . import writer_measure
     measuring_writer = writer_measure.matches(action, prompt)
@@ -823,8 +862,10 @@ def request_fingerprint(action: str, prompt: str, *, tool_definitions=None, offl
         value["p0_style_contract_version"] = prose_only.contract_for_prompt(prompt) if prose_only.matches(action, prompt) else brand_stage.CONTRACT if prompt.startswith(brand_stage.MARKER) else P0_STYLE_CONTRACT_VERSION if _deep_prompt(action, prompt) else "frontmind-p0-style/4.12.1"
     if action.endswith(("_titles", "_title_review")):
         from shared.workflow_versions import TITLE_CONTRACT_VERSION
-        from . import p0_titles
-        value["title_contract_version"] = p0_titles.CONTRACT if p0_titles.matches(action, prompt) else TITLE_CONTRACT_VERSION
+        from . import p0_titles, title_strategy
+        value["title_contract_version"] = (p0_titles.CONTRACT if p0_titles.matches(action, prompt)
+            else title_strategy.TITLE_HOOKS_CONTRACT_VERSION if title_strategy.request_policy(prompt) == title_strategy.DEFAULT
+            else TITLE_CONTRACT_VERSION)
     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
@@ -869,7 +910,9 @@ def _submission_result(arguments):
     if 'result' not in arguments or not isinstance(arguments['result'], dict):
         raise ValueError('submit_result 必须提交 {"result": {所有业务字段}}；result 必须是对象。'
                          '所有蓝图、素材或编辑结果字段都放在 result 内。')
-    return arguments['result']
+    # Business validators may normalize nested values in place. Preserve the
+    # original tool arguments for exact source-call and signature checks.
+    return copy.deepcopy(arguments['result'])
 
 
 def _checked(validator, result, host_tools=None):
@@ -1323,7 +1366,7 @@ def run_action(package_root, job_root, action, prompt, validator, retry=False, *
                 and old_prompt.is_file() and old_prompt.read_text(encoding="utf-8") == prompt):
             raise ProviderActionError("frozen_host_provider_mismatch",
                 "当前动作已冻结另一宿主；请使用原宿主恢复，或为新宿主创建新任务。", action=action)
-    if action in DEEPSEEK_ACTIONS and not editorial_preparation.matches(prompt):
+    if action in DEEPSEEK_ACTIONS:
         record = action_record(Path(job_root), action)
         identity = record.get("attempt_id", "")
         saved = Path(job_root) / "provider" / action / "runtime" / "attempts" / identity

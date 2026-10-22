@@ -77,8 +77,7 @@ class SuggestedOutlineTests(unittest.TestCase):
             self.until(job, stage)
             prompt = build(); action = 'article_'+stage
             self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(), expected[action][0])
-            # v16.2 intentionally changed provider transport/configuration; prompt bytes stay frozen.
-            self.assertEqual(model_runtime.build_payload(action, prompt)["messages"][1]["content"], prompt)
+            self.assertEqual(model_runtime.request_fingerprint(action, prompt), expected[action][1])
             self.assertNotIn('OUTLINE_OPENING', prompt)
         self.assertNotIn('writing_outline_input_mode', wf.load_state(job)['metadata'])
 

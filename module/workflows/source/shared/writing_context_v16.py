@@ -152,12 +152,28 @@ def system(action, prompt=''):
     return '\n\n'.join(parts)
 
 
-def commission(wf, job, *, editor=False):
+def commission(wf, job, *, editor=False, planning=False):
     from .manuscript_revision import current_revision
     brief = dict(requirements.effective(wf, job, p0=False))
     from . import industry_roundup
     if industry_roundup.enabled(wf.load_state(job)):
         brief.update(industry_roundup.commission(wf.load_state(job)))
+    if planning:
+        from . import p02_selection, question_positioning_handoff
+        if question_positioning_handoff.context(wf, job):
+            state = wf.load_state(job)
+            explicit = state.get('metadata', {}).get('effective_writing_requirements', {})
+            # A re-confirmed positioning must not lose to generated fields
+            # inherited from the previous blueprint. Keep explicit user
+            # requirements, and leave length/format/reference policy intact.
+            for field in ('brand_positioning_use', 'recommendation_relationships'):
+                if field not in explicit:
+                    brief.pop(field, None)
+            if 'candidate_order' not in explicit and not p02_selection.enabled(state):
+                brief.pop('candidate_order', None)
+            response_brief = state.get('decisions', {}).get('response_brief')
+            if 'article_brief' not in explicit and response_brief:
+                brief['article_brief'] = response_brief
     if editor:
         brief.pop('reference_roles', None)
         brief.pop('brand_positioning_use', None)
@@ -204,7 +220,7 @@ def preparation(wf, job):
 
 def prompt_preparation(wf, job):
     state = wf.load_state(job)
-    from . import industry_roundup
+    from . import industry_roundup, article_pool, question_positioning_handoff
     case_type = ('本次是单机构品宣推荐稿。两篇研究案例都应只介绍一家企业、机构或其一项业务，展示业务与特点。不要选择多机构榜单；不能以一篇单机构加一篇榜单完成本轮。可以放宽地域或具体产品关键词，优先保持企业场景与文章类型一致。'
                  if state.get('selected_pattern_id') == 'P01' else
                  '本次是多机构品宣推荐稿。两篇研究案例都应围绕同类需求介绍多家企业或机构，研究导语、各家特点的选择和详略。可以放宽地域或具体产品关键词，优先保持企业场景与文章类型一致。')
@@ -221,15 +237,18 @@ def prompt_preparation(wf, job):
              '通过submit_result提交：writing_material_markdown（自然事实段落）、blueprint_suggestions（有本篇针对性的蓝图建议）；后台字段reference_cases（恰好两项，每项source_ref、title、url、insight，记录实际阅读全文的案例及借鉴点）、writing_material_sources（实际采用企业原件的source_ref、use）、material_adjustments（可为空数组）。两篇案例只作为写法参考，不列为企业事实来源。不输出正式蓝图。']
     if industry_roundup.enabled(state):
         parts.append('另提交 fact_claims：每个主体至少一条关键事实，字段 id(F01起)、subject、model(具体型号或明确写品牌层级)、claim、source_ref(Job相对路径)、source_quote(原件中连续原文片段)、as_of(原件日期或未注明)。原文片段会由程序与本地文件核对；没有证据的数字不要登记或写入。')
+    parts[3:3] = [value for value in (
+        question_positioning_handoff.context(wf, job), article_pool.prompt_references(wf, job),
+    ) if value]
     return wrap_for(wf, job, '\n\n'.join(parts))
 
 
 def prompt_blueprint(wf, job, *, p0=False):
     from .writing_context_v14 import examples
     prep = preparation(wf, job)
-    from . import industry_roundup
+    from . import industry_roundup, article_pool, question_positioning_handoff
     state = wf.load_state(job)
-    parts = ['# 正式文章蓝图', commission(wf, job), MATERIAL_GUIDANCE,
+    parts = ['# 正式文章蓝图', commission(wf, job, planning=True), MATERIAL_GUIDANCE,
              '已准备的自然事实段落：\n' + prep['writing_material_markdown'],
              '前置编辑建议（供判断和调整）：\n' + prep['blueprint_suggestions'],
              examples(wf, job, p0=False, stage='blueprint'),
@@ -250,6 +269,9 @@ def prompt_blueprint(wf, job, *, p0=False):
     edits = wf.load_state(job).get('decisions', {}).get('blueprint_edits')
     if edits:
         parts.append('本轮构思要求：\n' + str(edits))
+    parts[2:2] = [value for value in (
+        question_positioning_handoff.context(wf, job), article_pool.prompt_references(wf, job),
+    ) if value]
     return wrap_for(wf, job, '\n\n'.join(parts))
 
 

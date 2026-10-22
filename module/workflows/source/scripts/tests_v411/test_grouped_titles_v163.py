@@ -17,13 +17,16 @@ from shared import manuscript_revision, model_runtime, title_strategy, writing_c
 from shared import title_publication as publication, writing_context_v14 as context
 
 
-def titles(*, grouped=True, count=10, canonical="title_08"):
+def titles(*, grouped=True, count=10, canonical="title_08", v4=False):
     rows = [{"title": f"合成品类推荐与需求参考{i}", "angle": "同主题表达"}
             for i in range(1, count + 1)]
     if grouped:
         for index, row in enumerate(rows):
             row["style"] = "formal" if index < 5 else "scenario"
-    return {"candidates": rows, "canonical_title_id": canonical}
+    if v4:
+        for row in rows:
+            row["usage_hint"] = ["文档标题"]
+    return {"candidates": rows, "canonical_title_id": canonical, **({"title_notes": []} if v4 else {})}
 
 
 def review(raw):
@@ -34,16 +37,16 @@ class GroupedTitleContractTests(unittest.TestCase):
     def test_style_and_any_canonical_choice_survive_artifact_and_review_round_trips(self):
         for selected in ("title_01", "title_05", "title_06", "title_10"):
             raw = titles(canonical=selected)
-            normalized = publication.validate_title_map(raw, expected_policy=title_strategy.DEFAULT)
-            self.assertEqual(normalized["title_strategy"], title_strategy.DEFAULT)
+            normalized = publication.validate_title_map(raw, expected_policy=title_strategy.V2_POLICY)
+            self.assertEqual(normalized["title_strategy"], title_strategy.V2_POLICY)
             self.assertEqual([row["style"] for row in normalized["options"]], list(title_strategy.STYLE_SEQUENCE))
             self.assertEqual(normalized["families"]["article"]["options"], normalized["options"])
             self.assertEqual(normalized["recommended_title_id"], selected)
-            self.assertEqual(publication.validate_title_map(normalized, expected_policy=title_strategy.DEFAULT), normalized)
+            self.assertEqual(publication.validate_title_map(normalized, expected_policy=title_strategy.V2_POLICY), normalized)
             self.assertEqual(publication.validate_title_map(normalized), normalized)
             self.assertEqual(publication.title_review_input(normalized, p0=False), raw)
             self.assertEqual(publication.validate_title_review_result(review(raw), normalized, p0=False,
-                                                                       expected_policy=title_strategy.DEFAULT), review(raw))
+                                                                       expected_policy=title_strategy.V2_POLICY), review(raw))
 
     def test_frozen_policy_rejects_missing_style_four_six_six_four_and_reordering(self):
         invalid = []
@@ -58,29 +61,29 @@ class GroupedTitleContractTests(unittest.TestCase):
         for index, raw in enumerate(invalid):
             with self.subTest(case=index):
                 with self.assertRaises(ValueError):
-                    publication.validate_title_map(raw, expected_policy=title_strategy.DEFAULT)
+                    publication.validate_title_map(raw, expected_policy=title_strategy.V2_POLICY)
                 with self.assertRaises(ValueError):
                     publication.publication("# 内部标题\n正文", raw, p0=False,
-                                            expected_policy=title_strategy.DEFAULT)
+                                            expected_policy=title_strategy.V2_POLICY)
                 with self.assertRaises(ValueError):
                     publication.validate_title_review_result(review(raw), titles(), p0=False,
-                                                              expected_policy=title_strategy.DEFAULT)
+                                                              expected_policy=title_strategy.V2_POLICY)
 
     def test_expected_policy_is_not_guessed_from_the_result(self):
         with self.assertRaises(ValueError):
             publication.validate_title_map(titles(grouped=False), expected_count=10,
-                                           expected_policy=title_strategy.DEFAULT)
+                                           expected_policy=title_strategy.V2_POLICY)
         with self.assertRaises(ValueError):
-            publication.validate_title_map(titles(), expected_count=20, expected_policy=title_strategy.DEFAULT)
+            publication.validate_title_map(titles(), expected_count=20, expected_policy=title_strategy.V2_POLICY)
         with self.assertRaises(ValueError):
             publication.validate_title_map(titles(), expected_policy=title_strategy.LEGACY_POLICY)
         with self.assertRaises(ValueError):
-            publication.validate_title_map(titles(), p0=True, expected_policy=title_strategy.DEFAULT)
+            publication.validate_title_map(titles(), p0=True, expected_policy=title_strategy.V2_POLICY)
         publication.validate_title_map(titles(grouped=False), expected_policy=title_strategy.LEGACY_POLICY)
         publication.validate_title_map(titles(grouped=False, count=20), expected_count=20)
 
     def test_normalized_artifact_cannot_lose_or_disagree_about_its_styles(self):
-        original = publication.validate_title_map(titles(), expected_policy=title_strategy.DEFAULT)
+        original = publication.validate_title_map(titles(), expected_policy=title_strategy.V2_POLICY)
         mutations = (
             lambda item: item["options"][1].update(style="scenario"),
             lambda item: item["families"]["article"]["options"][1].update(style="scenario"),
@@ -92,25 +95,25 @@ class GroupedTitleContractTests(unittest.TestCase):
             value["families"]["article"]["options"] = copy.deepcopy(value["options"])
             change(value)
             with self.assertRaises(ValueError):
-                publication.validate_title_map(value, expected_policy=title_strategy.DEFAULT)
+                publication.validate_title_map(value, expected_policy=title_strategy.V2_POLICY)
         stripped = copy.deepcopy(original)
         stripped.pop("title_strategy")
         for row in stripped["options"]:
             row.pop("style")
         with self.assertRaises(ValueError):
-            publication.validate_title_map(stripped, expected_policy=title_strategy.DEFAULT)
+            publication.validate_title_map(stripped, expected_policy=title_strategy.V2_POLICY)
 
     def test_editing_may_change_recommendation_but_cannot_drop_style(self):
         raw = titles()
         changed = review(raw)
         changed.update(outcome="revised", canonical_title_id="title_03", title_notes=["推荐更贴合全文的第三项。"])
-        publication.validate_title_review_result(changed, raw, p0=False, expected_policy=title_strategy.DEFAULT)
+        publication.validate_title_review_result(changed, raw, p0=False, expected_policy=title_strategy.V2_POLICY)
         changed["outcome"] = "accepted"; changed["title_notes"] = []
         with self.assertRaises(ValueError):
-            publication.validate_title_review_result(changed, raw, p0=False, expected_policy=title_strategy.DEFAULT)
+            publication.validate_title_review_result(changed, raw, p0=False, expected_policy=title_strategy.V2_POLICY)
         stripped = review(titles(grouped=False))
         stripped.update(outcome="revised", title_notes=["去掉风格。"])
-        for kwargs in ({}, {"expected_policy": title_strategy.DEFAULT}):
+        for kwargs in ({}, {"expected_policy": title_strategy.V2_POLICY}):
             with self.assertRaises(ValueError):
                 publication.validate_title_review_result(stripped, raw, p0=False, **kwargs)
 
@@ -118,10 +121,10 @@ class GroupedTitleContractTests(unittest.TestCase):
         incomplete = {"outcome": "incomplete", "candidates": [], "canonical_title_id": "",
                       "title_notes": [], "reason": "本轮编辑未完成。"}
         self.assertEqual(publication.validate_title_review_result(incomplete, titles(), p0=False,
-                                                                  expected_policy=title_strategy.DEFAULT), incomplete)
+                                                                  expected_policy=title_strategy.V2_POLICY), incomplete)
         with self.assertRaises(ValueError):
             publication.publication("# 内部标题\n正文", titles(), p0=False, title_review=incomplete,
-                                    expected_policy=title_strategy.DEFAULT)
+                                    expected_policy=title_strategy.V2_POLICY)
 
     def test_published_body_is_exact_and_styles_are_bound_to_both_model_results(self):
         for newline in ("\n", "\r\n"):
@@ -129,14 +132,14 @@ class GroupedTitleContractTests(unittest.TestCase):
             expected = newline.join(["前文", "", "完整第一段。", "## 小标题", "后段。", "# 后续标题", "末段。"])
             raw = titles(); edited = review(raw)
             published, title_map, binding = publication.publication(body, raw, p0=False, title_review=edited,
-                                                                    expected_policy=title_strategy.DEFAULT)
+                                                                    expected_policy=title_strategy.V2_POLICY)
             self.assertEqual(published, expected)
             self.assertEqual(publication.verify_publication(body, raw, published, binding, p0=False,
-                                                             title_review=edited, expected_policy=title_strategy.DEFAULT), title_map)
+                                                             title_review=edited, expected_policy=title_strategy.V2_POLICY), title_map)
             altered = copy.deepcopy(edited); altered["candidates"][4]["style"] = "scenario"
             with self.assertRaises(ValueError):
                 publication.verify_publication(body, raw, published, binding, p0=False,
-                                               title_review=altered, expected_policy=title_strategy.DEFAULT)
+                                               title_review=altered, expected_policy=title_strategy.V2_POLICY)
 
 
 class GroupedTitleControllerTests(unittest.TestCase):
@@ -165,7 +168,7 @@ class GroupedTitleControllerTests(unittest.TestCase):
             state["selected_pattern_id"] = pattern
             wf.save_state(job, state)
             body = "# 旧内部主标题\r\n\r\n甲机构的业务。\r\n乙机构的特点。\r\n丙机构的服务。\r\n末段。"
-            raw = titles()
+            raw = titles(v4=True)
             prompts = {
                 "article_titles": writing_context.prompt_titles(wf, job, p0=False, final_markdown=body),
                 "article_title_review": writing_context.prompt_title_review(wf, job, p0=False, final_markdown=body, title_result=raw),
@@ -175,10 +178,10 @@ class GroupedTitleControllerTests(unittest.TestCase):
                 self.assertIn(publication.body_only(body), prompt)
                 self.assertNotIn("# 旧内部主标题", prompt)
                 system = model_runtime._initial_messages(action, prompt)[0]["content"]
-                self.assertIn(context.GROUPED_CATEGORY_TITLE_RULES, system)
-                self.assertIn("P02两组标题都覆盖本篇全部推荐对象", system)
-                self.assertIn("默认所有标题都不带品牌", system)
-                self.assertIn("营销表达无需全部删去", system)
+                self.assertIn(__import__("shared.title_editorial_v168", fromlist=["RULES"]).RULES, system)
+                self.assertIn("P02覆盖全部选定主体", system)
+                self.assertIn("P01/P02默认不出现品牌", system)
+                self.assertIn("编辑整组5＋5标题", prompts["article_title_review"])
             schema = model_runtime.submit_tool_for("article_title_review", prompt=prompts["article_title_review"])["function"]["parameters"]["properties"]["result"]
             self.assertIn("style", schema["properties"]["candidates"]["items"]["required"])
             self.assertEqual(schema["properties"]["candidates"]["items"]["properties"]["style"]["enum"], ["formal", "scenario"])
@@ -225,7 +228,7 @@ class GroupedTitleControllerTests(unittest.TestCase):
         self.assertEqual([row["style"] for row in title_map["options"]], list(title_strategy.STYLE_SEQUENCE))
         for name in ("title_options", "title_options_html"):
             rendered = Path(delivery[name]).read_text()
-            self.assertIn("严肃推荐", rendered)
+            self.assertIn("正式标题", rendered)
             self.assertIn("场景卖点", rendered)
         manuscript_revision.validate_completed_manuscript(wf, job, p0=False)
 
@@ -236,8 +239,8 @@ class GroupedTitleControllerTests(unittest.TestCase):
             self.assertEqual(title_strategy.policy(state), title_strategy.DEFAULT)
         for pattern in ("P03", "P04", "P05", "P06"):
             state["selected_pattern_id"] = pattern
-            self.assertIsNone(title_strategy.policy(state))
-        self.assertIsNone(title_strategy.policy(wf.make_state("p0", "p0")))
+            self.assertEqual(title_strategy.policy(state), title_strategy.DEFAULT)
+        self.assertEqual(title_strategy.policy(wf.make_state("p0", "p0")), title_strategy.DEFAULT)
         state["selected_pattern_id"] = "P01"
         state["metadata"]["article_title_revision"] = {"title_strategy": dict(title_strategy.LEGACY_POLICY)}
         self.assertEqual(title_strategy.policy(state), title_strategy.LEGACY_POLICY)
@@ -248,7 +251,7 @@ class GroupedTitleControllerTests(unittest.TestCase):
 class GroupedTitleHostReadsTests(host_reads.CategoryTitleHostReadsTests):
     def setUp(self):
         super().setUp()
-        self.candidates = titles()
+        self.candidates = titles(v4=True)
         self.save_inputs()
 
     def test_v1_and_v2_markers_are_host_owned_and_keep_the_same_body_projection(self):

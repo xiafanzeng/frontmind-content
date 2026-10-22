@@ -13,9 +13,11 @@ from scripts.tests_v411 import test_manuscript_revision as fixtures
 wf = fixtures.wf
 
 
-def original_titles():
-    return {'candidates': [{'title': f'合成企业的服务实践{i}', 'angle': f'业务观察{i}'} for i in range(1, 21)],
-            'canonical_title_id': 'title_01'}
+def original_titles(*, v4=False):
+    return {'candidates': [{'title': f'合成企业的服务实践{i}', 'angle': f'业务观察{i}',
+                            **({'style':'formal' if i<=5 else 'scenario', 'usage_hint':['文档标题']} if v4 else {})}
+                           for i in range(1, 11 if v4 else 21)],
+            'canonical_title_id': 'title_01', **({'title_notes':[]} if v4 else {})}
 
 
 def reviewed_titles(raw=None, *, change=True):
@@ -102,7 +104,7 @@ class TitleReviewControllerTests(unittest.TestCase):
         return calls, ensure
 
     def test_title_only_run_calls_one_editor_persists_both_results_and_freezes_reviewed_delivery(self):
-        job = self.start(); raw = original_titles(); review = reviewed_titles(raw)
+        job = self.start(); raw = original_titles(v4=True); review = reviewed_titles(raw)
         source = job / 'production/article_finalized.json'; before = source.read_bytes()
         calls, ensure = self.actions(raw, review)
         with patch.object(wf, 'ensure_action', side_effect=ensure), contextlib.redirect_stdout(io.StringIO()) as output:
@@ -125,7 +127,7 @@ class TitleReviewControllerTests(unittest.TestCase):
             wf.continue_workflow(self.fixture.args(job))
 
     def test_incomplete_editor_does_not_deliver_original_candidates_or_retry_automatically(self):
-        job = self.start(); raw = original_titles()
+        job = self.start(); raw = original_titles(v4=True)
         review = {'outcome': 'incomplete', 'candidates': [], 'canonical_title_id': '', 'title_notes': [], 'reason': '无法完成。'}
         before = copy.deepcopy(wf.load_state(job)['metadata']['delivery'])
         calls, ensure = self.actions(raw, review)

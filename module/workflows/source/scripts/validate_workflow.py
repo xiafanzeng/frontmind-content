@@ -20,6 +20,14 @@ RELEASE_VERSION = "4.13.2"
 WORKFLOW_VERSION = "4.11"
 
 REQUIRED_FILES = (
+    "shared/title_editorial_v168.py", "shared/title_ammo.py", "shared/title_quality.py",
+    "FIX_v4.13.2_Final_v16_8.md",
+    "scripts/tests_v411/test_diverse_titles_v168.py", "scripts/tests_v411/test_title_ammo_quality_v168.py",
+    "shared/writing_context_v165.py", "shared/natural_editorial_v165.py",
+    "resources/natural_editorial_v165/SKILL.md", "resources/natural_editorial_v165/sources.json",
+    "scripts/tests_v411/test_natural_editorial_v165.py",
+    "shared/p01_expression.py", "shared/p02_selection.py", "shared/title_strategy.py",
+    "FIX_v4.13.2_Final_v16_3.md",
     "scripts/upgrade_to_v4132.py", "UPGRADE_v4.13.2.json",
     "CHANGELOG_v4.13.2.md", "FrontMind_执行手册_v4.13.2.md", "VALIDATION_v4.13.2.md",
     "shared/question_bank_import.py", "shared/p0_titles.py", "resources/p0_titles/SKILL.md",
@@ -72,8 +80,6 @@ REQUIRED_FILES = (
     "shared/model_runtime.py", "shared/responses_runtime.py", "shared/host_tools.py",
     "shared/example_acquisition.py", "shared/writing_context.py", "shared/editorial_contracts.py",
     "shared/writing_context_v13.py", "shared/writing_requirements.py", "shared/recommendation_references.py",
-    "shared/writing_context_fdnv6.py", "shared/writing_context_v165.py", "shared/natural_editorial_v165.py",
-    "FIX_v4.13.2_Final_v16_4.md",
     "FIX_v4.13.2_Final_v13.md", "resources/p01_recommendation/manifest.json",
     "shared/natural_editor.py", "FIX_v4.13.2_Final_v12.md", "shared/article_reader.py", "scripts/tests_v411/test_article_reader_final8.py",
     "shared/article_positioning.py", "scripts/tests_v411/test_article_positioning_final9.py",
@@ -241,12 +247,29 @@ def run_sdk_tests() -> dict[str, object]:
         return _sdk_suite_result(completed.returncode,xml_path,completed.stdout+completed.stderr)
 
 
-def run_tests() -> dict[str, object]:
+NATURAL_EDITORIAL_TEST_MODULES = (
+    "test_diverse_titles_v168", "test_title_ammo_quality_v168",
+    "test_grouped_titles_v167",
+    "test_p02_automatic_v166",
+    "test_acquired_product_sources_v166",
+    "test_selected_pattern_examples_v165",
+    "test_natural_editorial_v165", "test_editorial_preparation_v16",
+    "test_article_pool_v164", "test_positioning_handoff_v164",
+    "test_selection_expression_v163", "test_p02_requirement_delivery_v163",
+    "test_grouped_titles_v163", "test_title_count_v162", "test_category_titles_v162",
+    "test_category_title_host_reads_v162", "test_natural_editor_flow_final12",
+    "test_natural_editor_scoped_final12", "test_natural_prose_prompts_v15",
+    "test_language_editor_v15", "test_writer_measure", "test_release_builder_v4114",
+    "test_agents_runtime_v4130", "test_agents_controller_v4130", "test_agents_sessions_v4130",
+    "test_title_publication_v4118", "test_title_delivery_v4119",
+)
+
+
+def run_tests(*, natural_editorial: bool = False) -> dict[str, object]:
+    selection = (["scripts.tests_v411." + name for name in NATURAL_EDITORIAL_TEST_MODULES]
+                 if natural_editorial else ["discover", "-s", "scripts/tests_v411", "-p", "test_*.py"])
     completed = subprocess.run(
-        [
-            sys.executable, "-B", "-m", "unittest", "discover",
-            "-s", "scripts/tests_v411", "-p", "test_*.py", "-v",
-        ],
+        [sys.executable, "-B", "-m", "unittest", *selection, "-v"],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -266,12 +289,14 @@ def run_tests() -> dict[str, object]:
         "status": "pass" if completed.returncode == 0 and sdk_tests["status"] == "pass" else "fail",
         "test_count": count,
         "official_sdk_tests": sdk_tests,
+        "scope": "natural_editorial_v165_program" if natural_editorial else "complete_maintenance_suite",
+        **({"modules": list(NATURAL_EDITORIAL_TEST_MODULES)} if natural_editorial else {}),
         "returncode": completed.returncode,
         "output_tail": "\n".join(combined.splitlines()[-35:]),
     }
 
 
-def validate(*, tests: bool, release_projection: bool) -> dict[str, object]:
+def validate(*, tests: bool, release_projection: bool, natural_editorial_tests: bool = False) -> dict[str, object]:
     errors: list[str] = []
     warnings: list[str] = []
     for relative in REQUIRED_FILES:
@@ -338,7 +363,7 @@ def validate(*, tests: bool, release_projection: bool) -> dict[str, object]:
         except (ImportError, ValueError, OSError) as exc:
             errors.append("P0 prose editor resource unavailable: " + str(exc))
 
-    test_result = run_tests() if tests and not errors else None
+    test_result = run_tests(natural_editorial=natural_editorial_tests) if (tests or natural_editorial_tests) and not errors else None
     if test_result and test_result["status"] != "pass":
         errors.append("v4.11 test suite failed")
     return {
@@ -355,10 +380,14 @@ def validate(*, tests: bool, release_projection: bool) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate FrontMind Content Workflow v4.11")
-    parser.add_argument("--run-tests", action="store_true")
+    test_flags = parser.add_mutually_exclusive_group()
+    test_flags.add_argument("--run-tests", action="store_true", help="run the full historical maintenance suite")
+    test_flags.add_argument("--natural-editorial-tests", action="store_true",
+                            help="run v16.5 program routes, formats, recovery, compatibility and export checks plus offline official SDK tests")
     parser.add_argument("--release-projection", action="store_true")
     arguments = parser.parse_args()
-    report = validate(tests=arguments.run_tests, release_projection=arguments.release_projection)
+    report = validate(tests=arguments.run_tests, release_projection=arguments.release_projection,
+                      natural_editorial_tests=arguments.natural_editorial_tests)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["status"] == "pass" else 1
 

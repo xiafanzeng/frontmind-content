@@ -182,7 +182,7 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
     }
     if(path==="/api/frontmind/v2/assets"&&req.method==="POST"){
      const filename=basename(decodeURIComponent(String(req.headers["x-frontmind-filename"]??"material")));if(!filename||filename==="."||filename==="..")reject("文件名无效。");
-     const data=await body(req,64*1024*1024),id="asset_"+randomUUID().replaceAll("-","").slice(0,30),folder=join(privateDir,"uploads",id);mkdirSync(folder,{recursive:true,mode:0o700});
+     const data=await body(req,512*1024*1024),id="asset_"+randomUUID().replaceAll("-","").slice(0,30),folder=join(privateDir,"uploads",id);mkdirSync(folder,{recursive:true,mode:0o700});
      const file=join(folder,filename);writeFileSync(file,data,{mode:0o600});store.assets[id]={path:file,filename};persist();return send(res,{localAssetId:id,filename});
     }
     const artifactMatch=path.match(/^\/api\/frontmind\/v2\/artifacts\/([a-f0-9]+)\/content$/);

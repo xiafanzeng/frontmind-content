@@ -35,8 +35,8 @@ export const CONTENT_PRODUCTION_PAUSE_TITLES: Record<string, string> = {
 };
 
 export const CONTENT_PRODUCTION_LANGUAGE_CONTEXT = [
-  "Customer presentation uses Chinese business terms: Reference Pack = 品牌资料包; P0/P00 = 品牌深度文章; Pattern = 文章类型; blueprint/蓝图 = 写作方案; Top20 = 参考例文 (at most two complete examples, never claim a top-20 ranking).",
-  `Question pattern display names: ${CONTENT_PRODUCTION_PATTERNS.map(([id, label]) => `${id} = ${label}`).join("; ")}. Example route A = 参考例文的文风; B = 参考 AI 答案的文风. E1 = 确认问题与写作要求. Use these Chinese names in customer-facing progress, introductions, headings and choices instead of protocol abbreviations.`,
+  "Customer presentation uses Chinese business terms: Reference Pack = 品牌资料包; P0/P00 = 品牌深度文章; Pattern = 文章类型; blueprint/蓝图 = 写作方案; For a frozen article-pool release, Top20 means the supplied same-question citation pool ranked by actual reference counts; show the full pool separately and choose one or two blueprint references. Historical releases retain their original example meaning. Never replace a real article pool with two style examples.",
+  `Question pattern display names: ${CONTENT_PRODUCTION_PATTERNS.map(([id, label]) => `${id} = ${label}`).join("; ")}. Example route A = 参考例文的文风; B = 使用工作流写作规范 for writing-requirements releases; the AI-answer-style meaning applies only to historical releases that explicitly freeze it. E1 = 确认问题与写作要求. Use these Chinese names in customer-facing progress, introductions, headings and choices instead of protocol abbreviations.`,
   "Keep original Runner commands, IDs, state, revisions, action values, Pack members, original review files and business deliverables unchanged. Read the full original review; present all its business content with only the controlled workflow labels translated. Never translate or paraphrase customer source text, quotations, code, source URLs or machine-readable JSON. Do not omit comparisons, evidence, choices or user confirmation pauses. Existing Sessions continue the same original Job. Name the unchanged review Markdown copies already requested for customer outputs review_<status>_r<revision>.md; the application provides Chinese display copies and external download aliases, which never replace originals or become Runner inputs.",
 ].join("\n\n");
 
@@ -63,9 +63,9 @@ const phrases: Array<[RegExp, string]> = [
   [/E1 应答简报/gu, "问题与写作要求"],
   [/\bPattern\b/gu, "文章类型"],
   [/\bTop20\s*例文/giu, "参考例文"],
-  [/\bTop20\b/giu, "参考例文"],
+  [/\bTop20\b/giu, "Top20"],
   [/方案 A/gu, "参考例文的文风"],
-  [/方案 B/gu, "参考 AI 答案的文风"],
+  [/方案 B/gu, "方案 B"],
   [/\bH2\s*\/\s*H3\b/gu, "章节与小节标题"],
   [/蓝图/gu, "写作方案"],
   [/单问题文章/gu, "问题文章"],

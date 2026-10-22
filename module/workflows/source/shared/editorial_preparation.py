@@ -14,12 +14,13 @@ FIELDS = ("writing_material_markdown", "writing_material_sources", "material_adj
 
 
 def enabled(state, *, p0=False):
-    return (not p0 and state.get("metadata", {}).get("natural_prose_contract") == CONTRACT
-            and state.get("selected_pattern_id") in {"P01", "P02"})
+    contract = state.get("metadata", {}).get("natural_prose_contract")
+    return (not p0 and ((contract == CONTRACT and state.get("selected_pattern_id") in {"P01", "P02"})
+            or (contract == "frontmind-natural-prose/16.5" and state.get("selected_pattern_id") in {"P01", "P02", "P03", "P04", "P05", "P06"})))
 
 
 def matches(prompt):
-    return isinstance(prompt, str) and prompt.startswith(MARKER + "\n")
+    return isinstance(prompt, str) and prompt.startswith((MARKER + "\n", '<frontmind_natural_prose version="16.5">\n'))
 
 
 def validate(value):
@@ -62,7 +63,7 @@ def freeze(wf, job, value):
     value = validate(value)
     target = Path(job) / PATH
     wf.atomic_json(target, value)
-    wf.atomic_json(Path(job) / SOURCE_PATH, {"contract": CONTRACT, "action": ACTION,
+    wf.atomic_json(Path(job) / SOURCE_PATH, {"contract": wf.load_state(job).get("metadata", {}).get("natural_prose_contract", CONTRACT), "action": ACTION,
         "sha256": hashlib.sha256(target.read_bytes()).hexdigest()})
     return value
 
@@ -73,7 +74,9 @@ def load(job):
     if path.is_symlink() or source.is_symlink() or not path.is_file() or not source.is_file():
         raise ValueError("缺少已冻结的v16编辑准备结果")
     provenance = json.loads(source.read_text(encoding="utf-8"))
-    if provenance != {"contract": CONTRACT, "action": ACTION, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}:
+    state_path = root / "job_state.json"
+    expected = json.loads(state_path.read_text()).get("metadata", {}).get("natural_prose_contract", CONTRACT) if state_path.is_file() else CONTRACT
+    if expected not in {CONTRACT, "frontmind-natural-prose/16.5"} or provenance != {"contract": expected, "action": ACTION, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}:
         raise ValueError("编辑准备结果与冻结来源不一致")
     return validate(json.loads(path.read_text(encoding="utf-8")))
 

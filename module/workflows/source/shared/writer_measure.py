@@ -17,8 +17,11 @@ def matches(action, prompt):
     from .writing_context_v15 import MARKER as PROSE_MARKER
     from .editorial_preparation import MARKER as EDITORIAL_MARKER
     from . import p01_expression, p02_selection
+    from .writing_context_v165 import MARKER as V165_MARKER
     prefixes = [m + "\n" + MARKER + "\n" for m in (ARTICLE_MARKER, PROSE_MARKER, EDITORIAL_MARKER)]
     prefixes += [EDITORIAL_MARKER + "\n" + m + "\n" + MARKER + "\n" for m in (p01_expression.MARKER,p02_selection.MARKER)]
+    prefixes += [V165_MARKER + "\n" + MARKER + "\n"]
+    prefixes += [V165_MARKER + "\n" + m + "\n" + MARKER + "\n" for m in (p01_expression.MARKER, p02_selection.MARKER)]
     return action in ACTIONS and isinstance(prompt,str) and prompt.startswith(tuple(prefixes))
 
 

@@ -1,3 +1,4 @@
+from scripts.tests_v411.synthetic_pack import reference_pack
 """Offline policy/integration tests; no remote model or real competitor claims."""
 import copy
 import contextlib
@@ -21,13 +22,9 @@ class SelectionTests(unittest.TestCase):
     def setUp(self):
         temp=tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
         self.job=Path(temp.name)/'job'; wf.ensure_new_job(self.job,'article',offline=True)
-        self.state=wf.load_state(self.job); self.state['selected_pattern_id']='P02'
+        self.state=wf.load_state(self.job); self.state['metadata']['p02_selection_policy']=p2.CONTRACT; self.state['selected_pattern_id']='P02'
         self.state['question']={'question_text':'英国硕士申请机构推荐','period_id':'p1'}
-        (self.job/'inputs').mkdir(parents=True,exist_ok=True)
-        material=self.job/'inputs/synthetic-company.md'
-        material.write_text('仅供离线测试的合成企业资料。自己机构提供申请规划与材料整理服务。',encoding='utf-8')
-        pack=wf.create_reference_pack(brand_name='自己机构',knowledge_base=[material],output=self.job/'00_input/synthetic-pack')
-        self.state['reference_pack']={'brand':'自己机构','path':pack['portable_zip_path']}
+        self.state['reference_pack']={'brand':'自己机构','path':str(reference_pack())}
         wf.save_state(self.job,self.state)
         self.data={'question_text':'英国硕士申请机构推荐','period_id':'p1','answers':[
             {'answer_id':'a1','platform':'豆包','answer_text':'自己机构、强甲、甲简称、强甲、强乙'},

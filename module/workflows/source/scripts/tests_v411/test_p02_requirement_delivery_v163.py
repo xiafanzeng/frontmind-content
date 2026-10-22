@@ -30,6 +30,10 @@ class RequirementScopeTests(unittest.TestCase):
                           'writing_material_sources': ['inputs/material.md'], 'example_use': '自然组织介绍。'}
         wf.atomic_json(self.job / 'blueprints/article_blueprint.json', self.blueprint)
         state = wf.load_state(self.job)
+        # This fixture resumes an already-completed v16.3 article. Its prior
+        # intake has no v16.4 article-pool or positioning-handoff contract.
+        state['metadata'].pop('article_pool_policy', None)
+        state['metadata'].pop('question_positioning_handoff', None)
         state['question']['answers'] = []
         state['status'] = 'completed'
         state['decisions']['question_positioning_confirmation'] = {'confirmed': True, 'p02_selection_hash': self.record['selection_hash']}

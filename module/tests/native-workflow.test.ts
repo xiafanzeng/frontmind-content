@@ -104,3 +104,12 @@ describe("native v16.2 and v16.3 host integration", () => {
     expect(parsed?.current_pause?.available_choices).toEqual(raw.current_pause!.available_choices);
   });
 });
+
+it("connects v16.8 to the native chain and keeps independent choices",()=>{
+ const next={...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.8"}};
+ expect(contentWorkflowRuntimeFor(next)).toBe("native_content_v1");
+ const text=contentProductionSystemContext(next);
+ for(const fragment of ["--source-workbook","--source-period","--pool-selection","usage_hint","questions-recommend","never duplicate the Job"])expect(text).toContain(fragment);
+ expect(text).toContain("do not insert routine competitor confirmation");
+ expect(text).toContain("not the AI answers as style samples");
+});
