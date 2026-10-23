@@ -6,6 +6,13 @@ const decision = z.object({
   revision: z.number().int().min(0).optional(),
   confirmed: z.boolean().optional(),
 });
+const runnerErrorSchema = z.unknown().transform((value) => {
+  if (value == null) return undefined;
+  const error = typeof value === "object" ? value as Record<string, unknown> : {};
+  // Never expose arbitrary provider error messages, paths, or authentication data.
+  const identifier = (value: unknown) => typeof value === "string" && /^[A-Za-z0-9_.-]{1,200}$/u.test(value) ? value : undefined;
+  return { code: identifier(error.code) ?? "content_workflow_failed", attempt_id: identifier(error.attempt_id) };
+});
 const runnerStateSchema = z.object({
   schema_version: z.literal("4.11"),
   artifact_type: z.literal("frontmind_content_job_state"),
@@ -36,7 +43,7 @@ const runnerStateSchema = z.object({
       must_stop: z.literal(true),
     })
     .nullable(),
-  pending_action: z.object({ action: z.string().min(1).max(200) }).nullable(),
+  pending_action: z.object({ action: z.string().min(1).max(200), error: runnerErrorSchema.optional() }).nullable(),
   flags: z.object({
     article_fact_gate: z.object({issue_count:z.number().int().min(0).max(100000),publish_ready:z.boolean()}).optional(),
     p0_production_step: z
@@ -240,6 +247,11 @@ export function contentProductionPublicDto(
     enterpriseName: context.contentProduction.enterpriseName,
     workflowVersion: context.contentWorkflow?.version ?? "4.11.0",
     workflowStatus: state?.status ?? null,
+    executionFailure: state?.pending_action?.error ? {
+      action: /^[A-Za-z0-9_]{1,200}$/u.test(state.pending_action.action) ? state.pending_action.action : "content_workflow",
+      code: state.pending_action.error.code,
+      attemptId: state.pending_action.error.attempt_id ?? null,
+    } : null,
     currentStage: state?.stage ?? null,
     jobKind: state?.job_kind ?? null,
     runnerRevision: state?.revision ?? null,

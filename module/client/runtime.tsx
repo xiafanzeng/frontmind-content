@@ -87,7 +87,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
  useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
- async function poll(){try{await client.task(id!,controller.signal);if(!cancelled){await refresh();if(!cancelled)setObservation({taskId:id!,checkedAt:Date.now()});}}catch{if(!cancelled)setObservation({taskId:id!,checkedAt:Date.now(),error:true});}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
+ async function poll(){try{const task=await client.task(id!,controller.signal);if(!cancelled){setObservation({taskId:id!,checkedAt:Date.now(),executionFailure:task.contentProduction?.executionFailure??null});await refresh();}}catch{if(!cancelled)setObservation(previous=>({...(previous?.taskId===id?previous:{}),taskId:id!,checkedAt:Date.now(),error:true}));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
  void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;

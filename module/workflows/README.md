@@ -1,8 +1,10 @@
-# 内容制作工作流 v4.13.2 Final v16.3
+# 内容制作工作流 v4.13.2 Final v16.8
 
-> 2026-10-19 本地集成说明：本页保留旧原型的功能说明。正式宿主仍使用现有私有代理和通用执行记录；新的原生过程摘要接线目前用于可选本地适配器。额外模型摘要默认关闭，只有显式设置 `FRONTMIND_ENABLE_MODEL_SUMMARIES=1` 才启动。默认 `pnpm dev` 为合成界面预览，不启动真实生成；本轮未推送、部署或验收真实模型。
+完整业务源码位于 `source/`，可在本子仓直接修改阶段、Prompt、模型调用、工具与文档生成，再通过 delivery Skill 发布到内容子域名。实际新任务使用的版本由镜像 manifest 决定，任务会冻结包哈希、执行方式与功能策略。开发位置和旧任务处理方式见 [DEVELOPMENT.md](DEVELOPMENT.md)。
 
-当前本地新任务的业务基线为 `4.13.2-v16.3`，来自同一 GEO 工作区的 `FrontMind_Content_Workflow_v4.13.2/`。目录名仍含 v4.13.2，实际规则见其 `AGENTS.md`。可视化包沿用原本的私有凭证、代理与来源读取保护；没有把工作流目录中的配置和客户资料复制进公开源码。
+正式网站走 `module/server/runtime.ts` → 私有执行器 → 包内 OpenAI Agents SDK 的真实链路，默认 XTY 的 `gpt-5.6-sol/high`、备用 `glm-5.3/max`。`standalone/local-workflow.ts` 是本地可选适配器，其改动不会替换网站后端。
+
+Runtime/state `4.11` 与 Reference Pack `4.1` 是状态格式版本，不是当前发行版本。历史任务保持原包、原业务确认与原记录。额外模型摘要默认关闭。
 
 ## 本次接入
 
@@ -38,7 +40,7 @@
 - 本地独立运行可通过私有环境变量 `FRONTMIND_CONTENT_XTY_API_KEY`、`FRONTMIND_CONTENT_DEEPSEEK_API_KEY`、`FRONTMIND_CONTENT_ZHIPU_API_KEY` 配置；不得提交配置后的文件。
 - `scripts/frontmind preflight` 缺少凭据时明确失败。离线测试通过不代表线上供应商调用已通过。
 
-当前私有 runner 的回环代理不支持 Managed Agents 端点。选择智谱宿主时，预检与执行都会明确报 `managed_proxy_unsupported`，不会把代理占位令牌发往智谱公网。部署生产版仍需主仓扩展代理并发布 runner/sandbox 镜像；仅发布前端或替换 ZIP 不足以启用真实执行。
+可选的智谱 Managed 本地适配器与网站的 OpenAI Agents SDK 路径是两种执行方式。当前私有 runner 的回环代理不支持 Managed Agents 端点。选择智谱宿主时，预检与执行都会明确报 `managed_proxy_unsupported`，不会把代理占位令牌发往智谱公网。部署生产版仍需主仓扩展代理并发布 runner/sandbox 镜像；仅发布前端或替换 ZIP 不足以启用真实执行。
 
 ## 本地智谱运行
 

@@ -10,6 +10,7 @@ ranking or supplement-contract gates.
 from __future__ import annotations
 
 import argparse
+import copy
 import errno
 import hashlib
 import html as html_module
@@ -4215,7 +4216,8 @@ def commit_p0_pack(job_root: Path, delivery: dict[str, str]) -> dict[str, Any]:
 
 
 def normalize_research_result(result: dict[str, Any], brand: str) -> dict[str, Any]:
-    raw = result.get("choice_map", result)
+    # Candidate IDs belong to the controller's projection, never model evidence.
+    raw = copy.deepcopy(result.get("choice_map", result))
     if not isinstance(raw, dict):
         raise WorkflowError("竞争研究必须是 JSON 对象")
     brand_research = raw.get("brand_research_markdown")
