@@ -1127,20 +1127,26 @@ class HostTools:
             method = arguments.get("method", "auto")
             if method not in {"auto", "http", "reader"}:
                 raise ToolError("unknown webpage acquisition method")
-            record = None
-            if method != "reader":
-                try:
-                    record = self.store.acquire_http(arguments["url"])
-                except AcquisitionError:
-                    if method == "http":
-                        raise
-            if method == "reader" or (method == "auto" and (record is None or record["completeness"] != "complete")):
-                record = self.store.acquire_reader(arguments["url"], self._api)
-            self._register_acquired(record)
-            if self.action == "article_editorial_preparation":
-                self.editorial_web_reads.append(record["artifact_id"])
-            self._persist()
-            return record
+            try:
+                record = None
+                if method != "reader":
+                    try:
+                        record = self.store.acquire_http(arguments["url"])
+                    except AcquisitionError:
+                        if method == "http":
+                            raise
+                if method == "reader" or (method == "auto" and (record is None or record["completeness"] != "complete")):
+                    record = self.store.acquire_reader(arguments["url"], self._api)
+                self._register_acquired(record)
+                if self.action == "article_editorial_preparation":
+                    self.editorial_web_reads.append(record["artifact_id"])
+                self._persist()
+                return record
+            except AcquisitionError as exc:
+                # A known rejected/unavailable source is feedback, not an
+                # ambiguous paid tool outcome. Provider transport uncertainty
+                # (ToolOutcomeUnknown) still propagates and is never replayed.
+                raise ToolError("Web source unavailable: " + str(exc)) from exc
         if name == "ocr":
             return self._ocr(arguments["artifact_id"])
         raise ToolError("tool is not implemented")
