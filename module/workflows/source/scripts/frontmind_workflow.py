@@ -430,6 +430,7 @@ def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
         "flags": {},
     }
     if job_kind == "p0":
+        value["metadata"]["p0_blueprint_commission_mode"] = writing_requirements.P0_BLUEPRINT_COMMISSION_MODE
         value["metadata"]["title_strategy"] = dict(title_strategy.DEFAULT)
     if job_kind == "article":
         from shared import recommendation_references
@@ -5763,7 +5764,11 @@ def handle_p0_blueprint_pause(args: argparse.Namespace, job_root: Path) -> int:
     supplement = args.p0_blueprint_supplement or args.blueprint_supplement
     if accept:
         require_revision(args, state)
-        state["decisions"]["p0_blueprint_confirmation"] = {"revision": state["revision"], "confirmed_at": now()}
+        confirmation = {"revision": state["revision"], "confirmed_at": now()}
+        if state.get("metadata", {}).get("p0_blueprint_commission_mode") == writing_requirements.P0_BLUEPRINT_COMMISSION_MODE:
+            confirmation["blueprint_sha256"] = sha256_file(job_root / "blueprints/p0_blueprint.json")
+            confirmation["writing_requirements"] = copy.deepcopy(writing_requirements.effective(sys.modules[__name__], job_root, p0=True))
+        state["decisions"]["p0_blueprint_confirmation"] = confirmation
         state["flags"]["p0_production_step"] = "draft"
         save_state(job_root, state)
         for action in ("p0_draft", "p0_edit", *(("p0_style",) if p0_style.is_enabled(state) else ()), "p0_finalize", "p0_repair", "p0_titles", "p0_title_review"):

@@ -1,5 +1,5 @@
 {
-  "version": "4.13.2-v16.8.1",
+  "version": "4.13.2-v16.8.2",
   "runtime": "native_content_v1",
   "capabilities": ["structured_article", "editorial_v16_8"],
   "rootDirectory": "FrontMind_Content_Workflow_v4.13.2",
