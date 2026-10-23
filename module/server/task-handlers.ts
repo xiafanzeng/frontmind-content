@@ -1,6 +1,6 @@
 import type {ContentProductionInput,ContentProductionAction,ContentProductionKnowledgeSource} from "../contracts/content-production";
 import type {FrozenContentTaskContext} from "../contracts/task-context";
-import {freezeContentWorkflow,originalContentWorkflowArchive,supportsStructuredContentArticle} from "./workflow-catalog";
+import {freezeContentWorkflow,originalContentWorkflowArchive,hasContentWorkflowCapability} from "./workflow-catalog";
 export class ContentTaskError extends Error {readonly retryable=false;readonly dispatchSettled=true;constructor(public readonly code:string,public readonly statusCode:number){super(code);}}
 export function validateContentTaskCreation(value:{purpose?:string;contentProduction?:ContentProductionInput;localAssetIds:readonly string[]}) {
  if(Boolean(value.contentProduction)!==(value.purpose==="content_production"))throw new ContentTaskError("CONTENT_PRODUCTION_INPUT_REQUIRED",400);
@@ -21,7 +21,7 @@ export async function freezeContentTaskContext(input:{
  const files=input.localAssetIds.length?await input.loadOwnedFiles(input.localAssetIds):[];
  if(files.length!==new Set(input.localAssetIds).size)throw new ContentTaskError("LOCAL_ASSET_NOT_FOUND",404);
  const workflow=(input.workflow??freezeContentWorkflow)();
- if(input.input.genre==="industry_roundup"&&!supportsStructuredContentArticle(workflow.version))throw new ContentTaskError("INDUSTRY_ROUNDUP_REQUIRES_V16_3",409);
+ if(input.input.genre==="industry_roundup"&&!hasContentWorkflowCapability(workflow,"structured_article"))throw new ContentTaskError("INDUSTRY_ROUNDUP_REQUIRES_V16_3",409);
  return {revision:1,accountUserId:input.userId,enterpriseProjectId:input.enterpriseProjectId,purpose:"content_production",knowledgeBase:knowledge?.knowledgeBase??null,knowledgeText:knowledge?.knowledgeText??null,contentProduction:input.input,contentWorkflow:workflow,inputFiles:files};
 }
 export function assertContentConfirmation(input:{action?:ContentProductionAction;availableActions?:ContentProductionAction["kind"][];runnerRevision?:number|null}) {

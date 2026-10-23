@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import http.client
 from html.parser import HTMLParser
 import ipaddress
 import json
@@ -49,11 +50,36 @@ def atomic_json(path, value):
 
 def public_url(url):
     """Disallow local endpoints, credentials and unsupported schemes, including redirects."""
-    parsed = urlsplit(str(url))
-    if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username or parsed.password:
+    if any(ord(char) < 32 or ord(char) == 127 for char in str(url)):
+        raise AcquisitionError("web URL contains control characters")
+    try:
+        parsed = urlsplit(str(url))
+        port = parsed.port
+    except ValueError as exc:
+        raise AcquisitionError("web URL is invalid") from exc
+    if parsed.scheme not in {"https", "http"} or not parsed.hostname or parsed.username is not None or parsed.password is not None:
         raise AcquisitionError("web URL must be a public HTTP(S) URL without credentials")
-    if parsed.port and parsed.port not in {80, 443}:
+    if port is not None and port not in {80, 443}:
         raise AcquisitionError("web URL port is not allowed")
+    hostname = parsed.hostname.rstrip(".").casefold()
+    if (hostname == "localhost" or hostname.endswith((".localhost", ".local", ".internal"))
+            or re.fullmatch(r"(?:.*\.)?frontmind\.(?:cn|net)", hostname)):
+        raise AcquisitionError("web URL target is not allowed")
+    try:
+        literal = ipaddress.ip_address(parsed.hostname)
+    except ValueError:
+        literal = None
+    if literal is not None and not literal.is_global:
+        raise AcquisitionError("web URL resolves to a non-public address")
+    try:
+        from .runtime_credentials import validate_public_destination
+    except ImportError:
+        from runtime_credentials import validate_public_destination
+    try:
+        if validate_public_destination(str(url)):
+            return str(url)
+    except (ValueError, OSError, http.client.HTTPException) as exc:
+        raise AcquisitionError("public web egress validation failed (%s)" % type(exc).__name__) from exc
     try:
         addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
     except socket.gaierror as exc:
