@@ -26,6 +26,16 @@ describe("content business handlers",()=>{
   expect(()=>assertContentConfirmation({action:{kind:"confirm_competitors",revision:3},runnerRevision:4,availableActions:["confirm_competitors"]})).toThrow("CONTENT_PRODUCTION_CONFIRMATION_CONFLICT");
   expect(()=>assertContentConfirmation({action:{kind:"confirm_competitors",revision:4},runnerRevision:4,availableActions:["confirm_competitors"]})).not.toThrow();
  });
+ it("freezes a later standalone workflow by its declared capabilities without changing historical bindings",async()=>{
+  const input={...source,genre:"industry_roundup" as const,subjectScope:["合成测试品牌","竞品甲","竞品乙"],comparisonDimensions:["噪音","价格"]};
+  const args={userId:7,enterpriseProjectId:"workspace",input,localAssetIds:["asset_answer"],loadKnowledge:async()=>null,loadOwnedFiles:async()=>[{localAssetId:"asset_answer",filename:"answer.md"}]};
+  const next={...workflow,version:"4.13.2-v16.8.1",runtime:"native_content_v1" as const,capabilities:["structured_article" as const,"editorial_v16_8" as const]};
+  const before=JSON.stringify(next);
+  await expect(freezeContentTaskContext({...args,workflow:()=>next})).resolves.toMatchObject({contentWorkflow:next,contentProduction:{genre:"industry_roundup"}});
+  expect(JSON.stringify(next)).toBe(before);
+  await expect(freezeContentTaskContext({...args,workflow:()=>({...next,capabilities:[]})})).rejects.toThrow("INDUSTRY_ROUNDUP_REQUIRES_V16_3");
+  await expect(freezeContentTaskContext({...args,workflow:()=>({...workflow,version:next.version})})).rejects.toThrow("INDUSTRY_ROUNDUP_REQUIRES_V16_3");
+ });
  it("does not turn existing general/QA history into a content conversation",()=>{
   const incoming={id:"existing",purpose:"content_production",messages:[]};expect(()=>assertContentSnapshot(incoming,{...incoming,purpose:"enterprise_qa"})).toThrow("CONTENT_CONVERSATION_PURPOSE_MISMATCH");
   expect(()=>assertContentSnapshot({...incoming,taskId:"new"},{...incoming,taskId:"original"})).toThrow("CONTENT_CONVERSATION_TASK_MISMATCH");

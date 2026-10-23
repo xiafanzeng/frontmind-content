@@ -7,13 +7,16 @@ gateway address; the host injects credentials outside the container.
 from __future__ import annotations
 
 import functools
+import http.client
 import json
 import os
+from urllib.parse import urlsplit
 import urllib.request
 
 PROXY_BASE = "http://127.0.0.1:8173/content-providers"
 PROVIDERS = frozenset({"xty", "deepseek", "zhipu"})
 PROXY_TOKEN = "frontmind-content-proxy"
+WEB_PROXY = "http://127.0.0.1:8173"
 
 
 def proxy_enabled() -> bool:
@@ -21,6 +24,35 @@ def proxy_enabled() -> bool:
     if value and value != PROXY_BASE:
         raise ValueError("Invalid content task gateway address")
     return bool(value)
+
+
+def validate_public_destination(url: str) -> bool:
+    """Validate through the sandbox's existing DNS-pinning egress, without billing.
+
+    Network-disabled sandboxes cannot call getaddrinfo themselves. CONNECT is a
+    transport check only: the trusted egress resolves/rejects private addresses
+    and connects to the exact vetted address; no HTTP body or provider request
+    is sent. The eventual fetch is independently checked by that same proxy.
+    Local, non-proxy execution keeps its original DNS validation.
+    """
+    if not proxy_enabled():
+        return False
+    for name in ("http_proxy", "HTTP_PROXY", "https_proxy", "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+        if os.environ.get(name) and os.environ[name] != WEB_PROXY:
+            raise ValueError("Content public web proxy configuration is inconsistent")
+    proxies = urllib.request.getproxies()
+    if proxies.get("http") != WEB_PROXY or proxies.get("https") != WEB_PROXY:
+        raise ValueError("Content public web access requires the trusted egress proxy")
+    parsed = urlsplit(url)
+    if urllib.request.proxy_bypass(parsed.netloc):
+        raise ValueError("Content public web access cannot bypass the trusted egress proxy")
+    connection = http.client.HTTPConnection("127.0.0.1", 8173, timeout=10)
+    try:
+        connection.set_tunnel(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
+        connection.connect()
+    finally:
+        connection.close()
+    return True
 
 
 @functools.lru_cache(maxsize=1)
