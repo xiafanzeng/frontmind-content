@@ -3,7 +3,7 @@ import React,{act} from "react";
 import {createRoot} from "react-dom/client";
 import {afterEach,expect,it,vi} from "vitest";
 import ExecutionFeedback from "../client/ExecutionFeedback";
-import type {ContentConversation} from "../client/host";
+import type {ContentConversation,TaskResponse} from "../client/host";
 import {useContentWorkspaceHost} from "../client/host";
 vi.mock("../client/ContentProductionWorkspace",()=>({default:()=>{const host=useContentWorkspaceHost();const state=host.useConversation();const Home=host.Home;return state.activeConversation?<Home purpose="content_production"/>:null;}}));
 vi.mock("@frontmind/module-ui/components/BusinessChatInput",()=>({default:()=>null}));
@@ -16,6 +16,17 @@ async function mount(props:any={}){
  const render=async(next:any)=>act(async()=>root.render(<ExecutionFeedback conversation={base} {...next}/>));
  await render(props);return {el,render,unmount:()=>act(async()=>root.unmount())};
 }
+it.each(["running","completed","idle"])("prioritizes an observed native failure over outer %s and stops the waiting timer",async status=>{
+ const view=await mount({conversation:{...base,status},submitting:true,stopping:true,
+  observation:{taskId:"task",checkedAt:2000,error:true,executionFailure:{action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:"synthetic-attempt"}}});
+ try{
+  expect(view.el.querySelector('[role="alert"]')?.textContent).toContain("市场研究执行失败");
+  expect(view.el.textContent).not.toContain("正在执行");expect(view.el.textContent).not.toContain("本轮已结束");
+  expect(view.el.querySelector('[role="timer"]')).toBeNull();
+  await view.render({conversation:{...base,status},observation:{taskId:"other-task",checkedAt:3000,executionFailure:{action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:null}}});
+  expect(view.el.textContent).not.toContain("市场研究执行失败");
+ }finally{await view.unmount();}
+});
 it("keeps waiting feedback and an advancing timer when the model has no summary",async()=>{
  vi.useFakeTimers();vi.setSystemTime(1000);const view=await mount();try{
   expect(view.el.textContent).toContain("等待下一条服务端记录");
@@ -59,6 +70,26 @@ it("surfaces polling and stop failures in the real runtime without resubmitting 
   broken=false;await act(async()=>vi.advanceTimersByTimeAsync(3000));expect(el.textContent).toContain("等待下一条服务端记录");
   await act(async()=>el.querySelector<HTMLButtonElement>(".cp-live-stop")!.click());expect(el.textContent).toContain("停止请求未确认");
   expect(el.textContent).not.toContain("本轮已停止");expect(forbidden).not.toHaveBeenCalled();
+ }finally{await act(async()=>root.unmount());}
+});
+it("reads native failure from task polling without rewriting outer status and retains it during a poll outage",async()=>{
+ (globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;vi.useFakeTimers();
+ localStorage.setItem("frontmind-content-active:native-failure-runtime","conversation");
+ let broken=false,failed=true;
+ const original={...base,status:"completed"};
+ const forbidden=vi.fn(async():Promise<never>=>{throw new Error("Unexpected write or generation");});
+ const failure={action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:"synthetic-attempt"};
+ const client={list:async()=>[structuredClone(original)],save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,stop:forbidden,
+  task:async():Promise<TaskResponse>=>{if(broken)throw new Error("offline");return {id:"task",status:"completed",contentProduction:{executionFailure:failed?failure:null} as TaskResponse["contentProduction"]};}};
+ const el=document.createElement("div");document.body.append(el);const root=createRoot(el);
+ try{
+  await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:"native-failure-runtime",ownerUserId:0},marketEdition:"cn",capabilities:[]}} client={client}/>));
+  expect(el.textContent).toContain("市场研究执行失败");expect(el.textContent).not.toContain("本轮已结束");expect(el.querySelector('[role="timer"]')).toBeNull();
+  broken=true;await act(async()=>vi.advanceTimersByTimeAsync(3000));
+  expect(el.textContent).toContain("市场研究执行失败");expect(el.textContent).not.toContain("无法确认服务器进度");
+  broken=false;failed=false;await act(async()=>vi.advanceTimersByTimeAsync(3000));
+  expect(el.textContent).not.toContain("市场研究执行失败");expect(el.textContent).toContain("本轮已结束");
+  expect(original.status).toBe("completed");expect(forbidden).not.toHaveBeenCalled();
  }finally{await act(async()=>root.unmount());}
 });
 it("allows a slow material upload beyond the normal request deadline and still bounds the wait",async()=>{

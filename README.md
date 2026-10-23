@@ -36,4 +36,6 @@ The standalone app uses the original Dashboard sidebar, tabs, layout, and contro
 
 ## Content workflow
 
-New tasks in the updated runtime use **v4.13.2 Final v16.2**. The complete public workflow and its integration requirements are in [module/workflows/README.md](module/workflows/README.md). Existing tasks retain their frozen release. This source update does not by itself change the deployed subdomain; export its actual live SHA before a new Pro round.
+New tasks in the updated runtime use **v4.13.2 Final v16.8**. The complete public workflow and its integration requirements are in [module/workflows/README.md](module/workflows/README.md). Existing tasks retain their frozen release. This source update does not by itself change the deployed subdomain; export its actual live SHA before a new Pro round.
+
+完整 Workflow 的修改位置、版本规则与发布方式见 [开发说明](module/workflows/DEVELOPMENT.md)。

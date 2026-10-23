@@ -6,11 +6,20 @@ import type { ContentWorkflowBinding, FrozenContentTaskContext } from "../contra
 
 /** Only explicitly reviewed releases may receive the native provider transport. */
 export function isNativeContentWorkflowVersion(version: string): boolean {
-  return ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8"].includes(version);
+  return (version === release.version && release.runtime === "native_content_v1") ||
+    ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8"].includes(version);
 }
 
 export function supportsStructuredContentArticle(version: string): boolean {
   return ["4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8"].includes(version);
+}
+
+export function hasContentWorkflowCapability(binding: ContentWorkflowBinding,
+  capability: "structured_article" | "editorial_v16_8"): boolean {
+  if (binding.capabilities) return binding.capabilities.includes(capability);
+  // Older tasks have no capability metadata: retain their original rules.
+  return capability === "structured_article" ? supportsStructuredContentArticle(binding.version)
+    : binding.version === "4.13.2-v16.8";
 }
 
 // Compatibility for tasks created before version binding was introduced.
@@ -21,7 +30,10 @@ function validateBinding(value: ContentWorkflowBinding): ContentWorkflowBinding 
   if (!value || !/^[a-f0-9]{64}$/u.test(value.sha256) ||
       !/^[A-Za-z0-9._-]+\.zip$/u.test(value.filename) ||
       !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value.rootDirectory) ||
-      !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u.test(value.version)) {
+      !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u.test(value.version) ||
+      (value.runtime !== undefined && value.runtime !== "native_content_v1") ||
+      (value.capabilities !== undefined && (!Array.isArray(value.capabilities) ||
+        value.capabilities.some(item => !["structured_article", "editorial_v16_8"].includes(item))))) {
     throw new Error("CONTENT_WORKFLOW_BINDING_INVALID");
   }
   return value;
@@ -73,9 +85,12 @@ export function freezeContentWorkflow(): ContentWorkflowBinding {
   if (!manifest && process.env.NODE_ENV === "production") {
     throw new Error("CONTENT_WORKFLOW_MANIFEST_UNAVAILABLE");
   }
-  const binding = validateBinding(manifest
+  const observed = validateBinding(manifest
     ? JSON.parse(readFileSync(manifest, "utf8")).current
     : release.legacy);
+  const binding = validateBinding(observed.version === release.version
+    ? { ...observed, runtime: release.runtime, capabilities: release.capabilities } as ContentWorkflowBinding
+    : observed);
   const bytes = originalContentWorkflowArchive(binding);
   const retained = retainedRoot();
   if (process.env.NODE_ENV === "production" && !retained) {

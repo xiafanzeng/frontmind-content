@@ -18,6 +18,9 @@ export type ContentWorkflowBinding = {
   filename: string;
   sha256: string;
   rootDirectory: string;
+  /** Frozen when the task starts, so future releases cannot change its execution route. */
+  runtime?: "native_content_v1";
+  capabilities?: ("structured_article" | "editorial_v16_8")[];
 };
 
 export type SystemAttachment = {

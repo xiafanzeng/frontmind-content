@@ -5,6 +5,7 @@ import {managedLocalAssetContentUrl} from "@frontmind/module-ui/lib/file-preview
 import {useContentWorkspaceHost,type ContentConversation,type TaskResponse} from "./host";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput,type ContentProductionJobKind,type ContentProductionMode} from "../contracts/content-production";
 import ContentProductionConfirmation from "./ContentProductionConfirmation";
+import ContentProductionFailureNotice from "./ContentProductionFailureNotice";
 import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionPauseTitle,contentProductionPublicText,contentProductionTaskTitle} from "../contracts/content-production-public";
 import "./content-production.css";
 import "./content-workbench.css";
@@ -187,6 +188,7 @@ export function contentProductionSixStep(
   const status = progress.confirmation ?? progress.workflowStatus ?? "";
   const position = contentProductionStagePosition(progress.currentStage, progress.workflowStatus);
   if (progress.jobKind === "reference_pack" || progress.jobKind === "reference_pack_refresh") {
+    if (progress.executionFailure?.action === "positioning_market_research") return 1;
     return ["awaiting_core_positioning_direction", "awaiting_core_positioning_confirmation"].includes(status) || position >= 5 ? 1 : 0;
   }
   if (progress.jobKind === "p0") return position >= 8 ? 2 : 1;
@@ -214,6 +216,7 @@ export function contentProductionFinished(
   if (
     !progress ||
     progress.source !== "runner_job_state" ||
+    progress.executionFailure ||
     progress.confirmation
   )
     return false;
@@ -377,7 +380,7 @@ function ContentProductionInner({
           throw new Error("任务状态与当前内容任务不匹配，请重新读取。");
         setTaskRead({ conversationId, task: result });
         // Acceptance can precede a CLI failure; the original pause is retryable.
-        if (["error", "failed", "cancelled"].includes(result.status))
+        if (result.contentProduction?.executionFailure || ["error", "failed", "cancelled"].includes(result.status))
           setAcceptedConfirmation(null);
         setNotice("");
       }
@@ -614,7 +617,7 @@ function ContentProductionInner({
   const convertedToPack =
     packFinished &&
     !["new_reference_pack", "refresh_reference_pack"].includes(activeMode);
-  const turnFailed = ["error", "failed", "cancelled"].includes(
+  const turnFailed = Boolean(progress?.executionFailure) || ["error", "failed", "cancelled"].includes(
     task?.status ?? activeConversation?.status ?? "",
   );
   const currentStep =
@@ -629,6 +632,8 @@ function ContentProductionInner({
     ? taskId
       ? "任务信息待读取"
       : "尚未开始"
+    : progress?.executionFailure
+      ? "本轮执行失败"
     : (task?.status??activeConversation?.status)==="cancelled"
       ? "本轮已取消"
     : turnFailed
@@ -690,9 +695,9 @@ function ContentProductionInner({
           );
         })}
       </ol>
-      <div className="cp-six-progress-status" role="status">
+      <div className="cp-six-progress-status" role={turnFailed ? "alert" : "status"}>
         <strong>{CONTENT_SIX_STEPS[sixStepIndex]}</strong>
-        <span>{activeConversation ? (progress?.pauseTitle ? `等待：${progress.pauseTitle}` : busy ? "正在处理当前步骤" : finished ? "当前任务已完成" : refreshing ? "正在读取阶段" : statusLabel) : "从企业资料与范围开始；选择目标后，后续确认会在当前对话中继续。"}</span>
+        <span>{activeConversation ? (turnFailed ? statusLabel : progress?.pauseTitle ? `等待：${progress.pauseTitle}` : busy ? "正在处理当前步骤" : finished ? "当前任务已完成" : refreshing ? "正在读取阶段" : statusLabel) : "从企业资料与范围开始；选择目标后，后续确认会在当前对话中继续。"}</span>
       </div>
       {progress?.completedConfirmations.length ? (
         <details className="cp-confirmed-context">
@@ -1335,6 +1340,7 @@ function ContentProductionInner({
           {notice}
         </div>
       )}
+      <ContentProductionFailureNotice failure={progress?.executionFailure} />
       {workbench ? (
         <AgentWorkbenchShell
           embedded
