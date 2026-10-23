@@ -46,3 +46,22 @@ it("preserves legacy releases and does not grant newer editorial rules to them",
   expect(contentProductionSystemContext(context)).toContain("No external provider SDK");
   expect(contentProductionSystemContext(context)).not.toContain("--pool-selection");
 });
+
+
+it("keeps a frozen v16.8.1 archive and native capabilities after the current release changes", () => {
+  const store = temporary();
+  vi.stubEnv("FRONTMIND_CONTENT_WORKFLOW_DIR", temporary());
+  vi.stubEnv("FRONTMIND_CONTENT_WORKFLOW_STORE", store);
+  const bytes = Buffer.from("synthetic immutable v16.8.1 workflow");
+  const binding = { version: "4.13.2-v16.8.1", rootDirectory: release.rootDirectory,
+    filename: "historical-v16.8.1.zip", sha256: createHash("sha256").update(bytes).digest("hex"),
+    runtime: "native_content_v1" as const, capabilities: ["structured_article", "editorial_v16_8"] as const };
+  writeFileSync(join(store, `${binding.sha256}.zip`), bytes);
+  const context = { purpose: "content_production", contentProduction: { mode: "single_article" },
+    contentWorkflow: { ...binding, capabilities: [...binding.capabilities] } } as FrozenContentTaskContext;
+  expect(release.version).not.toBe(binding.version);
+  expect(workflowForTask(context)).toEqual(context.contentWorkflow);
+  expect(contentWorkflowRuntimeFor(context)).toBe("native_content_v1");
+  expect(originalContentWorkflowArchive(workflowForTask(context))).toEqual(bytes);
+  expect(contentProductionSystemContext(context)).toContain("--pool-selection");
+});

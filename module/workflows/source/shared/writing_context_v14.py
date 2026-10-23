@@ -163,10 +163,20 @@ def selected_tools(action, definitions, prompt):
     return list(definitions)
 
 
-def commission(wf, job, *, p0, title_revision=None):
+def commission(wf, job, *, p0, title_revision=None, blueprint=False):
     from .manuscript_revision import current_revision
     state = wf.load_state(job)
-    brief = dict((title_revision or {}).get("effective_writing_requirements") or requirements.effective(wf, job, p0=p0))
+    # New P0 planning reads explicit user requirements, not its previous model
+    # candidate. Other stages and unmarked frozen jobs retain their inputs.
+    explicit_p0_blueprint = (p0 and blueprint and state.get("metadata", {}).get("p0_blueprint_commission_mode")
+                             == requirements.P0_BLUEPRINT_COMMISSION_MODE)
+    brief = dict((title_revision or {}).get("effective_writing_requirements") or requirements.effective(
+        wf, job, p0=p0, include_blueprint=not explicit_p0_blueprint))
+    if explicit_p0_blueprint:
+        confirmed = state.get("decisions", {}).get("p0_blueprint_confirmation") or {}
+        if (confirmed.get("blueprint_sha256") and (confirmed.get("writing_requirements") or {}).get("estimated_length")
+                and not state.get("metadata", {}).get("effective_writing_requirements", {}).get("estimated_length")):
+            brief.pop("estimated_length", None)  # The approved context supplies its target; do not inject a competing default.
     article_brief = brief.pop("article_brief", "")
     pattern = "P00" if p0 else state["selected_pattern_id"]
     single_subject = (not p0 and pattern == "P01"
@@ -175,6 +185,8 @@ def commission(wf, job, *, p0, title_revision=None):
              "本篇 article_brief（全文重点与介绍层次以此为准）：\n" + article_brief,
              "正文篇幅统计：包含小标题、标点、数字与英文；排除主标题、候选标题、空白及 Markdown 标记。明确目标用于安排全文展开。",
              "正文 Markdown 首行一个 # 内部标题；其余段落及加粗按本篇要求，导出保持原结构。"]
+    if explicit_p0_blueprint:
+        lines.append("本轮依据当前原件重新选材；旧蓝图是模型候选，其自拟的材料限制不作为用户要求继承。当前蓝图要求中的明确用户修改优先，其他明确持久要求继续有效。")
     if single_subject:
         lines.append(SINGLE_SUBJECT_PRINCIPLES)
     revision = title_revision if title_revision is not None else current_revision(wf, job, p0=p0)
@@ -288,8 +300,15 @@ def prompt_blueprint(wf, job, *, p0):
     if extra:
         lines.append("已有补充资料索引：\n" + extra)
     identity = "kind=p0、positioning_placement、existing_p0_edit_plan" if p0 else "kind=article、question、pattern_id、candidate_order、brand_positioning_use、answer_use"
-    lines += ["提交已有字段：" + identity + "、article_brief、opening、sections、materials、material_adjustments、estimated_length、ending、style_source、example_use、writing_material_markdown、writing_material_sources。", BLUEPRINT_FIELDS,
-              commission(wf, job, p0=p0),
+    lines += ["提交已有字段：" + identity + "、article_brief、opening、sections、materials、material_adjustments、estimated_length、ending、style_source、example_use、writing_material_markdown、writing_material_sources。", BLUEPRINT_FIELDS]
+    if p0 and state.get("metadata", {}).get("p0_blueprint_commission_mode") == requirements.P0_BLUEPRINT_COMMISSION_MODE:
+        lines.append("P0 本阶段不使用品宣例文，第三遍另行载入星源智与港隽两篇固定完整例文。style_source与example_use保留这一阶段分工，不写成全流程没有例文。")
+        confirmed = decisions.get("p0_blueprint_confirmation") or {}
+        if confirmed.get("blueprint_sha256") and confirmed.get("writing_requirements"):
+            lines.append("<confirmed_p0_blueprint_context>\n用户曾明确确认的方案要求，仅取当时冻结的版本，不从当前未确认候选补充。保留未被本轮明确修改的对象、体裁、范围、篇幅与排版；当前蓝图修改和明确持久用户要求优先。此为已确认业务上下文，不是企业事实来源。\n"
+                         + _json({key: confirmed[key] for key in ("revision", "blueprint_sha256", "writing_requirements")})
+                         + "\n</confirmed_p0_blueprint_context>")
+    lines += [commission(wf, job, p0=p0, blueprint=True),
               '单独调用 submit_result 提交完整 JSON；保存后只回复 {"submitted":true}。']
     return wrap("\n\n".join(lines))
 
