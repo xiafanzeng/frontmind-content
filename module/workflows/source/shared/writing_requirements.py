@@ -13,6 +13,7 @@ BLUEPRINT_MATERIAL_INPUT_MODE = 'source-index-v1'
 WRITING_OUTLINE_INPUT_MODE = 'suggested-outline-v1'
 WRITING_MISSION_INPUT_MODE = 'editorial-mission-v1'
 DEFAULT_MISSION_INPUT_MODE = 'editorial-mission-v2'
+P0_BLUEPRINT_COMMISSION_MODE = 'explicit-user-requirements-v1'
 MANUSCRIPT_OUTLINE_INPUT_MODE = 'current-manuscript-v1'
 LEGACY_EDITORIAL_REVIEW_SCOPE_MODE = 'actual-claims-v1'
 EDITORIAL_REVIEW_SCOPE_MODE = 'actual-claims-v2'
@@ -28,11 +29,11 @@ def enabled(state):
     return natural_enabled(state) and state.get('metadata', {}).get('writing_requirements_contract') == CONTRACT
 
 
-def effective(wf, job, *, p0):
+def effective(wf, job, *, p0, include_blueprint=True):
     state = wf.load_state(job)
     prefix = 'p0' if p0 else 'article'
     path = Path(job) / 'blueprints' / (prefix + '_blueprint.json')
-    bp = wf.read_json(path) if path.is_file() else {}
+    bp = wf.read_json(path) if include_blueprint and path.is_file() else {}
     value = {key: bp[key] for key in sorted(FIELDS) if key in bp}
     # Revision inputs are frozen in the existing revision record. A title-only
     # turn or recovery sees the same merged requirements, not a short draft.
