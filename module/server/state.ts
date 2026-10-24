@@ -97,6 +97,7 @@ export function parseContentRunnerState(
     );
     if (!parsed.success) return null;
     const state = parsed.data;
+    if (state.metadata && Object.keys(state.metadata).length === 0) delete state.metadata;
     const paused = contentProductionConfirmationSchema.safeParse(state.status);
     if (paused.success) {
       if (
@@ -219,8 +220,8 @@ export function reduceContentProductionProgress(
 }
 
 export function compareContentRunnerObservations(
-  left: ContentRunnerObservation,
-  right: ContentRunnerObservation,
+  left: Pick<ContentRunnerObservation,"state">,
+  right: Pick<ContentRunnerObservation,"state">,
 ) {
   const time =
     Date.parse(left.state.updated_at) - Date.parse(right.state.updated_at);
@@ -243,7 +244,13 @@ export function contentProductionPublicDto(
     | ContentProductionProgress
     | undefined;
   const progress = stored?.revision === 2 ? stored : null;
-  const state = progress?.lastObservation.state ?? null;
+  let state = progress?.lastObservation.state ?? null;
+  // 执行器直接读取同一 Job 的原状态；不等待整轮回复或快照导出。
+  // 实时读数只参与展示，不伪造不可变文件凭据，也不推进业务确认。
+  const runtime = providerRuntime?.xtyCodex as {contentWorkflowRuntime?:unknown;contentWorkflowLiveState?:unknown}|undefined;
+  const rawLive = runtime?.contentWorkflowRuntime === "native_content_v1" ? runtime.contentWorkflowLiveState : null;
+  const live = rawLive ? parseContentRunnerState(Buffer.from(JSON.stringify(rawLive))) : null;
+  if (live && (!state || (live.job_id === state.job_id && live.revision >= state.revision && compareContentRunnerObservations({state:live},{state}) > 0))) state = live;
   const parsed = contentProductionConfirmationSchema.safeParse(state?.status);
   const confirmation = parsed.success ? parsed.data : null;
   const factRepair = state?.status === "running_article_production" &&
@@ -277,8 +284,8 @@ export function contentProductionPublicDto(
       null,
     ...(factRepair ? {factGate:{issueCount:state?.flags.article_fact_gate?.issue_count ?? 0,categories:["请查看工作流校验结果"],publishReady:false}} : {}),
     confirmation,
-    progressPosition: progress?.progressPosition ?? 0,
-    completedConfirmations: progress?.completedConfirmations ?? [],
+    progressPosition: Math.max(progress?.progressPosition ?? 0,state?contentProductionStagePosition(state.stage,state.status):0),
+    completedConfirmations: state ? completedRunnerConfirmations(state) : progress?.completedConfirmations ?? [],
     availableActions: confirmation
       ? CONTENT_PRODUCTION_CONFIRMATION_ACTIONS[confirmation]
       : factRepair ? ["repair_article_facts"] : [],

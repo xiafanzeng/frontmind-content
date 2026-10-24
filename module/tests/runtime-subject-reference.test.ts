@@ -13,6 +13,13 @@ const context:FrozenContentTaskContext={
 };
 
 describe("运行时引用服务器冻结资料包",()=>{
+ it("快照使用标准库保留中文文件名标记，禁止未声明编码的zip命令",()=>{
+  const text=contentProductionSystemContext(context);
+  expect(text).toContain("ZipFile.write(path, arcname)");
+  expect(text).toContain("Never use the Info-ZIP zip command");
+  expect(text).toContain("metadata_encoding='utf-8'");
+  expect(text).toContain("not permission to change readiness");
+ });
  it("把已授权assetId、完整SHA及原生reference-pack启动要求传入系统上下文",()=>{
   const subjectContext={revision:1 as const,conversationId:"chat",folderId:"subject",generation:2,packVersionId:"pack-v2",sourceTaskId:"source-task",artifactId:`artifact_${"b".repeat(64)}`,localAssetId:assetId,contentSha256};
   const text=contentProductionSystemContext({...context,subjectContext});

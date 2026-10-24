@@ -11,3 +11,5 @@
 .cp-execution-feedback .cp-feedback-time{color:#737373;font-size:12px}
 .cp-execution-feedback .cp-feedback-service{color:#775b18}
 .cp-execution-feedback [role=alert]{color:#9f3a30}
+
+.cp-live-process-details{margin:10px 24px;font-size:12px;color:#69717d}.cp-live-process-details>summary{cursor:pointer}

@@ -1,5 +1,5 @@
 import ExecutionFeedback, {type FeedbackObservation} from "./ExecutionFeedback";
-import {generalExecutionSlots} from "@frontmind/module-ui/lib/general-execution-display";
+
 import {GeneralExecutionActivity} from "@frontmind/module-ui/components/GeneralExecutionActivity";
 import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
 import {mergeConversationProcesses} from "../contracts/conversation-process";
@@ -58,6 +58,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  const [conversations,setConversations]=useState<ContentConversation[]>([]),[activeId,setActiveId]=useState<string|null>(null),[hydrated,setHydrated]=useState(false),[notice,setNotice]=useState("");
  const [submittingIds,setSubmittingIds]=useState<Set<string>>(new Set()),[stoppingId,setStoppingId]=useState<string|null>(null),[observation,setObservation]=useState<FeedbackObservation>();
  const [initialLoadAttempt,setInitialLoadAttempt]=useState(0),[initialLoadPending,setInitialLoadPending]=useState(true),[initialLoadError,setInitialLoadError]=useState("");
+ const [activeTask,setActiveTask]=useState<TaskResponse|null>(null),[taskReadError,setTaskReadError]=useState("");
  const initialLoadPendingRef=useRef(true);
  const items=useRef(conversations);items.current=conversations;const current=useRef(activeId);current.current=activeId;const locks=useRef(new Set<string>());const listVersion=useRef(0);
  const intakeAttempts=useRef(new Map<string,{signature:string;id:string;assets:{fileId:string;filename:string}[]}>());
@@ -99,8 +100,8 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  }
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
- useEffect(()=>{if(client.submitIntake||!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
- async function poll(){try{const task=await client.task(id!,controller.signal);if(!cancelled){setObservation({taskId:id!,checkedAt:Date.now(),executionFailure:task.contentProduction?.executionFailure??null});await refresh();}}catch{if(!cancelled)setObservation(previous=>({...(previous?.taskId===id?previous:{}),taskId:id!,checkedAt:Date.now(),error:true}));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
+ useEffect(()=>{setActiveTask(null);setTaskReadError("");if(client.submitIntake||!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
+ async function poll(){try{const task=await client.task(id!,controller.signal);if(task.id!==id)throw new Error("任务与当前聊天不匹配。");if(!cancelled){setActiveTask(task);setTaskReadError("");setObservation({taskId:id!,checkedAt:Date.now(),error:task.contentProgressReadError===true,awaitingConfirmation:Boolean(task.contentProduction?.confirmation),executionFailure:task.contentProduction?.executionFailure??null,contentProduction:task.contentProduction??null});await refresh();}}catch(error){if(!cancelled){setTaskReadError(error instanceof Error?error.message:"读取任务失败。");setObservation(previous=>({...(previous?.taskId===id?previous:{}),taskId:id!,checkedAt:Date.now(),error:true}));}}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
  void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;
@@ -122,7 +123,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
    }
    // Keep the exact persisted envelope for an unacknowledged request. Uploads and
    // task creation are never repeated with a new identity after a lost response.
-   let message=conversation.messages.findLast(item=>item.role==="user"&&item.generalChatDispatch);
+   let message=conversation.messages.findLast(item=>item.role==="user"&&item.generalChatDispatch&&(!conversation.taskId||item.generalChatDispatch.localTaskId===conversation.taskId));
    if(message && message.content!==prompt)throw new Error("上一条提交尚未确认，请先重试该消息。");
    if(!message){
     const uploaded=[];for(const file of files)uploaded.push(await client.upload(file));
@@ -139,7 +140,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
    update(await client.save(accepted));return true;
   }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{listVersion.current++;locks.current.delete(conversation.id);setSubmittingIds(previous=>{const next=new Set(previous);next.delete(conversation.id);return next;});}
  },[client,update]);
- const value:Runtime={intakeOnly:Boolean(client.submitIntake),localAsset:id=>client.localAsset?.(id)??null,workspaceId,submittingIds,stoppingId,observation,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,async saveConversation(value){update(await client.save(value));},refreshConversations:refresh,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{listVersion.current++;setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(!id||stoppingId)return;setStoppingId(id);setNotice("");try{await client.stop(id);const result=await client.task(id);if(!["cancelled","completed","error","failed"].includes(result.status))throw new Error("STOP_NOT_CONFIRMED");await refresh();}catch{setNotice("停止请求未确认，请重试停止；当前不能确认执行已停止。");throw new Error("STOP_NOT_CONFIRMED");}finally{setStoppingId(null);}}};
+ const value:Runtime={activeTask,taskReadError,intakeOnly:Boolean(client.submitIntake),localAsset:id=>client.localAsset?.(id)??null,workspaceId,submittingIds,stoppingId,observation,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,async saveConversation(value){update(await client.save(value));},refreshConversations:refresh,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,deleteConversation(id){void client.remove(id).then(()=>{listVersion.current++;setConversations(previous=>previous.filter(row=>row.id!==id));if(current.current===id)setActiveId(null);}).catch(error=>setNotice(error.message));},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(!id||stoppingId)return;setStoppingId(id);setNotice("");try{await client.stop(id);const result=await client.task(id);if(!["cancelled","completed","error","failed"].includes(result.status))throw new Error("STOP_NOT_CONFIRMED");await refresh();}catch{setNotice("停止请求未确认，请重试停止；当前不能确认执行已停止。");throw new Error("STOP_NOT_CONFIRMED");}finally{setStoppingId(null);}}};
  return <RuntimeContext.Provider value={value}>{!hydrated&&initialLoadError&&<div className="cp-notice" role="alert"><p>任务列表加载失败：{initialLoadError}</p><button type="button" className="cp-live-retry" disabled={initialLoadPending} onClick={retryInitialLoad}>{initialLoadPending?"正在重试…":"重试加载任务"}</button></div>}{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
 }
 // Keep the message wrapper's component identity stable across polling updates.
@@ -150,19 +151,19 @@ function ContentDialogue({knowledgeEditingBlocked,conversationFooter,transcriptN
  const runtime=useRuntime();
  const intakeReceipt=receivedContentIntake(runtime.activeConversation);
  const composerRuntime=useMemo(()=>({...contentComposerRuntime,useSendMessage(){const base=contentComposerRuntime.useSendMessage();return {...base,sendMessage:async(text: string,files?:File[],options?:Parameters<typeof base.sendMessage>[2])=>onComposerSubmit?Boolean(await onComposerSubmit(text,files??[])):base.sendMessage(text,files??[],options)};}}),[onComposerSubmit]);
- const busy=Boolean(knowledgeEditingBlocked)||["running","pending"].includes(runtime.activeConversation?.status??"");
+ const busy=Boolean(knowledgeEditingBlocked)||runtime.submittingIds.has(runtime.activeConversation?.id??"")||["running","pending"].includes(runtime.activeConversation?.status??"");
  const viewport=useRef<HTMLDivElement>(null);
  const {showLatest,returnToLatest}=useChatReadingPosition(viewport,`${runtime.workspaceId}:${runtime.activeConversation?.id??"new"}`,`${runtime.activeConversation?.messages.map(m=>`${m.id}:${m.content.length}`).join("|")}:${runtime.activeConversation?.status}:${runtime.activeConversation?.processes?.map(p=>`${p.id}:${p.status}:${[...p.thinking,...p.tools].map(r=>`${r.id}:${r.status}:${r.summaryRevision??0}:${r.text.length}`).join(",")}`).join("|")}`);
  useLayoutEffect(()=>{if(viewport.current&&transcriptNavigation&&runtime.activeConversation)navigateContentTranscript(viewport.current,transcriptNavigation,runtime.activeConversation.id,returnToLatest);},[transcriptNavigation,runtime.activeConversation?.id,returnToLatest]);
  const processes=runtime.activeConversation?.processes??[];
- const slots=generalExecutionSlots(runtime.activeConversation?.messages??[],processes.length?undefined:projectContentExecutionLanguage(runtime.activeConversation?.execution),busy);
+ const execution=processes.length?undefined:projectContentExecutionLanguage(runtime.activeConversation?.execution);
  return <div className="cp-live-dialogue"><div ref={viewport} className="cp-live-messages custom-scrollbar" data-testid="chat-messages-viewport"><div className="workbench-reading-column space-y-7">{runtime.activeConversation?.messages.map(message=><article id={`content-message-${message.id}`} key={message.id} data-role={message.role} data-reading-anchor={message.id}>
-   <GeneralExecutionActivity items={slots.before.get(message.id)} />
-   <BusinessMessage runtime={contentMessageRuntime} message={message.attachments?.some(file=>runtime.localAsset(file.fileId??file.id))?{...message,attachments:message.attachments.map(file=>{const local=runtime.localAsset(file.fileId??file.id);return local?{...file,blobUrl:local.dataUrl}:file;})}:message} isRunning={busy} isFinalReply={!busy} />
-   <GeneralExecutionActivity items={slots.after.get(message.id)} placement="after" />
+
+   <BusinessMessage runtime={contentMessageRuntime} message={{...(message.attachments?.some(file=>runtime.localAsset(file.fileId??file.id))?{...message,attachments:message.attachments.map(file=>{const local=runtime.localAsset(file.fileId??file.id);return local?{...file,blobUrl:local.dataUrl}:file;})}:message),...((processes.length||runtime.activeConversation?.execution)?{stepGroups:undefined,intermediateSteps:undefined}:{})}} isRunning={busy} isFinalReply={!busy} />
+
    {processes.filter(p=>p.userMessageId===message.id).map(process=><ConversationExecutionProcess key={process.id} process={process} onRecover={!intakeReceipt&&process.id===processes.at(-1)?.id&&["error","cancelled"].includes(runtime.activeConversation?.status??"")?()=>void runtime.sendMessage("重试当前执行").catch(()=>{}):undefined}/>)}
-   {message.generalChatDispatch&&(intakeReceipt||runtime.intakeOnly?<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>:<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>)}
-  </article>)}</div></div>{showLatest&&<button className="workbench-return-latest" onClick={()=>{returnToLatest();onReturnToLatest?.();}}>回到最新</button>}{conversationFooter}
+   {message.generalChatDispatch&&(!runtime.activeConversation?.taskId||message.generalChatDispatch.localTaskId===runtime.activeConversation.taskId)&&(intakeReceipt||runtime.intakeOnly?<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>:<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>)}
+  </article>)}</div>{execution&&execution.timeline.length>0&&<details className="cp-live-process-details"><summary>查看执行记录</summary><GeneralExecutionActivity items={execution.timeline.filter(entry=>entry.kind!=="message")} /></details>}</div>{showLatest&&<button className="workbench-return-latest" onClick={()=>{returnToLatest();onReturnToLatest?.();}}>回到最新</button>}{conversationFooter}
   {!runtime.intakeOnly&&<ExecutionFeedback conversation={runtime.activeConversation??undefined} submitting={runtime.submittingIds.has(runtime.activeConversation?.id??"")} stopping={runtime.stoppingId===runtime.activeConversation?.taskId} observation={runtime.observation}/>}
   <BusinessChatInput runtime={composerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
   {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" disabled={runtime.stoppingId===runtime.activeConversation?.taskId} onClick={()=>void runtime.stop().catch(()=>{})}>{runtime.stoppingId===runtime.activeConversation?.taskId?"正在请求停止…":"停止当前执行"}</button>}

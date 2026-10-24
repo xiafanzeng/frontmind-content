@@ -18,6 +18,13 @@ export function chineseContentSummary(value: string): string {
 
 export function projectContentExecutionLanguage(execution?: GeneralExecutionDto): GeneralExecutionDto | undefined {
   if (!execution) return execution;
-  return {...execution, timeline:execution.timeline.map(entry => entry.kind === "status" && entry.publicSummary
-    ? {...entry, publicSummary:chineseContentSummary(entry.publicSummary)} : entry)};
+  return {...execution, timeline:execution.timeline.map(entry => {
+    if(entry.kind!=="status"||!entry.publicSummary)return entry;
+    const translated=chineseContentSummary(entry.publicSummary);
+    // 没有可读摘要就只保留真实状态，避免重复显示无内容的思考卡片。
+    if(translated==="本条过程记录暂无中文摘要。"){
+      const {publicSummary:_,...status}=entry;return status;
+    }
+    return {...entry,publicSummary:translated};
+  })};
 }
