@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { useContentWorkspaceHost, type ContentConversation } from "../client/host";
 
-vi.mock("../client/ContentProductionWorkspace", () => ({ default: () => {
+vi.mock("../client/ContentSubjectWorkspace", () => ({ default: () => {
   const host = useContentWorkspaceHost();
   const { activeConversation } = host.useConversation();
   const Home = host.Home;
@@ -21,7 +21,7 @@ it("收件验收查看已有任务时不会查询、停止或派发任务", asyn
   vi.useFakeTimers(); localStorage.setItem("frontmind-content-active:intake-read", "existing");
   const unexpected = vi.fn(async (): Promise<never> => { throw new Error("验收禁止执行入口"); });
   const client = { list: vi.fn(async () => [{ id: "existing", taskId: "old-task", title: "既有任务", purpose: "content_production", status: "running", messages: [], createdAt: 1, updatedAt: 1 }]),
-    submitIntake: unexpected, task: unexpected, dispatch: unexpected, stop: unexpected, save: unexpected, remove: unexpected, upload: unexpected };
+    readSubjectWorkspace: unexpected, saveSubjectWorkspace: unexpected, submitIntake: unexpected, task: unexpected, dispatch: unexpected, stop: unexpected, save: unexpected, remove: unexpected, upload: unexpected };
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   try {
     await act(async () => root.render(<ModuleWorkspace client={client} context={{ module: "content", workspace: { id: "intake-read", ownerUserId: 1 }, marketEdition: "cn", capabilities: [] }} />));
@@ -43,7 +43,7 @@ it.each(["polling", "parent render"])("keeps the rendered message mounted across
   const client = {
     list: vi.fn(async () => structuredClone(rows)),
     task: vi.fn(async () => ({ id: "task-1", status: "awaiting_input" })),
-    save: reject, remove: reject, upload: reject, dispatch: reject, stop: reject,
+    readSubjectWorkspace: reject, saveSubjectWorkspace: reject, save: reject, remove: reject, upload: reject, dispatch: reject, stop: reject,
   };
   const container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);
@@ -67,7 +67,7 @@ it.each(["polling", "parent render"])("keeps the rendered message mounted across
 it("keeps chronological summary rows mounted during repeated polls and final delivery",async()=>{
  (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT=true;vi.useFakeTimers();localStorage.setItem("frontmind-content-active:process-poll","conversation");
  const rows:ContentConversation[]=[{id:"conversation",taskId:"task",title:"离线过程测试",status:"running",createdAt:1,updatedAt:1,messages:[{id:"user",role:"user",content:"开始",timestamp:1}],processes:[{id:"process",userMessageId:"user",startedAt:1,status:"running",thinking:[{id:"thought",timestamp:2,text:"正在处理：问题文章方案。",status:"recorded"}],tools:[{id:"tool",timestamp:3,text:"正在读取登记材料。",status:"running"}]}]}];
- const unexpected=async():Promise<never>=>{throw new Error("Unexpected write");};const client={list:async()=>structuredClone(rows),task:async()=>({id:"task",status:rows[0].status}),save:unexpected,upload:unexpected,dispatch:unexpected,remove:unexpected,stop:unexpected};
+ const unexpected=async():Promise<never>=>{throw new Error("Unexpected write");};const client={list:async()=>structuredClone(rows),task:async()=>({id:"task",status:rows[0].status}),readSubjectWorkspace:unexpected,saveSubjectWorkspace:unexpected,save:unexpected,upload:unexpected,dispatch:unexpected,remove:unexpected,stop:unexpected};
  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
  try{await act(async()=>root.render(<ModuleWorkspace client={client} context={{module:"content",workspace:{id:"process-poll",ownerUserId:0},marketEdition:"cn",capabilities:[]}}/>));const process=container.querySelector("[data-process-id]"),tool=container.querySelector('[data-summary-id="tool"]');expect(process).not.toBeNull();expect(container.querySelector("h3")).toBeNull();expect(container.textContent).not.toContain("工具汇总");
  rows[0].status="completed";rows[0].processes![0].status="completed";rows[0].processes![0].tools[0]={id:"tool",timestamp:3,text:"已完成读取登记材料。",status:"completed"};rows[0].messages.push({id:"final",role:"assistant",content:"最终答复与交付",timestamp:4});await act(async()=>vi.advanceTimersByTimeAsync(3000));expect(container.querySelector("[data-process-id]")).toBe(process);expect(container.querySelector('[data-summary-id="tool"]')).toBe(tool);expect((tool as HTMLElement).hidden).toBe(true);expect(container.textContent).toContain("最终答复与交付");
