@@ -41,6 +41,8 @@ async function json<T>(url:string,init:RequestInit={}):Promise<T>{
  finally{clearTimeout(timer);init.signal?.removeEventListener("abort",abort);}
 }
 export const liveContentClient:ContentBusinessClient={
+ readSubjectWorkspace:()=>json("/api/modules/content/subject-workspace"),
+ saveSubjectWorkspace:value=>json("/api/modules/content/subject-workspace",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}),
  list:()=>json("/api/content/conversations"),
  save:value=>json(`/api/content/conversations/${encodeURIComponent(value.id)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}),
  remove:async id=>{await json(`/api/content/conversations/${encodeURIComponent(id)}`,{method:"DELETE"});},
@@ -97,7 +99,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  }
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
- useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
+ useEffect(()=>{if(client.submitIntake||!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
  async function poll(){try{const task=await client.task(id!,controller.signal);if(!cancelled){setObservation({taskId:id!,checkedAt:Date.now(),executionFailure:task.contentProduction?.executionFailure??null});await refresh();}}catch{if(!cancelled)setObservation(previous=>({...(previous?.taskId===id?previous:{}),taskId:id!,checkedAt:Date.now(),error:true}));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
  void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{

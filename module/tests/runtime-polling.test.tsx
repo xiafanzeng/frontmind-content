@@ -16,6 +16,20 @@ import { ModuleWorkspace } from "../client/runtime";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); document.body.innerHTML = ""; });
 
+it("收件验收查看已有任务时不会查询、停止或派发任务", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.useFakeTimers(); localStorage.setItem("frontmind-content-active:intake-read", "existing");
+  const unexpected = vi.fn(async (): Promise<never> => { throw new Error("验收禁止执行入口"); });
+  const client = { list: vi.fn(async () => [{ id: "existing", taskId: "old-task", title: "既有任务", purpose: "content_production", status: "running", messages: [], createdAt: 1, updatedAt: 1 }]),
+    submitIntake: unexpected, task: unexpected, dispatch: unexpected, stop: unexpected, save: unexpected, remove: unexpected, upload: unexpected };
+  const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ModuleWorkspace client={client} context={{ module: "content", workspace: { id: "intake-read", ownerUserId: 1 }, marketEdition: "cn", capabilities: [] }} />));
+    await act(async () => vi.advanceTimersByTimeAsync(12_000));
+    expect(client.list).toHaveBeenCalledOnce(); expect(unexpected).not.toHaveBeenCalled();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
 it.each(["polling", "parent render"])("keeps the rendered message mounted across %s", async update => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.useFakeTimers();

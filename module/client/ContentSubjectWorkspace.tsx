@@ -41,13 +41,14 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const pack=current&&binding?boundSubjectPack(subjects,current.id):null;
  const latest=folder?latestSubjectPack(subjects,folder.id):null;
  const progress=task?.id===current?.taskId?task?.contentProduction??null:null;
- const turnFailed=Boolean(progress?.executionFailure)||["error","failed","cancelled"].includes(task?.status??"");
+ const intakeReceived=Boolean(client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"));
+ const turnFailed=Boolean(progress?.executionFailure)||Boolean(task&&task.id===current?.taskId&&["error","failed","cancelled"].includes(task.status));
  const busy=saving||["running","pending"].includes(current?.status??"");
  const missing=Boolean(binding?.kind==="article"&&!pack);
  const choiceKey=`${current?.id}:${progress?.runnerRevision??"idle"}`;
  const choices=localChoices[choiceKey]??{};
  // 尚无任务时只核对本次输入，不把本地修订号 0 投影成原生 Runner 停点。
- const startupConfig:ContentProductionInput|null=loaded&&current&&!current.taskId&&binding?{mode:binding.kind==="pack"?(latest?"refresh_reference_pack":"new_reference_pack"):pack?.includesP0?"single_article":"p0",enterpriseName:folder?.name??current.title,knowledgeSource:"files",monitoringAnswerAssetIds:[]}:null;
+ const startupConfig:ContentProductionInput|null=loaded&&current&&!current.taskId&&!intakeReceived&&binding?{mode:binding.kind==="pack"?(latest?"refresh_reference_pack":"new_reference_pack"):pack?.includesP0?"single_article":"p0",enterpriseName:folder?.name??current.title,knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:binding.folderId,generation:binding.generation??0,packVersionId:binding.kind==="pack"?(latest?.id??null):binding.packVersionId}}:null;
  const startupReview:ContentProductionDto|null=startupConfig?{
   mode:startupConfig.mode,enterpriseName:startupConfig.enterpriseName,workflowVersion:"input-review-only",
   workflowStatus:null,currentStage:null,jobKind:null,runnerRevision:0,pauseTitle:null,choices:[],productionStep:null,
@@ -72,7 +73,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   finally{writing.current=false;setSaving(false);}
  }
  const report=(operation:()=>Promise<unknown>)=>{void operation().catch(()=>{});};
- useEffect(()=>{setInspected(null);setNavigation(undefined);setTask(null);setTaskError("");setPreview(null);},[current?.id]);
+ useEffect(()=>{setInspected(null);setNavigation(undefined);setTask(null);setTaskError("");setPreview(null);},[current?.id,current?.taskId]);
  useEffect(()=>{const target=sourceNavigation.current;if(!target||current?.id!==target.conversationId)return;const anchor=contentCreationTranscriptAnchors(current.messages).get(target.stageIndex);if(!anchor)return;sourceNavigation.current=null;setInspected(target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:anchor,sequence:(previous?.sequence??0)+1}));},[current?.id,current?.messages]);
  useEffect(()=>{
   const id=current?.taskId,conversationId=current?.id;if(!id)return;
@@ -81,13 +82,14 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   void read();return()=>{disposed=true;controller.abort();clearTimeout(timer);};
  },[current?.taskId,current?.id,client,readSubjects]);
  const refreshAfterSend=async()=>{await api.refreshConversations?.();if(current?.taskId){const next=await client.task(current.taskId);if(currentRef.current===current.id)setTask(next);}await readSubjects();};
- const confirmationKey=turnFailed?null:startupReview&&current&&binding?`${current.id}:input-review:${binding.folderId}:${binding.kind}:${binding.packVersionId??"none"}:${binding.generation}:${latest?.id??"none"}`:progress?.confirmation&&current?`${current.id}:${current.taskId}:${binding?.generation}:${binding?.packVersionId}:${progress.runnerRevision}:${progress.confirmation}`:null;
+ const confirmationKey=turnFailed||intakeReceived?null:startupReview&&current&&binding?`${current.id}:input-review:${binding.folderId}:${binding.kind}:${binding.packVersionId??"none"}:${binding.generation}:${latest?.id??"none"}`:progress?.confirmation&&current?`${current.id}:${current.taskId}:${binding?.generation}:${binding?.packVersionId}:${progress.runnerRevision}:${progress.confirmation}`:null;
  const confirmation=useComposerConfirmation(confirmationKey,startupReview??progress,async(prompt,files,action)=>{
   if(turnFailed||binding?.restartRequired||currentRef.current!==current?.id)return false;
   const accepted=await sendMessage(prompt,files,!current?.taskId&&startupConfig
    ?{contentProduction:startupConfig,contentWorkflowGeneration:binding?.generation??0}
    :{contentProductionAction:action,contentWorkflowPosition:contentProductionStagePosition(progress?.currentStage??null,progress?.workflowStatus??null),contentWorkflowStatus:progress?.workflowStatus??undefined,contentWorkflowGeneration:binding?.generation??0,contentWorkflowKind:progress?.jobKind??undefined});
   if(accepted===false)return false;
+  setNotice("");
   // 已被服务器接受的提交不可因随后读取失败而再次发送。
   try{await refreshAfterSend();}catch{setNotice("已提交，状态读取失败，请刷新查看记录，勿重复提交。");}
   return true;
@@ -115,11 +117,12 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  }
  async function switchPack(versionId:string){
   if(!current||!versionId||versionId===pack?.id||busy||confirmation.pending)return;
-  try{await changeSubjects(value=>switchSubjectPack(value,{conversationId:current.id,versionId,hasTask:Boolean(current.taskId)}));await refreshAfterSend();setInspected(null);setNotice("已切换资料包。后续写作须按新资料重新确认；此前交付保留为历史。");}catch{}
+  try{await changeSubjects(value=>switchSubjectPack(value,{conversationId:current.id,versionId,hasTask:Boolean(current.taskId)}));await api.refreshConversations?.();setTask(null);setTaskError("");await readSubjects();setInspected(null);setNotice("已切换资料包。后续写作须按新资料重新确认；此前交付保留为历史。");}catch{}
  }
  function setMetadata(id:string,patch:{pinned?:boolean;archived?:boolean}){report(async()=>{await changeSubjects(value=>updateSubjectChatMetadata(value,id,patch));if(patch.archived&&current?.id===id){const next=api.state.conversations.find(row=>row.id!==id&&!stateRef.current.bindings[row.id]?.archived);if(next)navigate(next.id);}});}
  const setChoice=(patch:{style?:"A"|"B";requirements?:string})=>setLocalChoices(previous=>({...previous,[choiceKey]:{...previous[choiceKey],...patch}}));
  async function stage(prompt:string,files:File[]){
+  if(intakeReceived){setNotice("服务器已收件，生成尚未启动，请勿重复提交当前聊天。");return false;}
   if(turnFailed){setNotice("本轮执行已停止，请先处理失败原因，再明确发起下一轮。");return false;}
   if(!loaded||!binding){setNotice("请先将当前聊天归入一个主体文件夹，再继续提交。");return false;}
   if(!current||missing||busy||binding.restartRequired){setNotice(binding.restartRequired?"资料包已变更，当前宿主尚未完成重新绑定，请先刷新。":"请先完成当前文件夹的资料包。");return false;}
@@ -142,7 +145,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  }
  function action(label:string,prompt:string){return <button key={label} type="button" className="cp-subject-action" disabled={busy||Boolean(confirmation.pending)} onClick={()=>report(()=>stage(prompt,[]))}>{label}</button>;}
  function actions():ReactNode {
-  if(turnFailed)return null;
+  if(turnFailed||intakeReceived)return null;
   const has=(kind:string)=>progress?.availableActions.some(item=>item===kind);
   if(has("choose_question"))return progress?.choices.filter(item=>/^\d+[.．、]\s*/u.test(item)).map(item=>action(item,`选择问题：${item.replace(/^\d+[.．、]\s*/u,"")}`));
   if(has("choose_core_positioning_direction"))return progress?.choices.flatMap(item=>{const match=/方向\s*([A-C1-3])/iu.exec(item);return match?[action(item,`方向：${match[1]}`)]:[];});
@@ -160,9 +163,9 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const handoff=!turnFailed&&["4.13.2-v16.8-app1","4.13.2-v16.8.3"].includes(progress?.workflowVersion??"")&&["positioning_ready","p0_ready"].includes(progress?.workflowStatus??"");
  async function continueWriting(){if(!handoff)return;try{await sendMessage(progress?.workflowStatus==="positioning_ready"?"继续 P0":"继续问题文章");await refreshAfterSend();}catch(error){setNotice(error instanceof Error?error.message:"接续失败。");}}
  const footer=<div className="cp-subject-turn" hidden={inspected!==null}>
-  {current&&(!current.taskId||!current.messages.length)&&<p className="cp-subject-question">{binding?.kind==="pack"?"可直接输入主体简介、产品或服务介绍，也可从底部上传资料。":"已自动引用同主体资料包。请从底部输入本篇题目、目标或表达要求。"}</p>}
-  {client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"&&!message.generalChatDispatch)&&<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>}
-  {client.attachmentHint&&(startupReview??progress)?.availableActions.some(kind=>kind==="provide_reference_pack_inputs"||kind==="provide_question_research_inputs")&&<p className="cp-subject-question">{client.attachmentHint}</p>}
+  {!intakeReceived&&current&&(!current.taskId||!current.messages.length)&&<p className="cp-subject-question">{binding?.kind==="pack"?"可直接输入主体简介、产品或服务介绍，也可从底部上传资料。":"已自动引用同主体资料包。请从底部输入本篇题目、目标或表达要求。"}</p>}
+  {intakeReceived&&<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>}
+  {!intakeReceived&&client.attachmentHint&&(startupReview??progress)?.availableActions.some(kind=>kind==="provide_reference_pack_inputs"||kind==="provide_question_research_inputs")&&<p className="cp-subject-question">{client.attachmentHint}</p>}
   {progress?.pauseTitle&&<div className="cp-subject-question"><span>当前需要确认</span><strong>{progress.pauseTitle}</strong></div>}
   <div className="cp-subject-actions">{actions()}</div>
   {handoff&&<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" disabled={busy} onClick={()=>report(continueWriting)}>{progress?.workflowStatus==="positioning_ready"?"继续制作品牌长文":"继续问题与监控数据"}</button></div>}
