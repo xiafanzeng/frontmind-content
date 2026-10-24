@@ -39,8 +39,7 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
     return () => { media.removeEventListener("change", update); narrow.removeEventListener("change", update); };
   }, []);
   useEffect(() => {
-    // 平板/小桌面只是展开导航；只有手机抽屉才锁住正文并圈定焦点。
-    if (!mobileOpen || !phone || !sidebarRef.current) return;
+    if (!mobileOpen || !compact || !sidebarRef.current) return;
     const sidebar = sidebarRef.current;
     const origin = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const main = sidebar.closest(".app-shell")?.querySelector<HTMLElement>("main");
@@ -57,7 +56,7 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
     };
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("keydown", keydown); if (main) main.inert = originalInert ?? false; if (origin?.isConnected) origin.focus(); };
-  }, [mobileOpen, phone]);
+  }, [mobileOpen, compact]);
   const collapse = () => {
     if (compact) setMobileOpen(value => !value);
     else setSavedCollapsed(value => { const next = !value; try { localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0"); } catch {} return next; });
@@ -66,7 +65,7 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
   const presentation = { ...module, actions: views.map(view => ({ id: view.id, label: view.label, color: view.color ?? module.color, active: view.id === activeView, kind: "open-panel" as const, run: () => select(view.id) })) };
   return <OperatorThemeProvider><ModulePresentationProvider module={presentation} requestNavigation={requestNavigation}>
     <ModuleSidebarTargetProvider value={activeView === "content" ? sidebarTarget : null}><DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
-      <aside ref={sidebarRef} role={mobileOpen && phone ? "dialog" : undefined} aria-modal={mobileOpen && phone ? true : undefined} aria-hidden={phone && !mobileOpen ? true : undefined} inert={phone && !mobileOpen ? true : undefined} id="operator-project-navigation" className="global-nav operator-sidebar" aria-label="工作区导航" data-collapsed={collapsed} data-entry="project">
+      <aside ref={sidebarRef} role={mobileOpen && compact ? "dialog" : undefined} aria-modal={mobileOpen && compact ? true : undefined} aria-hidden={phone && !mobileOpen ? true : undefined} inert={phone && !mobileOpen ? true : undefined} id="operator-project-navigation" className="global-nav operator-sidebar" aria-label="工作区导航" data-collapsed={collapsed} data-entry="project">
         <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} activeModuleChildren={activeView === "content" ? <div ref={setSidebarTarget} className="operator-module-children" /> : undefined} />
         <div className="operator-sidebar-bottom"><StandaloneWorkspaceFooter collapsed={collapsed} onCollapse={collapse} workspaceLabel="FrontMind 开发工作区" accountLabel="FrontMind" /></div>
       </aside>
