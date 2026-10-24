@@ -21,7 +21,7 @@ export function OperatorModuleNavigation({ modules, onSelect, onNavigate, active
           const Icon = moduleIcons[module.id as keyof typeof moduleIcons] ?? Database;
           const common = {
             className: `operator-nav-entry operator-module-entry ${module.active ? "active" : ""}`,
-            style: { "--module-accent": module.active ? "#5e6174" : module.color } as CSSProperties,
+            style: { "--module-accent": module.color } as CSSProperties,
             title: module.label,
             "aria-label": module.label,
             "aria-current": module.active ? "page" as const : undefined,
