@@ -29,9 +29,9 @@ it.each(["running","completed","idle"])("prioritizes an observed native failure 
 });
 it("keeps waiting feedback and an advancing timer when the model has no summary",async()=>{
  vi.useFakeTimers();vi.setSystemTime(1000);const view=await mount();try{
-  expect(view.el.textContent).toContain("等待下一条服务端记录");
+  expect(view.el.textContent).toContain("任务正在执行，等待服务端返回最新阶段。");
   await act(async()=>vi.advanceTimersByTimeAsync(31000));
-  expect(view.el.textContent).toContain("31 秒");expect(view.el.textContent).toContain("暂未收到新记录");
+  expect(view.el.textContent).toContain("31 秒");expect(view.el.textContent).toContain("暂未收到新阶段。");
  }finally{await view.unmount();}
 });
 it("keeps feedback after a completed tool while the task is still running",async()=>{
@@ -67,7 +67,7 @@ it("surfaces polling and stop failures in the real runtime without resubmitting 
  try{
   await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:"feedback-runtime",ownerUserId:0},marketEdition:"cn",capabilities:[]}} client={client}/>));
   expect(el.textContent).toContain("无法确认服务器进度");
-  broken=false;await act(async()=>vi.advanceTimersByTimeAsync(3000));expect(el.textContent).toContain("等待下一条服务端记录");
+  broken=false;await act(async()=>vi.advanceTimersByTimeAsync(3000));expect(el.textContent).toContain("任务正在执行，等待服务端返回最新阶段。");
   await act(async()=>el.querySelector<HTMLButtonElement>(".cp-live-stop")!.click());expect(el.textContent).toContain("停止请求未确认");
   expect(el.textContent).not.toContain("本轮已停止");expect(forbidden).not.toHaveBeenCalled();
  }finally{await act(async()=>root.unmount());}
