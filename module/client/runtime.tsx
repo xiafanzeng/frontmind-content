@@ -3,6 +3,7 @@ import {generalExecutionSlots} from "@frontmind/module-ui/lib/general-execution-
 import {GeneralExecutionActivity} from "@frontmind/module-ui/components/GeneralExecutionActivity";
 import {useChatReadingPosition} from "@frontmind/module-ui/hooks/useChatReadingPosition";
 import {mergeConversationProcesses} from "../contracts/conversation-process";
+import {receivedContentIntake} from "../contracts/content-intake-receipt";
 import {projectContentExecutionLanguage} from "../contracts/content-execution-language";
 import ConversationExecutionProcess from "./ConversationExecutionProcess";
 import BusinessChatInput from "@frontmind/module-ui/components/BusinessChatInput";
@@ -103,6 +104,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;
+  if(receivedContentIntake(conversation)){setNotice("服务器已收件，生成尚未启动。请勿重复提交本轮材料。");return false;}
   locks.current.add(conversation.id);listVersion.current++;setNotice("");setSubmittingIds(previous=>new Set([...previous,conversation.id]));
   try{
    if(client.submitIntake){
@@ -146,6 +148,7 @@ const ContentMessageActions = ({children}:{children:ReactNode}) => <>{children}<
 const contentMessageRuntime: BusinessMessageRuntime = {MessageActions:ContentMessageActions};
 function ContentDialogue({knowledgeEditingBlocked,conversationFooter,transcriptNavigation,onReturnToLatest,onComposerSubmit}:ContentHomeProps) {
  const runtime=useRuntime();
+ const intakeReceipt=receivedContentIntake(runtime.activeConversation);
  const composerRuntime=useMemo(()=>({...contentComposerRuntime,useSendMessage(){const base=contentComposerRuntime.useSendMessage();return {...base,sendMessage:async(text: string,files?:File[],options?:Parameters<typeof base.sendMessage>[2])=>onComposerSubmit?Boolean(await onComposerSubmit(text,files??[])):base.sendMessage(text,files??[],options)};}}),[onComposerSubmit]);
  const busy=Boolean(knowledgeEditingBlocked)||["running","pending"].includes(runtime.activeConversation?.status??"");
  const viewport=useRef<HTMLDivElement>(null);
@@ -157,8 +160,8 @@ function ContentDialogue({knowledgeEditingBlocked,conversationFooter,transcriptN
    <GeneralExecutionActivity items={slots.before.get(message.id)} />
    <BusinessMessage runtime={contentMessageRuntime} message={message.attachments?.some(file=>runtime.localAsset(file.fileId??file.id))?{...message,attachments:message.attachments.map(file=>{const local=runtime.localAsset(file.fileId??file.id);return local?{...file,blobUrl:local.dataUrl}:file;})}:message} isRunning={busy} isFinalReply={!busy} />
    <GeneralExecutionActivity items={slots.after.get(message.id)} placement="after" />
-   {processes.filter(p=>p.userMessageId===message.id).map(process=><ConversationExecutionProcess key={process.id} process={process} onRecover={process.id===processes.at(-1)?.id&&["error","cancelled"].includes(runtime.activeConversation?.status??"")?()=>void runtime.sendMessage("重试当前执行").catch(()=>{}):undefined}/>)}
-   {message.generalChatDispatch&&(runtime.intakeOnly?<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>:<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>)}
+   {processes.filter(p=>p.userMessageId===message.id).map(process=><ConversationExecutionProcess key={process.id} process={process} onRecover={!intakeReceipt&&process.id===processes.at(-1)?.id&&["error","cancelled"].includes(runtime.activeConversation?.status??"")?()=>void runtime.sendMessage("重试当前执行").catch(()=>{}):undefined}/>)}
+   {message.generalChatDispatch&&(intakeReceipt||runtime.intakeOnly?<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>:<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>)}
   </article>)}</div></div>{showLatest&&<button className="workbench-return-latest" onClick={()=>{returnToLatest();onReturnToLatest?.();}}>回到最新</button>}{conversationFooter}
   {!runtime.intakeOnly&&<ExecutionFeedback conversation={runtime.activeConversation??undefined} submitting={runtime.submittingIds.has(runtime.activeConversation?.id??"")} stopping={runtime.stoppingId===runtime.activeConversation?.taskId} observation={runtime.observation}/>}
   <BusinessChatInput runtime={composerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />

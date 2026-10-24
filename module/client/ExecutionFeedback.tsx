@@ -1,6 +1,7 @@
 import {useEffect,useState} from "react";
 import type {ContentConversation} from "./host";
 import type {ContentProductionExecutionFailure} from "../contracts/content-production";
+import {receivedContentIntake} from "../contracts/content-intake-receipt";
 
 type Notice={id:string;code:"model_fallback"|"model_failure";reason:string};
 const reasons:Record<string,string>={timeout:"模型服务响应超时",connection:"无法连接模型服务",rate_limit:"模型服务限流",upstream:"模型上游服务返回错误",access:"模型服务认证或权限异常",quota:"模型服务额度异常",request:"模型请求被服务拒绝",unknown:"具体原因未提供"};
@@ -20,10 +21,11 @@ export function executionNotices(conversation:ContentConversation):Notice[]{
 export type FeedbackObservation={taskId:string;checkedAt:number;error?:boolean;executionFailure?:ContentProductionExecutionFailure|null};
 export default function ExecutionFeedback({conversation,submitting,stopping,observation}:{conversation?:ContentConversation;submitting?:boolean;stopping?:boolean;observation?:FeedbackObservation}){
  const [now,setNow]=useState(Date.now);
+ const intakeReceipt=receivedContentIntake(conversation);
  const failure=observation?.taskId===conversation?.taskId?observation?.executionFailure:null;
- const active=!failure&&(!!submitting||!!stopping||["running","pending"].includes(conversation?.status??""));
+ const active=!intakeReceipt&&!failure&&(!!submitting||!!stopping||["running","pending"].includes(conversation?.status??""));
  useEffect(()=>{if(!active)return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[active,conversation?.id]);
- if(!conversation)return null;
+ if(!conversation||intakeReceipt)return null;
  // 旧对话的列表状态可能已回到 idle；执行时间线仍保留已确认的终态。
  const terminal=conversation.execution?.timeline.findLast(e=>e.kind==="status");
  const status=failure?"error":conversation.status==="idle"&&terminal?.kind==="status"&&["cancelled","error","ended"].includes(terminal.status)?terminal.status:conversation.status;
