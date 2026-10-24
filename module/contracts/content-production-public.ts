@@ -35,6 +35,7 @@ export const CONTENT_PRODUCTION_PAUSE_TITLES: Record<string, string> = {
 };
 
 export const CONTENT_PRODUCTION_LANGUAGE_CONTEXT = [
+  "所有面向用户的执行进度、公开过程摘要、工具结果概述、错误说明与下一步提示均使用简体中文。只陈述已实际发生的动作和已返回的结果；不要输出隐藏推理或逐步思维链。不要把尚在执行的动作写成已完成。英文原始材料、品牌名、代码和引用保持原文，不能把它们当作过程摘要直接展示。",
   "Customer presentation uses Chinese business terms: Reference Pack = 品牌资料包; P0/P00 = 品牌深度文章; Pattern = 文章类型; blueprint/蓝图 = 写作方案; For a frozen article-pool release, Top20 means the supplied same-question citation pool ranked by actual reference counts; show the full pool separately and choose one or two blueprint references. Historical releases retain their original example meaning. Never replace a real article pool with two style examples.",
   `Question pattern display names: ${CONTENT_PRODUCTION_PATTERNS.map(([id, label]) => `${id} = ${label}`).join("; ")}. Example route A = 参考例文的文风; B = 使用工作流写作规范 for writing-requirements releases; the AI-answer-style meaning applies only to historical releases that explicitly freeze it. E1 = 确认问题与写作要求. Use these Chinese names in customer-facing progress, introductions, headings and choices instead of protocol abbreviations.`,
   "Keep original Runner commands, IDs, state, revisions, action values, Pack members, original review files and business deliverables unchanged. Read the full original review; present all its business content with only the controlled workflow labels translated. Never translate or paraphrase customer source text, quotations, code, source URLs or machine-readable JSON. Do not omit comparisons, evidence, choices or user confirmation pauses. Existing Sessions continue the same original Job. Name the unchanged review Markdown copies already requested for customer outputs review_<status>_r<revision>.md; the application provides Chinese display copies and external download aliases, which never replace originals or become Runner inputs.",
@@ -113,6 +114,17 @@ export function contentProductionTaskTitle(title: string): string {
     撰写单问题文章: "围绕问题写文章",
   };
   return labels[suffix] ? title.slice(0, start) + labels[suffix] : title;
+}
+
+/** 仅按工作流原生文件名归组；无法识别的文件仍保留在文件合集，不猜测所属阶段。 */
+export function contentProductionFilePhase(filename: string): number | null {
+  if (/(?:^|[_-])p0(?:[_-]|\.)|品牌(?:深度文章|长文)/iu.test(filename)) return 2;
+  if (/question_positioning|blueprint_confirmation|(?:article|question)[_-]blueprint|问题.*(?:定位|写作方案|正文|标题)|^article[_.-]/iu.test(filename)) return 5;
+  if (/pattern_confirmation|example_confirmation|article_pool|参考文章|文章池|文风|文章类型/iu.test(filename)) return 4;
+  if (/question_(?:selection|research)|response_brief|问答|监控|应答/iu.test(filename)) return 3;
+  if (/competitor_selection|reference_pack_input|企业资料|比较范围|市场研究/iu.test(filename)) return 0;
+  if (/core_positioning|reference[_ -]pack|核心定位|品牌资料包/iu.test(filename)) return 1;
+  return null;
 }
 
 /** Keep source provenance and extension. Only known workflow-generated names

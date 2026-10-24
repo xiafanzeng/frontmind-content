@@ -1,0 +1,192 @@
+import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
+import {createPortal} from "react-dom";
+import {useModuleSidebarTarget} from "@frontmind/module-ui/dashboard/ModuleShell";
+import {Archive,ArchiveRestore,ChevronDown,Folder,FolderOpen,Pin,Plus,X} from "lucide-react";
+import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
+import {useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
+import type {ContentBusinessClient} from "./runtime";
+import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput} from "../contracts/content-production";
+import {emptySubjectWorkspace,createSubjectFolder,bindSubjectChat,boundSubjectPack,latestSubjectPack,switchSubjectPack,updateSubjectChatMetadata,type ContentSubjectWorkspace as SubjectState} from "../contracts/content-subject-workspace";
+import {ContentCreationLane,contentCreationTranscriptAnchors} from "./ContentCreationLane";
+import {useComposerConfirmation,contentConfirmationActionLabel} from "./useComposerConfirmation";
+import ContentProductionFailureNotice from "./ContentProductionFailureNotice";
+import "./content-subject-workspace.css";
+
+/** 主体、版本与聊天属于业务层；预览和正式宿主共用本组件。 */
+export default function ContentSubjectWorkspace({client}:{client:ContentBusinessClient}) {
+ const host=useContentWorkspaceHost();
+ const sidebarTarget=useModuleSidebarTarget();
+ const api=host.useConversation();
+ const {sendMessage}=host.useSendMessage();
+ const {Home,FilePreview}=host;
+ const [subjects,setSubjects]=useState<SubjectState>(emptySubjectWorkspace());
+ const stateRef=useRef(subjects);stateRef.current=subjects;
+ const [loaded,setLoaded]=useState(false),[saving,setSaving]=useState(false),[notice,setNotice]=useState("");
+ const writing=useRef(false),readSequence=useRef(0);
+ const [folderId,setFolderId]=useState("");
+ const [task,setTask]=useState<TaskResponse|null>(null),[taskError,setTaskError]=useState("");
+ const [navigation,setNavigation]=useState<ContentTranscriptNavigation>();
+ const [inspected,setInspected]=useState<number|null>(null);
+ const [modal,setModal]=useState<"folder"|"chat"|null>(null),[name,setName]=useState(""),[chatTitle,setChatTitle]=useState(""),[chatKind,setChatKind]=useState<"pack"|"article"|"">("");
+ const [assignConversation,setAssignConversation]=useState<string|null>(null);
+ const pendingCreate=useRef<{id:string;title:string;folderId:string;kind:"pack"|"article"}|null>(null);
+ const sourceNavigation=useRef<{conversationId:string;stageIndex:number}|null>(null);
+ const [formFolder,setFormFolder]=useState(""),[preview,setPreview]=useState<string|null>(null);
+ const [showArchived,setShowArchived]=useState<Record<string,boolean>>({}),[showAll,setShowAll]=useState<Record<string,boolean>>({});
+ const [localChoices,setLocalChoices]=useState<Record<string,{style?:"A"|"B";requirements?:string}>>({});
+ const current=api.activeConversation;
+ const currentRef=useRef(current?.id);currentRef.current=current?.id;
+ const binding=current?subjects.bindings[current.id]:undefined;
+ const folder=subjects.folders.find(item=>item.id===(binding?.folderId||folderId))??subjects.folders[0];
+ const pack=current&&binding?boundSubjectPack(subjects,current.id):null;
+ const latest=folder?latestSubjectPack(subjects,folder.id):null;
+ const progress=task?.id===current?.taskId?task?.contentProduction??null:null;
+ const turnFailed=Boolean(progress?.executionFailure)||["error","failed","cancelled"].includes(task?.status??"");
+ const busy=saving||["running","pending"].includes(current?.status??"");
+ const missing=Boolean(binding?.kind==="article"&&!pack);
+ const choiceKey=`${current?.id}:${progress?.runnerRevision??"idle"}`;
+ const choices=localChoices[choiceKey]??{};
+ // 尚无任务时只核对本次输入，不把本地修订号 0 投影成原生 Runner 停点。
+ const startupConfig:ContentProductionInput|null=loaded&&current&&!current.taskId&&binding?{mode:binding.kind==="pack"?(latest?"refresh_reference_pack":"new_reference_pack"):pack?.includesP0?"single_article":"p0",enterpriseName:folder?.name??current.title,knowledgeSource:"files",monitoringAnswerAssetIds:[]}:null;
+ const startupReview:ContentProductionDto|null=startupConfig?{
+  mode:startupConfig.mode,enterpriseName:startupConfig.enterpriseName,workflowVersion:"input-review-only",
+  workflowStatus:null,currentStage:null,jobKind:null,runnerRevision:0,pauseTitle:null,choices:[],productionStep:null,
+  confirmation:null,progressPosition:0,completedConfirmations:[],
+  availableActions:binding?.kind==="pack"?["provide_reference_pack_inputs"]:["choose_question","provide_question_research_inputs"],
+  knowledgeBase:null,source:"awaiting_runner",
+ }:null;
+
+ const readSubjects=useCallback(async()=>{
+  if(!client.readSubjectWorkspace)throw new Error("当前宿主尚未接入主体资料库。");
+  const sequence=++readSequence.current;
+  const value=await client.readSubjectWorkspace();
+  if(sequence===readSequence.current&&!writing.current){stateRef.current=value;setSubjects(value);setLoaded(true);}
+ },[client]);
+ useEffect(()=>{let cancelled=false;void readSubjects().catch(error=>{if(!cancelled)setNotice(error.message);});return()=>{cancelled=true;readSequence.current++;};},[readSubjects]);
+ async function changeSubjects(operation:(value:SubjectState)=>SubjectState){
+  if(writing.current)throw new Error("正在保存，请稍候。");
+  if(!client.saveSubjectWorkspace)throw new Error("当前宿主不能保存主体资料库。");
+  writing.current=true;setSaving(true);readSequence.current++;
+  try{const next=operation(stateRef.current);const saved=await client.saveSubjectWorkspace(next);stateRef.current=saved;setSubjects(saved);setNotice("");return saved;}
+  catch(error){setNotice(error instanceof Error?error.message:"保存失败，修改尚未提交。");throw error;}
+  finally{writing.current=false;setSaving(false);}
+ }
+ const report=(operation:()=>Promise<unknown>)=>{void operation().catch(()=>{});};
+ useEffect(()=>{setInspected(null);setNavigation(undefined);setTask(null);setTaskError("");setPreview(null);},[current?.id]);
+ useEffect(()=>{const target=sourceNavigation.current;if(!target||current?.id!==target.conversationId)return;const anchor=contentCreationTranscriptAnchors(current.messages).get(target.stageIndex);if(!anchor)return;sourceNavigation.current=null;setInspected(target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:anchor,sequence:(previous?.sequence??0)+1}));},[current?.id,current?.messages]);
+ useEffect(()=>{
+  const id=current?.taskId,conversationId=current?.id;if(!id)return;
+  let disposed=false,timer:ReturnType<typeof setTimeout>;const controller=new AbortController();
+  async function read(){try{const value=await client.task(id!,controller.signal);if(disposed||currentRef.current!==conversationId)return;if(value.id!==id)throw new Error("任务与当前聊天不匹配。");setTask(value);setTaskError("");await readSubjects();}catch(error){if(!disposed)setTaskError(error instanceof Error?error.message:"阶段读取失败。");}finally{if(!disposed)timer=setTimeout(read,2500);}}
+  void read();return()=>{disposed=true;controller.abort();clearTimeout(timer);};
+ },[current?.taskId,current?.id,client,readSubjects]);
+ const refreshAfterSend=async()=>{await api.refreshConversations?.();if(current?.taskId){const next=await client.task(current.taskId);if(currentRef.current===current.id)setTask(next);}await readSubjects();};
+ const confirmationKey=turnFailed?null:startupReview&&current&&binding?`${current.id}:input-review:${binding.folderId}:${binding.kind}:${binding.packVersionId??"none"}:${binding.generation}:${latest?.id??"none"}`:progress?.confirmation&&current?`${current.id}:${current.taskId}:${binding?.generation}:${binding?.packVersionId}:${progress.runnerRevision}:${progress.confirmation}`:null;
+ const confirmation=useComposerConfirmation(confirmationKey,startupReview??progress,async(prompt,files,action)=>{
+  if(turnFailed||binding?.restartRequired||currentRef.current!==current?.id)return false;
+  const accepted=await sendMessage(prompt,files,!current?.taskId&&startupConfig
+   ?{contentProduction:startupConfig,contentWorkflowGeneration:binding?.generation??0}
+   :{contentProductionAction:action,contentWorkflowPosition:contentProductionStagePosition(progress?.currentStage??null,progress?.workflowStatus??null),contentWorkflowStatus:progress?.workflowStatus??undefined,contentWorkflowGeneration:binding?.generation??0,contentWorkflowKind:progress?.jobKind??undefined});
+  if(accepted===false)return false;
+  // 已被服务器接受的提交不可因随后读取失败而再次发送。
+  try{await refreshAfterSend();}catch{setNotice("已提交，状态读取失败，请刷新查看记录，勿重复提交。");}
+  return true;
+ },setNotice);
+ host.useWorkspaceDraftGuard({dirty:modal!==null&&Boolean(name.trim()||chatTitle.trim()||chatKind),label:"新建主体或聊天"});
+ const navigate=(id:string)=>host.requestWorkspaceNavigation(()=>{api.setActive(id);setNotice("");});
+ const openPack=(stageIndex?:number)=>{if(pack){if(stageIndex!==undefined)sourceNavigation.current={conversationId:pack.sourceConversationId,stageIndex};navigate(pack.sourceConversationId);}else if(folder){const source=Object.entries(subjects.bindings).find(([id,item])=>item.folderId===folder.id&&item.kind==="pack"&&!item.archived&&api.state.conversations.some(row=>row.id===id));if(source)navigate(source[0]);else openChat(folder.id,"pack");}};
+ function openChat(id=folder?.id??"",kind:"pack"|"article"|""=""){setAssignConversation(null);setFormFolder(id);setChatKind(kind);setChatTitle(kind==="pack"?"资料包创建与修改":kind==="article"?"新文章书写":"");setName("");setModal("chat");setNotice("");}
+ function openFolder(){setName("");setChatTitle("");setChatKind("");setModal("folder");setNotice("");}
+ async function create(){
+  try{
+   if(modal==="folder"){
+    const id=crypto.randomUUID();await changeSubjects(value=>createSubjectFolder(value,name,id));setFolderId(id);setFormFolder(id);setName("");setModal("chat");return;
+   }
+   if(!chatKind||!chatTitle.trim()||!formFolder)return;
+   if(!api.saveConversation)throw new Error("当前宿主不能保存聊天。");
+   const previous=pendingCreate.current;
+   const id=assignConversation??(previous?.folderId===formFolder&&previous.kind===chatKind&&previous.title===chatTitle.trim()?previous.id:crypto.randomUUID()),now=Date.now();
+   pendingCreate.current={id,title:chatTitle.trim(),folderId:formFolder,kind:chatKind};
+   const row:ContentConversation={id,title:chatTitle.trim(),purpose:"content_production",status:"idle",messages:[],createdAt:now,updatedAt:now};
+   if(!assignConversation&&!api.state.conversations.some(item=>item.id===id))await api.saveConversation(row);
+   await changeSubjects(value=>bindSubjectChat(value,{conversationId:id,folderId:formFolder,kind:chatKind}));
+   pendingCreate.current=null;setAssignConversation(null);setModal(null);setChatTitle("");setChatKind("");setFolderId(formFolder);api.setActive(id);
+  }catch(error){setNotice(error instanceof Error?error.message:"创建失败，请重试。");}
+ }
+ async function switchPack(versionId:string){
+  if(!current||!versionId||versionId===pack?.id||busy||confirmation.pending)return;
+  try{await changeSubjects(value=>switchSubjectPack(value,{conversationId:current.id,versionId,hasTask:Boolean(current.taskId)}));await refreshAfterSend();setInspected(null);setNotice("已切换资料包。后续写作须按新资料重新确认；此前交付保留为历史。");}catch{}
+ }
+ function setMetadata(id:string,patch:{pinned?:boolean;archived?:boolean}){report(async()=>{await changeSubjects(value=>updateSubjectChatMetadata(value,id,patch));if(patch.archived&&current?.id===id){const next=api.state.conversations.find(row=>row.id!==id&&!stateRef.current.bindings[row.id]?.archived);if(next)navigate(next.id);}});}
+ const setChoice=(patch:{style?:"A"|"B";requirements?:string})=>setLocalChoices(previous=>({...previous,[choiceKey]:{...previous[choiceKey],...patch}}));
+ async function stage(prompt:string,files:File[]){
+  if(turnFailed){setNotice("本轮执行已停止，请先处理失败原因，再明确发起下一轮。");return false;}
+  if(!loaded||!binding){setNotice("请先将当前聊天归入一个主体文件夹，再继续提交。");return false;}
+  if(!current||missing||busy||binding.restartRequired){setNotice(binding.restartRequired?"资料包已变更，当前宿主尚未完成重新绑定，请先刷新。":"请先完成当前文件夹的资料包。");return false;}
+  const attachmentError=files.map(file=>client.validateAttachment?.(file)).find(Boolean);
+  if(attachmentError){setNotice(attachmentError);return false;}
+  setInspected(null);setNavigation(previous=>({conversationId:current.id,latest:true,sequence:(previous?.sequence??0)+1}));
+  if(!current.taskId)return confirmation.stage(prompt,files);
+  if(!progress?.confirmation){setNotice("当前没有待确认的写作步骤，请先读取阶段。");return false;}
+  let text=prompt;
+  if(progress.availableActions.includes("choose_examples")&&progress.choices.some(item=>item.includes("文章池"))){
+   const style=/^(?:文风\s*[:：]?\s*|方案\s*)?([AB])$/iu.exec(prompt.trim());
+   if(style&&files.length===0){setChoice({style:style[1].toUpperCase() as "A"|"B"});setNotice("文风已记录。请在底部继续填写 1—2 个构思参考编号，或“不采用”；核对卡片后再提交。");return true;}
+   if(choices.style&&/^(?:文章池\s*[:：]\s*)?(?:不采用|\d+(?:[、,，\s]+\d+)?)$/u.test(prompt.trim()))text=`文风：${choices.style}；文章池：${prompt.replace(/^文章池\s*[:：]\s*/u,"").trim()}`;
+  }
+  if(progress.availableActions.includes("submit_response_brief")){
+   if(files.length===0&&/^(?:无额外要求|额外要求\s*[:：]\s*[^；;\n]+)$/u.test(prompt.trim())){setChoice({requirements:prompt.trim()});setNotice("已记录企业应答要求。请继续判断品牌认知：充分、不充分或不确定。");return true;}
+   if(choices.requirements&&/^(?:品牌认知\s*[:：]\s*)?(?:充分|不充分|不确定)$/u.test(prompt.trim()))text=`${choices.requirements.startsWith("额外要求")?choices.requirements:`额外要求：${choices.requirements}`}；品牌认知：${prompt.replace(/^品牌认知\s*[:：]\s*/u,"").trim()}`;
+  }
+  return confirmation.stage(text,files);
+ }
+ function action(label:string,prompt:string){return <button key={label} type="button" className="cp-subject-action" disabled={busy||Boolean(confirmation.pending)} onClick={()=>report(()=>stage(prompt,[]))}>{label}</button>;}
+ function actions():ReactNode {
+  if(turnFailed)return null;
+  const has=(kind:string)=>progress?.availableActions.some(item=>item===kind);
+  if(has("choose_question"))return progress?.choices.filter(item=>/^\d+[.．、]\s*/u.test(item)).map(item=>action(item,`选择问题：${item.replace(/^\d+[.．、]\s*/u,"")}`));
+  if(has("choose_core_positioning_direction"))return progress?.choices.flatMap(item=>{const match=/方向\s*([A-C1-3])/iu.exec(item);return match?[action(item,`方向：${match[1]}`)]:[];});
+  if(has("choose_p0_route"))return action("先制作品牌长文","新建 P0");
+  if(has("choose_p0_examples"))return <>{action("采用工作流写作规范","P0 文风：工作流写作规范")}{action("查看匹配例文","P0 文风：Top20")}</>;
+  if(has("confirm_competitors"))return action(progress?.jobKind==="article"?"确认本题两家比较对象":"确认比较范围","确认比较对象");
+  if(has("confirm_core_positioning"))return action("确认核心定位","确认核心定位");
+  if(has("confirm_pattern"))return <>{action("P01 · 集中介绍本主体","文章类型：P01")}{action("P02 · 本主体＋两家比较对象","文章类型：P02")}</>;
+  if(has("choose_examples"))return <>{action("方案 A · 参考匹配例文写法","文风：A")}{action("方案 B · 工作流写作规范","文风：B")}{choices.style&&<span>已选文风 {choices.style}；请从底部填写构思参考，或“不采用”。</span>}</>;
+  if(has("submit_response_brief"))return choices.requirements?<>{["充分","不充分","不确定"].map(item=>action(item,item))}</>:action("无额外要求","无额外要求");
+  if(has("confirm_question_positioning"))return action("确认本题定位，生成蓝图","确认问题定位");
+  if(has("confirm_blueprint")||has("confirm_p0_blueprint"))return action("确认蓝图，开始写作","确认写作方案");
+  return null;
+ }
+ const handoff=!turnFailed&&["4.13.2-v16.8-app1","4.13.2-v16.8.3"].includes(progress?.workflowVersion??"")&&["positioning_ready","p0_ready"].includes(progress?.workflowStatus??"");
+ async function continueWriting(){if(!handoff)return;try{await sendMessage(progress?.workflowStatus==="positioning_ready"?"继续 P0":"继续问题文章");await refreshAfterSend();}catch(error){setNotice(error instanceof Error?error.message:"接续失败。");}}
+ const footer=<div className="cp-subject-turn" hidden={inspected!==null}>
+  {current&&(!current.taskId||!current.messages.length)&&<p className="cp-subject-question">{binding?.kind==="pack"?"可直接输入主体简介、产品或服务介绍，也可从底部上传资料。":"已自动引用同主体资料包。请从底部输入本篇题目、目标或表达要求。"}</p>}
+  {client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"&&!message.generalChatDispatch)&&<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>}
+  {client.attachmentHint&&(startupReview??progress)?.availableActions.some(kind=>kind==="provide_reference_pack_inputs"||kind==="provide_question_research_inputs")&&<p className="cp-subject-question">{client.attachmentHint}</p>}
+  {progress?.pauseTitle&&<div className="cp-subject-question"><span>当前需要确认</span><strong>{progress.pauseTitle}</strong></div>}
+  <div className="cp-subject-actions">{actions()}</div>
+  {handoff&&<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" disabled={busy} onClick={()=>report(continueWriting)}>{progress?.workflowStatus==="positioning_ready"?"继续制作品牌长文":"继续问题与监控数据"}</button></div>}
+  {confirmation.pending&&<section className="cp-subject-confirmation" aria-label="输入确认卡片"><strong>{startupReview?"核对本次输入":contentConfirmationActionLabel(confirmation.pending.action)}</strong>{startupReview&&<span>仅核对输入，生成尚未启动。</span>}<p>{confirmation.pending.prompt}</p>{confirmation.pending.files.map((file,i)=><span key={i}>{file.name}</span>)}<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" disabled={confirmation.submitting} onClick={()=>report(confirmation.confirm)}>{confirmation.submitting?"正在提交…":"确认提交"}</button><button type="button" className="cp-subject-action" disabled={confirmation.submitting} onClick={confirmation.cancel}>返回修改</button></div></section>}
+ </div>;
+ const row=(conversation:ContentConversation)=>{const metadata=subjects.bindings[conversation.id];return <div key={conversation.id} className="cp-subject-chat" data-current={current?.id===conversation.id}><button type="button" className="cp-subject-chat-name" aria-current={current?.id===conversation.id?"page":undefined} title={conversation.title} onClick={()=>navigate(conversation.id)}>{conversation.title}</button><div className="cp-subject-tools">{metadata?.archived?<button type="button" aria-label={`恢复聊天：${conversation.title}`} onClick={()=>setMetadata(conversation.id,{archived:false})}><ArchiveRestore size={14}/></button>:<><button type="button" aria-label={`${metadata?.pinned?"取消置顶":"置顶聊天"}：${conversation.title}`} aria-pressed={Boolean(metadata?.pinned)} onClick={()=>setMetadata(conversation.id,{pinned:!metadata?.pinned})}><Pin size={14}/></button><button type="button" aria-label={`归档聊天：${conversation.title}`} onClick={()=>setMetadata(conversation.id,{archived:true})}><Archive size={14}/></button></>}</div></div>;};
+ const updateAvailable=pack&&latest&&pack.id!==latest.id;
+ const outputs=current?.messages.filter(item=>item.role==="assistant").flatMap(item=>item.outputFiles??[])??[];
+ const previewPack=subjects.folders.flatMap(item=>item.versions).find(item=>item.id===preview);
+ const subjectNavigation=(
+  <nav className={`cp-subject-nav ${sidebarTarget?"cp-subject-nav--sidebar":""}`} aria-label="主体文件夹与聊天"><header><h2>主体文件夹</h2><button type="button" aria-label="新建主体文件夹" onClick={openFolder} disabled={!loaded||busy}><Plus size={18}/></button></header><button type="button" className="cp-subject-new-chat" onClick={()=>openChat()} disabled={!folder||busy}>＋ 新建聊天</button>
+   {subjects.folders.map(item=>{const all=api.state.conversations.filter(value=>subjects.bindings[value.id]?.folderId===item.id),live=all.filter(value=>!subjects.bindings[value.id].archived).sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned))),archived=all.filter(value=>subjects.bindings[value.id].archived),expanded=item.expanded!==false;const visible=showAll[item.id]?live:live.slice(0,5);if(current&&live.includes(current)&&!visible.includes(current))visible.splice(4,1,current);return <section className="cp-subject-group" key={item.id}><div className="cp-subject-folder-row"><button type="button" className="cp-subject-folder-name" aria-expanded={expanded} onClick={()=>{const different=folder?.id!==item.id;const operation=()=>{setFolderId(item.id);if(different)api.setActive(live[0]?.id??"");report(()=>changeSubjects(value=>({...value,revision:value.revision+1,folders:value.folders.map(f=>f.id===item.id?{...f,expanded:different?true:!expanded}:f)})));};if(different)host.requestWorkspaceNavigation(operation);else operation();}}>{expanded?<FolderOpen size={16}/>:<Folder size={16}/>}<span>{item.name}</span></button><button type="button" aria-label={`在${item.name}中新建聊天`} onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button></div>{expanded&&<>{visible.map(row)}{!live.length&&<p className="cp-subject-nav-empty">暂无聊天</p>}{live.length>5&&<button type="button" className="cp-subject-more" onClick={()=>setShowAll(value=>({...value,[item.id]:!value[item.id]}))}>{showAll[item.id]?"收起显示":"展开显示"}</button>}{archived.length>0&&<><button type="button" className="cp-subject-more" onClick={()=>setShowArchived(value=>({...value,[item.id]:!value[item.id]}))}>{showArchived[item.id]?"收起归档":"已归档"}（{archived.length}）</button>{showArchived[item.id]&&archived.map(row)}</>}</>}</section>;})}
+   {api.state.conversations.some(value=>!subjects.bindings[value.id])&&<section className="cp-subject-group"><h3>未归档聊天</h3>{api.state.conversations.filter(value=>!subjects.bindings[value.id]).map(row)}</section>}
+  </nav>
+ );
+ return <section className={`cp-subject-workspace ${sidebarTarget?"is-sidebar-integrated":""}`} aria-label="主体文件夹与内容创作">
+  {sidebarTarget?createPortal(subjectNavigation,sidebarTarget):subjectNavigation}
+  <main className="cp-subject-main"><header className="cp-subject-heading"><div className="cp-subject-crumb">{folder?.name??"主体文件夹"} / {binding?.kind==="pack"?"资料包创建与修改":"文章书写"}</div><div className="cp-subject-title"><h1>{current?.title??folder?.name??"内容创作"}</h1>{binding&&<span>{binding.kind==="pack"?"资料包创建与修改":"文章书写"}</span>}</div><div className="cp-subject-reference"><span>{binding?.kind==="article"?pack?"自动引用":"等待资料包":"归档至"}</span><strong>{binding?.kind==="article"?pack?`${folder?.name}资料包 · v${pack.version}`:"当前文件夹尚无已确认资料包":`${folder?.name??"请选择主体"} / 主体资料包`}</strong>{(pack||latest)&&<button type="button" onClick={()=>setPreview((pack||latest)!.id)}>查看</button>}</div>{binding?.kind==="article"&&pack&&folder&&<div className="cp-subject-version"><label>引用版本<select aria-label="资料包引用版本" value={pack.id} disabled={busy||Boolean(confirmation.pending)} onChange={event=>report(()=>switchPack(event.target.value))}>{folder.versions.map(item=><option key={item.id} value={item.id}>v{item.version}{item.id===latest?.id?"（最新）":""}{item.includesP0?" · 含P0":""}</option>)}</select><ChevronDown size={12}/></label>{updateAvailable&&<><span>资料包已更新至 v{latest.version}，本篇仍引用 v{pack.version}</span><button type="button" onClick={()=>report(()=>switchPack(latest.id))} disabled={busy||Boolean(confirmation.pending)}>应用新版本</button></>}</div>}</header>
+   {(notice||taskError)&&<p className="cp-subject-notice" role="status">{notice||taskError}</p>}
+   <ContentProductionFailureNotice failure={progress?.executionFailure}/>
+   {current?(!binding?<div className="cp-subject-empty"><p>此聊天尚未归入主体文件夹，请先明确所属主体和聊天类型。</p><button type="button" className="cp-subject-primary" onClick={()=>{openChat();setAssignConversation(current.id);setChatTitle(current.title);}}>归入主体文件夹</button></div>:missing?<div className="cp-subject-empty"><p>{latest?`本主体已有已确认资料包 v${latest.version}，请引用后继续。`:"当前主体还没有已确认的资料包。请先完成资料包，再继续这篇文章。"}</p>{latest?<button type="button" className="cp-subject-primary" onClick={()=>report(()=>switchPack(latest.id))}>引用资料包 v{latest.version} 继续</button>:<button type="button" className="cp-subject-primary" onClick={()=>openPack()}>前往资料包聊天</button>}</div>:<div className="cp-subject-dialogue"><Home embedded operatorWorkspace hideSidebar hidePortalNavigation showKnowledgeBaseStarter={false} showAccountMenu={false} showSettings={false} purpose="content_production" knowledgeEditingBlocked={saving||Boolean(binding?.restartRequired)} transcriptNavigation={navigation} onReturnToLatest={()=>setInspected(null)} onComposerSubmit={stage} conversationFooter={footer}/></div>):<div className="cp-subject-empty"><p>{loaded?"请选择聊天，或在主体文件夹中新建聊天。":"正在读取主体与聊天…"}</p><button type="button" className="cp-subject-primary" onClick={()=>folder?openChat(folder.id):openFolder()} disabled={!loaded}>{folder?"新建聊天":"新建主体文件夹"}</button></div>}
+  </main>
+  <aside className="cp-subject-right"><ContentCreationLane progress={progress} messages={(current?.messages??[]).filter(message=>(message.contentWorkflowGeneration??0)===(binding?.generation??0))} packIncludesP0={Boolean(pack?.includesP0)} conversationId={current?.id??""} kind={binding?.kind??"pack"} boundPack={Boolean(pack)} inspectedStage={inspected} onOpenPack={pack?openPack:undefined} onNavigate={target=>{if(!current)return;setInspected(target.latest?null:target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:target.messageId,latest:target.latest,sequence:(previous?.sequence??0)+1}));}}/>{outputs.length>0&&<details className="cp-subject-files"><summary>交付文件（{new Set(outputs.map(file=>file.fileUrl)).size}）</summary>{[...new Map(outputs.map(file=>[file.fileUrl,file])).values()].map(file=><FilePreview key={file.fileUrl} file={{id:file.fileUrl,type:"file",name:file.fileName,blobUrl:file.fileUrl}}/>)}</details>}</aside>
+  <Dialog open={modal!==null} onOpenChange={value=>{if(!value)setModal(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{modal==="folder"?"新建主体文件夹":"新建聊天"}</DialogTitle><DialogDescription>{modal==="folder"?"输入企业、品牌或产品名称。":"选择所属主体和聊天类型，资料包将按主体自动引用。"}</DialogDescription>{modal==="folder"?<label>主体名称<input autoFocus value={name} onChange={event=>setName(event.target.value)} maxLength={40} placeholder="例如：示例品牌"/></label>:<><label>所属文件夹<select value={formFolder} onChange={event=>setFormFolder(event.target.value)}>{subjects.folders.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><fieldset><legend>聊天类型 · 必选</legend>{(["pack","article"] as const).map(kind=><label className="cp-subject-radio" key={kind}><input type="radio" name="subject-chat-kind" checked={chatKind===kind} onChange={()=>{setChatKind(kind);setChatTitle(kind==="pack"?"资料包创建与修改":"新文章书写");}}/><span>{kind==="pack"?"资料包创建与修改":"文章书写"}<small>{kind==="pack"?"整理资料、确认定位，创建或更新本主体资料包。":"自动引用同一主体的已确认资料包，在对话中完成写作。"}</small></span></label>)}</fieldset><label>聊天名称<input value={chatTitle} onChange={event=>setChatTitle(event.target.value)} maxLength={50}/></label>{chatKind==="article"&&<p>{(()=>{const item=subjects.folders.find(value=>value.id===formFolder),version=item?latestSubjectPack(subjects,item.id):null;return version?`将自动引用 ${item?.name}资料包 · v${version.version}`:"本主体尚无资料包。创建文章后，需先完成同主体的资料包。";})()}</p>}</>}{notice&&<p role="alert">{notice}</p>}<div className="cp-subject-modal-actions"><button type="button" className="cp-subject-action" onClick={()=>setModal(null)}>取消</button><button type="button" className="cp-subject-primary" disabled={saving||(modal==="folder"?!name.trim():!formFolder||!chatKind||!chatTitle.trim())} onClick={()=>report(create)}>{saving?"正在保存…":modal==="folder"?"创建文件夹":"创建聊天"}</button></div></DialogContent></Dialog>
+  <Dialog open={Boolean(previewPack)} onOpenChange={value=>{if(!value)setPreview(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{folder?.name}资料包 · v{previewPack?.version}</DialogTitle><DialogDescription>已确认的资料包版本与原始交付。</DialogDescription>{previewPack&&<><p>来源聊天：{api.state.conversations.find(item=>item.id===previewPack.sourceConversationId)?.title??previewPack.sourceConversationId}</p><p>{previewPack.includesP0?"含品牌长文 P0":"主体资料与已确认定位"}</p><FilePreview file={{id:previewPack.file.fileUrl,type:"file",name:previewPack.file.fileName,blobUrl:previewPack.file.fileUrl}}/><button type="button" className="cp-subject-action" onClick={()=>{setPreview(null);navigate(previewPack.sourceConversationId);}}>查看来源聊天</button></>}</DialogContent></Dialog>
+ </section>;
+}

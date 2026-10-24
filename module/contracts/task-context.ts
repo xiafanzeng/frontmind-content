@@ -20,7 +20,7 @@ export type ContentWorkflowBinding = {
   rootDirectory: string;
   /** Frozen when the task starts, so future releases cannot change its execution route. */
   runtime?: "native_content_v1";
-  capabilities?: ("structured_article" | "editorial_v16_8")[];
+  capabilities?: ("structured_article" | "editorial_v16_8" | "session_phases")[];
 };
 
 export type SystemAttachment = {

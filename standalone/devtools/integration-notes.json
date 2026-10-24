@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "scope": "standalone 本地验收工具与 Vite 开发代理",
+  "changes": [
+    {
+      "path": "vite.config.ts",
+      "reason": "默认开发预览不依赖 5174；仅 FRONTMIND_REAL_BACKEND_BRIDGE=1 时启用收件桥代理，并阻止与本地生成模式同时启用。"
+    },
+    {
+      "path": "standalone/folder-demo-client.ts",
+      "reason": "将客户名称替换为示例品牌和示例设备；保留原有 ID、原生流程与版本引用语义。"
+    },
+    {
+      "path": "standalone/folder-demo-client.test.ts",
+      "reason": "同步匿名化示例名称，保留业务断言。"
+    }
+  ],
+  "addedPaths": [
+    "standalone/LOCAL_REVIEW.md",
+    "standalone/devtools/.gitignore",
+    "standalone/devtools/real_backend_bridge.py",
+    "standalone/devtools/test_real_backend_bridge_offline.py",
+    "standalone/devtools/integration-notes.json"
+  ],
+  "bridgePortability": {
+    "remoteOrigin": "https://content.frontmind.cn",
+    "bindAddress": "127.0.0.1:5174",
+    "credentialsEnvironment": "FRONTMIND_REAL_BACKEND_CREDENTIAL_FILE",
+    "credentialsDefault": "~/.codex/frontmind-private/content-gateway.json",
+    "dataEnvironment": "FRONTMIND_REAL_BACKEND_DATA_DIR",
+    "dataDefault": "standalone/devtools/.local-state/",
+    "dataIgnored": true,
+    "sourceIncludesCredentialsOrRuntimeData": false
+  },
+  "entrypointsVerified": [
+    {
+      "path": "standalone/folder-review.html",
+      "script": "/standalone/folder-review.tsx",
+      "changedByThisTask": false
+    },
+    {
+      "path": "standalone/folder-live.html",
+      "script": "/standalone/folder-live.tsx",
+      "changedByThisTask": false
+    }
+  ],
+  "limitations": [
+    "离线演示仅使用合成数据，不执行真实研究、生成或上传。",
+    "真实收件入口仅保存和读回真实附件及用户消息；不创建 Runner Job，不推进真实业务阶段。",
+    "主体目录和未确认草稿保存在本机被忽略的运行目录；没有实现正式后端主体目录存储。",
+    "默认正式客户端仍使用既有内容工作区；可选验收入口不等于完整主体流程已接入生产。",
+    "没有复制旧 lane-demo-data、任何客户附件、收据、状态、审计或网关凭据。"
+  ],
+  "validation": {
+    "pythonAst": {"files": 2, "exitCode": 0},
+    "bridgeOfflineTests": {"passed": 8, "exitCode": 0, "networkBlocked": true},
+    "demoTests": {"passed": 16, "exitCode": 0},
+    "viteProxyConfiguration": {
+      "defaultHasNoBridgeProxy": true,
+      "explicitOptInUses5174": true,
+      "exitCode": 0
+    },
+    "gitDiffCheck": {"exitCode": 0},
+    "privatePathAndCustomerNameScan": {"matches": 0},
+    "logsOutsideSourceTree": [
+      "standalone-bridge-ast.log",
+      "standalone-bridge-offline.log",
+      "standalone-demo-tests-final.log",
+      "standalone-vite-default-final.log",
+      "standalone-vite-opt-in-final.log"
+    ],
+    "initialFailures": [
+      "Windows 沙箱曾阻止 esbuild 读取父目录；获准仅本地读取后继续。",
+      "vendor/module-contracts 未构建导致首次 Vitest 启动失败；构建后 16 项通过。"
+    ]
+  }
+}

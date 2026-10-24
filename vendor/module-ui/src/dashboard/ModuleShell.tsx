@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { AgentWorkbenchShell } from "../components/AgentWorkbenchShell";
 import { OperatorThemeProvider } from "../components/ui/operator-theme";
 import { DashboardFrame } from "./DashboardFrame";
@@ -15,10 +15,13 @@ export type ModuleShellProps = {
   /** Business workbenches already render the shared thin top bar. */
   showViewTabs?: boolean;
   preview?: boolean;
-  navigationModules?: readonly { id: string; label: string; color: string; views: readonly { id: string; label: string }[] }[];
+  navigationModules?: readonly { id: string; label: string; color: string; href?: string; views: readonly { id: string; label: string }[] }[];
   requestNavigation?: (action: () => void) => void;
 };
 const SIDEBAR_KEY = "frontmind.operator.sidebarCollapsed";
+const ModuleSidebarTarget = createContext<HTMLElement | null>(null);
+/** 业务目录挂到当前模块下，保留同一主侧栏及其折叠行为。 */
+export function useModuleSidebarTarget() { return useContext(ModuleSidebarTarget); }
 export function ModuleShell({ module, views, activeView, onSelectView, children, showViewTabs = true, navigationModules, preview = false, requestNavigation = action => action() }: ModuleShellProps) {
   const immersive = ["knowledge", "enterprise-qa", "content"].includes(activeView);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -26,6 +29,7 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
   const [phone, setPhone] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);
   const [savedCollapsed, setSavedCollapsed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === "1"; } catch { return false; } });
   const sidebarRef = useRef<HTMLElement>(null);
+  const [sidebarTarget, setSidebarTarget] = useState<HTMLDivElement | null>(null);
   const collapsed = compact ? !mobileOpen : mobileOpen ? false : savedCollapsed;
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1279px)"), narrow = window.matchMedia("(max-width: 1023px)");
@@ -59,16 +63,16 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
   const select = (id: string) => { onSelectView(id); setMobileOpen(false); };
   const presentation = { ...module, actions: views.map(view => ({ id: view.id, label: view.label, color: view.color ?? module.color, active: view.id === activeView, kind: "open-panel" as const, run: () => select(view.id) })) };
   return <OperatorThemeProvider><ModulePresentationProvider module={presentation} requestNavigation={requestNavigation}>
-    <DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
+    <ModuleSidebarTarget.Provider value={sidebarTarget}><DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
       <aside ref={sidebarRef} role={mobileOpen && compact ? "dialog" : undefined} aria-modal={mobileOpen && compact ? true : undefined} aria-hidden={phone && !mobileOpen ? true : undefined} inert={phone && !mobileOpen ? true : undefined} id="operator-project-navigation" className="global-nav operator-sidebar" aria-label="工作区导航" data-collapsed={collapsed} data-entry="project">
-        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} />
+        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} activeModuleChildren={<div ref={setSidebarTarget} className="operator-module-children" />} />
         <div className="operator-sidebar-bottom"><StandaloneWorkspaceFooter collapsed={collapsed} onCollapse={collapse} workspaceLabel="FrontMind 开发工作区" accountLabel="FrontMind" /></div>
       </aside>
       <main className={`dashboard-main workbench-main ${immersive ? "knowledge-build-main" : ""}`}>
         {preview && <div className="module-preview-notice" role="status">本地预览 · 合成示例数据，不会执行真实业务</div>}
         {showViewTabs ? <AgentWorkbenchShell projectId="module-workspace" moduleId={activeView} title={views.find(view => view.id === activeView)?.label ?? module.label} layout="workspace" showLatestControl={false} main={children} /> : children}
       </main>
-    </DashboardFrame>
+    </DashboardFrame></ModuleSidebarTarget.Provider>
   </ModulePresentationProvider></OperatorThemeProvider>;
 }
 export default ModuleShell;

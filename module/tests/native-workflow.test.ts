@@ -4,12 +4,67 @@ import { parseContentRunnerState, reduceContentProductionProgress, contentProduc
 import { contentProductionSystemContext, contentWorkflowRuntimeFor } from "../server/runtime";
 import { assertContentConfirmation } from "../server/task-handlers";
 import type { FrozenContentTaskContext } from "../contracts/task-context";
+import release from "../workflows/release.json";
 
 const context: FrozenContentTaskContext = {
   revision: 1, accountUserId: 1, purpose: "content_production", knowledgeBase: null, knowledgeText: null,
   contentProduction: contentProductionInputSchema.parse({ mode: "single_article", enterpriseName: "合成企业", knowledgeSource: "files" }),
   contentWorkflow: { version: "4.13.2-v16.2", rootDirectory: "FrontMind_Content_Workflow_v4.13.2", filename: "workflow.zip", sha256: "a".repeat(64) },
 };
+
+it("原 Job 跨阶段接续保持进度与历史确认，不把资料包交付当成六步全部结束", () => {
+  const first = parseContentRunnerState(Buffer.from(JSON.stringify({...state("positioning_ready","reference_pack"),job_kind:"reference_pack",
+    metadata:{session_phase_contract:"frontmind-session-phases/1",completed_phase_confirmations:[]},
+    decisions:{core_positioning_confirmation:{confirmed:true}}})))!;
+  const before = reduceContentProductionProgress(null,{providerRank:1,eventId:"pack",artifactId:"pack-state",sha256:"a".repeat(64),state:first},"new_reference_pack");
+  expect(before.progressPosition).toBe(7);
+  const second = parseContentRunnerState(Buffer.from(JSON.stringify({...state("awaiting_p0_route","p0_route"),job_kind:"p0",revision:9,
+    updated_at:"2026-09-29T10:01:00+00:00",current_pause:{...state("awaiting_p0_route").current_pause,revision:9},
+    metadata:{session_phase_contract:"frontmind-session-phases/1",completed_phase_confirmations:["awaiting_core_positioning_confirmation"]}})))!;
+  const after = reduceContentProductionProgress(before,{providerRank:2,eventId:"p0",artifactId:"p0-state",sha256:"b".repeat(64),state:second},"new_reference_pack");
+  expect(after.lastObservation.state.job_id).toBe(first.job_id);
+  expect(after.lastObservation.state.job_kind).toBe("p0");
+  expect(after.progressPosition).toBe(8);
+  expect(after.completedConfirmations).toContain("awaiting_core_positioning_confirmation");
+});
+
+it("阶段接续指令只对新的应用修订启用，历史冻结任务不改变",()=>{
+  const current={...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.8-app1"}};
+  expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
+  expect(contentProductionSystemContext(current)).toContain("--next-task p0");
+  expect(contentProductionSystemContext({...current,contentWorkflow:{...current.contentWorkflow,version:"4.13.2-v16.8"}})).not.toContain("--next-task p0");
+});
+
+it("v16.8.3 冻结阶段接续能力，同时保留上游编辑规则和失败停止指令",()=>{
+  const current:FrozenContentTaskContext={...context,contentWorkflow:{...context.contentWorkflow!,
+    version:release.version,runtime:"native_content_v1",capabilities:["structured_article","editorial_v16_8","session_phases"]}};
+  const system=contentProductionSystemContext(current);
+  expect(release.version).toBe("4.13.2-v16.8.3");
+  expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
+  expect(system).toContain("--next-task p0");
+  expect(system).toContain("--pool-selection");
+  expect(system).toContain("Do not invoke --retry-current-action");
+  expect(system).not.toContain("the next P0/article is a separate task");
+  const previous={...current,contentWorkflow:{...current.contentWorkflow!,version:"4.13.2-v16.8.2",
+    capabilities:["structured_article","editorial_v16_8"] as ("structured_article"|"editorial_v16_8")[]}};
+  expect(contentProductionSystemContext(previous)).not.toContain("--next-task p0");
+  expect(contentProductionSystemContext(previous)).toContain("the next P0/article is a separate task");
+});
+
+it("阶段元数据与上游安全错误投影同时保留，不把错误资料包进度标成全部完成",()=>{
+  const observed=parseContentRunnerState(Buffer.from(JSON.stringify({
+    ...state("running_positioning_market_research","positioning_research"),job_kind:"reference_pack",
+    pending_action:{action:"positioning_market_research",error:{code:"tool_call_source_mismatch",attempt_id:"phase-attempt",message:"private provider detail"}},
+    metadata:{session_phase_contract:"frontmind-session-phases/1",completed_phase_confirmations:["awaiting_reference_pack_route"]},
+  })))!;
+  const progress=reduceContentProductionProgress(null,{providerRank:1,eventId:"phase-failure",artifactId:"phase-state",sha256:"c".repeat(64),state:observed},"new_reference_pack");
+  expect(progress.completedConfirmations).toContain("awaiting_reference_pack_route");
+  expect(progress.progressPosition).toBeLessThan(20);
+  expect(contentProductionPublicDto(context,{contentProductionProgress:progress})?.executionFailure).toEqual({
+    action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:"phase-attempt",
+  });
+  expect(JSON.stringify(observed)).not.toContain("private provider detail");
+});
 function state(status = "awaiting_question_selection", stage = "question_selection") {
   return {
     schema_version: "4.11", artifact_type: "frontmind_content_job_state", workflow_version: "4.11",

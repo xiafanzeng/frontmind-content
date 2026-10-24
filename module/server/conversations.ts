@@ -1,5 +1,7 @@
 import {Router,type Request} from "express";
 import {readConversationProcesses} from "../contracts/conversation-process";
+import {projectContentExecutionLanguage} from "../contracts/content-execution-language";
+import type {GeneralExecutionDto} from "@frontmind/module-contracts/execution";
 export interface ContentConversationSnapshot {id:string;purpose?:string;taskId?:string;messages:unknown[];[key:string]:unknown}
 export interface ContentConversationStore {
  list(request:Request):Promise<ContentConversationSnapshot[]>;
@@ -21,7 +23,7 @@ export function publicContentConversation(snapshot:ContentConversationSnapshot):
  // while retaining the existing live display when no native summary is present.
  const candidate=execution as {schemaVersion?:number;timeline?:unknown[]}|undefined;
  const fallback=candidate?.schemaVersion===1&&Array.isArray(candidate.timeline)?candidate:undefined;
- return {...business,...(fallback?{execution:fallback}:{}),processes:readConversationProcesses(processes)};
+ return {...business,...(fallback?{execution:projectContentExecutionLanguage(fallback as GeneralExecutionDto)}:{}),processes:readConversationProcesses(processes)};
 }
 
 export function createContentConversationRouter(store:ContentConversationStore):Router {

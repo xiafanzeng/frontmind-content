@@ -4,13 +4,22 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import release from "../workflows/release.json";
-import { freezeContentWorkflow, originalContentWorkflowArchive, workflowForTask } from "../server/workflow-catalog";
+import { freezeContentWorkflow, originalContentWorkflowArchive, workflowForTask, hasContentWorkflowCapability } from "../server/workflow-catalog";
 import { contentProductionSystemContext, contentWorkflowRuntimeFor } from "../server/runtime";
 import type { FrozenContentTaskContext } from "../contracts/task-context";
 
 const roots: string[] = [];
 const temporary = () => { const root = mkdtempSync(join(tmpdir(), "content-binding-")); roots.push(root); return root; };
 afterEach(() => { vi.unstubAllEnvs(); roots.forEach(root => rmSync(root, { recursive: true, force: true })); roots.length = 0; });
+
+it("phase continuation follows frozen capabilities without granting it to historical official releases",()=>{
+  const binding={version:"4.20.0",filename:"workflow.zip",rootDirectory:"workflow",sha256:"a".repeat(64),runtime:"native_content_v1" as const,
+    capabilities:["structured_article","editorial_v16_8","session_phases"] as ("structured_article"|"editorial_v16_8"|"session_phases")[]};
+  expect(hasContentWorkflowCapability(binding,"session_phases")).toBe(true);
+  expect(hasContentWorkflowCapability({...binding,capabilities:[]},"session_phases")).toBe(false);
+  expect(hasContentWorkflowCapability({...binding,version:"4.13.2-v16.8.2",capabilities:undefined},"session_phases")).toBe(false);
+  expect(()=>workflowForTask({contentWorkflow:{...binding,capabilities:["unknown_capability"]}} as unknown as FrozenContentTaskContext)).toThrow("CONTENT_WORKFLOW_BINDING_INVALID");
+});
 
 it("freezes module-owned execution capabilities with the exact archive and retains historical bytes", () => {
   const root = temporary(), next = temporary(), store = temporary();

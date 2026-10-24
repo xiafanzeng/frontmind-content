@@ -3,16 +3,19 @@ import type { GeneralExecutionDto } from "@frontmind/module-contracts/execution"
 import {createContext,useContext,type ComponentType,type ReactNode} from "react";
 import type {ContentProductionDto,ContentProductionInput,ContentProductionAction} from "../contracts/content-production";
 export type ContentOutputFile={fileUrl:string;fileName:string;mimeType:string};
-export type ContentMessage={id:string;role:"user"|"assistant";content:string;timestamp:number;serverSequence?:number;generalChat?:{turnId:string;providerEventId:string;isFinalAnswer?:boolean};outputFiles?:ContentOutputFile[];attachments?:{id:string;type:"file"|"image";name:string;fileId?:string}[];generalChatDispatch?:Record<string,unknown>};
+export type ContentMessage={id:string;role:"user"|"assistant";content:string;timestamp:number;serverSequence?:number;contentPhase?:number;contentWorkflowPosition?:number;contentWorkflowStatus?:string;contentWorkflowGeneration?:number;contentWorkflowKind?:"reference_pack"|"reference_pack_refresh"|"p0"|"article";generalChat?:{turnId:string;providerEventId:string;isFinalAnswer?:boolean};outputFiles?:ContentOutputFile[];attachments?:{id:string;type:"file"|"image";name:string;fileId?:string}[];generalChatDispatch?:Record<string,unknown>};
 export type ContentConversation={id:string;title:string;purpose?:"content_production"|"enterprise_qa";taskId?:string;previousResponseId?:string;status:string;messages:ContentMessage[];execution?:GeneralExecutionDto;processes?:ConversationProcess[];createdAt:number;updatedAt:number;executionKind?:"general_chat_v2"|"response_logic"};
 export type TaskResponse={id:string;purpose?:"content_production"|"enterprise_qa"|"general";status:string;contentProduction?:ContentProductionDto|null;output?:unknown[];metadata?:{task_title?:string};error?:{message?:string}};
-export type ContentSendOptions={purpose?:"content_production";contentProduction?:ContentProductionInput;contentProductionAction?:ContentProductionAction};
+export type ContentSendOptions={purpose?:"content_production";contentProduction?:ContentProductionInput;contentProductionAction?:ContentProductionAction;contentWorkflowPosition?:number;contentWorkflowStatus?:string;contentWorkflowGeneration?:number;contentWorkflowKind?:"reference_pack"|"reference_pack_refresh"|"p0"|"article"};
 export interface ContentConversationApi {
  state:{conversations:ContentConversation[]};activeConversation:ContentConversation|null;hydrated:boolean;
  createConversation(options:{title:string;reuseEmpty:false;purpose:"content_production"}):string;
  setActive(id:string):void;deleteConversation(id:string):void;
+ saveConversation?(value:ContentConversation):Promise<void>;
+ refreshConversations?():Promise<void>;
 }
-export type ContentHomeProps={embedded?:boolean;operatorWorkspace?:boolean;knowledgeEditingBlocked?:boolean;hideSidebar?:boolean;hidePortalNavigation?:boolean;showKnowledgeBaseStarter?:boolean;showAccountMenu?:boolean;showSettings?:boolean;purpose:"content_production";contentProduction?:ContentProductionInput;standardWelcomeVariant?:"simple";conversationFooter?:ReactNode};
+export type ContentTranscriptNavigation={conversationId:string;messageId?:string;latest?:boolean;sequence:number};
+export type ContentHomeProps={embedded?:boolean;operatorWorkspace?:boolean;knowledgeEditingBlocked?:boolean;hideSidebar?:boolean;hidePortalNavigation?:boolean;showKnowledgeBaseStarter?:boolean;showAccountMenu?:boolean;showSettings?:boolean;purpose:"content_production";contentProduction?:ContentProductionInput;standardWelcomeVariant?:"simple";conversationFooter?:ReactNode;transcriptNavigation?:ContentTranscriptNavigation;onReturnToLatest?():void;onComposerSubmit?(prompt:string,files:File[]):Promise<boolean|void>};
 export type ContentToolbarProps={tasks:ContentConversation[];currentId?:string;onNew():void;onSelect(id:string):void;onDelete(id:string):void;disabled:boolean;presentation:"panel";labels:{newAction:string;history:string;noun:string}};
 export interface ContentWorkspaceHost {
  connections?:{publishedKnowledge?:boolean};
