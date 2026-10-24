@@ -10,7 +10,7 @@ type TestRuntime = ContentConversationApi & {
   sendMessage(prompt: string): Promise<boolean>;
 };
 let runtime: TestRuntime;
-vi.mock("../client/ContentProductionWorkspace", () => ({
+vi.mock("../client/ContentSubjectWorkspace", () => ({
   default: function RuntimeProbe() {
     runtime = useContentWorkspaceHost().useConversation() as TestRuntime;
     return <output>{JSON.stringify(runtime.state.conversations)}</output>;
@@ -34,7 +34,7 @@ async function mount() {
   const list = vi.fn<ContentBusinessClient["list"]>().mockResolvedValue([structuredClone(initial)]);
   const dispatch = deferred<TaskResponse>();
   const client: ContentBusinessClient = {
-    list, save: vi.fn(async value => structuredClone(value)), remove: vi.fn(async () => {}),
+    list, readSubjectWorkspace: vi.fn(), saveSubjectWorkspace: vi.fn(), save: vi.fn(async value => structuredClone(value)), remove: vi.fn(async () => {}),
     upload: vi.fn(), dispatch: vi.fn(() => dispatch.promise),
     // Hold the automatic task probe. Each test controls list reads explicitly.
     task: vi.fn(() => new Promise<TaskResponse>(() => {})), stop: vi.fn(async () => {}),
