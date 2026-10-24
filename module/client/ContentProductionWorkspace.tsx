@@ -2,11 +2,12 @@ import {useCallback,useEffect,useRef,useState,type CSSProperties} from "react";
 import {Check,ChevronDown,FileText,Loader2,Plus,RefreshCw,Sparkles,X} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
 import {managedLocalAssetContentUrl} from "@frontmind/module-ui/lib/file-preview-source";
-import {useContentWorkspaceHost,type ContentConversation,type TaskResponse} from "./host";
+import {useContentWorkspaceHost,type ContentConversation,type TaskResponse,type ContentTranscriptNavigation} from "./host";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput,type ContentProductionJobKind,type ContentProductionMode} from "../contracts/content-production";
-import ContentProductionConfirmation from "./ContentProductionConfirmation";
 import ContentProductionFailureNotice from "./ContentProductionFailureNotice";
-import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionPauseTitle,contentProductionPublicText,contentProductionTaskTitle} from "../contracts/content-production-public";
+import {useComposerConfirmation,contentConfirmationActionLabel} from "./useComposerConfirmation";
+import {contentWorkflowTranscriptAnchors} from "./content-workflow-transcript";
+import {contentProductionArtifactName,contentProductionArtifactUrl,contentProductionPauseTitle,contentProductionTaskTitle} from "../contracts/content-production-public";
 import "./content-production.css";
 import "./content-workbench.css";
 const contentTheme = {"--module-accent":"#8a6100","--module-color":"#8a6100"} as CSSProperties;
@@ -62,8 +63,7 @@ export function contentProductionLane(
     },
   ];
   if (
-    mode === "new_reference_pack" ||
-    mode === "refresh_reference_pack" ||
+    (!jobKind && (mode === "new_reference_pack" || mode === "refresh_reference_pack")) ||
     jobKind === "reference_pack" ||
     jobKind === "reference_pack_refresh"
   )
@@ -79,9 +79,8 @@ export function contentProductionLane(
       : []),
   ];
   if (
-    mode === "p0" ||
-    mode === "foundation_article" ||
-    mode === "import_foundation"
+    jobKind === "p0" || (!jobKind && (mode === "p0" ||
+    mode === "foundation_article" || mode === "import_foundation"))
   )
     return [
       ...routeSteps,
@@ -163,53 +162,6 @@ export function contentArtifactUrl(value: string): string | null {
     return null;
   }
 }
-const CONTENT_SIX_STEPS = [
-  "企业资料与范围",
-  "确认定位与资料包",
-  "品牌长文",
-  "问题与监控数据",
-  "选题、类型与参考",
-  "蓝图、写作与交付",
-] as const;
-
-/** Map the existing Runner status contract to the six presentation stages.
- * This is display-only: it does not change task routing or confirmation actions. */
-export function contentProductionSixStep(
-  progress: ContentProductionDto | null,
-  modeKnown: boolean,
-  mode: ContentProductionMode,
-): number {
-  if (!progress) {
-    if (!modeKnown) return 0;
-    if (mode === "p0" || mode === "foundation_article" || mode === "import_foundation") return 2;
-    if (mode === "single_article") return 1;
-    return 0;
-  }
-  const status = progress.confirmation ?? progress.workflowStatus ?? "";
-  const position = contentProductionStagePosition(progress.currentStage, progress.workflowStatus);
-  if (progress.jobKind === "reference_pack" || progress.jobKind === "reference_pack_refresh") {
-    if (progress.executionFailure?.action === "positioning_market_research") return 1;
-    return ["awaiting_core_positioning_direction", "awaiting_core_positioning_confirmation"].includes(status) || position >= 5 ? 1 : 0;
-  }
-  if (progress.jobKind === "p0") return position >= 8 ? 2 : 1;
-  if (progress.jobKind === "article") {
-    if (position >= 17) return 5;
-    if (position >= 15) return 4;
-    if (position >= 13) return 3;
-    return 1;
-  }
-  if (["awaiting_core_positioning_direction", "awaiting_core_positioning_confirmation"].includes(status)) return 1;
-  if (["awaiting_p0_route", "awaiting_p0_example_confirmation", "awaiting_p0_blueprint_confirmation"].includes(status)) return 2;
-  if (["awaiting_question_selection", "awaiting_question_research_inputs", "awaiting_response_brief"].includes(status)) return 3;
-  if (["awaiting_pattern_confirmation", "awaiting_example_confirmation", "awaiting_competitor_selection"].includes(status)) return 4;
-  if (["awaiting_question_positioning_confirmation", "awaiting_blueprint_confirmation"].includes(status)) return 5;
-  if (position === 0) {
-    if (mode === "p0" || mode === "foundation_article" || mode === "import_foundation") return 2;
-    if (mode === "single_article") return 1;
-  }
-  return position >= 17 ? 5 : position >= 15 ? 4 : position >= 13 ? 3 : position >= 8 ? 2 : position >= 5 ? 1 : 0;
-}
-
 export function contentProductionFinished(
   progress: ContentProductionDto | null,
 ) {
@@ -250,6 +202,8 @@ function ContentProductionInner({
   const { sendMessage } = useSendMessage();
   const [showCreate, setShowCreate] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [inspectedLane, setInspectedLane] = useState<number | null>(null);
+  const [transcriptNavigation,setTranscriptNavigation] = useState<ContentTranscriptNavigation>();
   const taskCenterTrigger = useRef<HTMLElement | null>(null);
   const [taskCenterTab, setTaskCenterTab] = useState<"new" | "existing">("new");
   const [mode, setMode] = useState<ContentProductionMode | null>(null);
@@ -303,6 +257,7 @@ function ContentProductionInner({
   const handoffController = useRef<AbortController | null>(null);
   currentId.current = activeConversation?.id;
   const taskId = activeConversation?.taskId;
+  useEffect(() => setInspectedLane(null), [activeConversation?.id]);
   const task =
     taskRead &&
     taskRead.conversationId === activeConversation?.id &&
@@ -313,7 +268,7 @@ function ContentProductionInner({
   const input = activeConversation
     ? draftInputs[activeConversation.id]
     : undefined;
-  const activeMode = progress?.mode ?? input?.mode ?? "new_reference_pack";
+  const activeMode = progress?.jobKind === "p0" ? "p0" : progress?.jobKind === "article" ? "single_article" : progress?.mode ?? input?.mode ?? "new_reference_pack";
   const modeKnown = Boolean(progress || input);
   const modeLabel = !modeKnown
     ? taskId
@@ -614,6 +569,7 @@ function ContentProductionInner({
       progress?.jobKind === "reference_pack_refresh");
   const handoffAvailable =
     finished && (packFinished || progress?.jobKind === "p0");
+  const sessionPhases = ["4.13.2-v16.8-app1","4.13.2-v16.8.3"].includes(progress?.workflowVersion??"");
   const convertedToPack =
     packFinished &&
     !["new_reference_pack", "refresh_reference_pack"].includes(activeMode);
@@ -627,7 +583,6 @@ function ContentProductionInner({
           0,
           steps.findLastIndex((step) => position >= step.position),
         );
-  const sixStepIndex = contentProductionSixStep(progress, modeKnown, activeMode);
   const statusLabel = !modeKnown
     ? taskId
       ? "任务信息待读取"
@@ -650,6 +605,29 @@ function ContentProductionInner({
               ? "当前阶段"
               : "准备开始";
   const conversationMessages = activeConversation?.messages ?? [];
+  const nativeAnchors=contentWorkflowTranscriptAnchors(conversationMessages);
+  const stageAnchors=new Map<number,string>();
+  steps.forEach((step,index)=>{
+    const next=steps[index+1]?.position??21;
+    const entry=[...nativeAnchors].find(([at])=>at>=step.position&&at<next);
+    if(entry)stageAnchors.set(index,entry[1]);
+  });
+  // 已在本会话完成资料包时，P0/文章第一步回看真实资料包交付。
+  if(steps[0]?.title==="选择品牌资料包"&&nativeAnchors.has(7))stageAnchors.set(0,nativeAnchors.get(7)!);
+  if(!stageAnchors.has(0)){
+    const first=conversationMessages.find(message=>message.role==="user");
+    if(first)stageAnchors.set(0,first.id);
+  }
+  useEffect(()=>setInspectedLane(null),[progress?.jobKind]);
+  function viewConversationStage(index:number) {
+    if (!activeConversation) return;
+    const messageId = stageAnchors.get(index);
+    if (index !== currentStep && !messageId) return;
+    setInspectedLane(index === currentStep ? null : index);
+    setTranscriptNavigation(previous => ({conversationId:activeConversation.id,sequence:(previous?.sequence ?? 0)+1,
+      ...(index === currentStep ? {latest:true} : {messageId})}));
+  }
+
   const inputFiles = (() => {
     const files: InputAttachment[] = [];
     const seenFileIds = new Set<string>();
@@ -681,40 +659,10 @@ function ContentProductionInner({
   const packFiles = deliverables.filter((file) =>
     /\.zip$/i.test(file.fileName),
   );
-  const sixStepProgress = (
-    <section className="cp-six-progress" aria-label="内容制作六步进度">
-      <ol>
-        {CONTENT_SIX_STEPS.map((title, index) => {
-          const done = index < sixStepIndex || (finished && index === sixStepIndex);
-          const current = !done && index === sixStepIndex;
-          return (
-            <li key={title} className={done ? "is-done" : current ? "is-current" : ""} aria-current={current ? "step" : undefined}>
-              <span className="cp-six-step-marker">{done ? <Check size={13} aria-hidden="true" /> : index + 1}</span>
-              <span className="cp-six-step-title">{title}</span>
-            </li>
-          );
-        })}
-      </ol>
-      <div className="cp-six-progress-status" role={turnFailed ? "alert" : "status"}>
-        <strong>{CONTENT_SIX_STEPS[sixStepIndex]}</strong>
-        <span>{activeConversation ? (turnFailed ? statusLabel : progress?.pauseTitle ? `等待：${progress.pauseTitle}` : busy ? "正在处理当前步骤" : finished ? "当前任务已完成" : refreshing ? "正在读取阶段" : statusLabel) : "从企业资料与范围开始；选择目标后，后续确认会在当前对话中继续。"}</span>
-      </div>
-      {progress?.completedConfirmations.length ? (
-        <details className="cp-confirmed-context">
-          <summary>已完成的确认节点 <span>{progress.completedConfirmations.length}</span></summary>
-          <ul>
-            {progress.completedConfirmations.map((item) => (
-              <li key={item}>{contentProductionPauseTitle(item, null) ?? contentProductionPublicText(item)}</li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </section>
-  );
 
   async function prepareNextTask(
     nextMode: "p0" | "single_article",
-    file: Deliverable,
+    file?: Deliverable,
   ) {
     if (
       handoffLocked.current ||
@@ -724,6 +672,29 @@ function ContentProductionInner({
     )
       return;
     const conversationId = currentId.current;
+    if (sessionPhases) {
+      if (packFinished && nextMode !== "p0") {
+        setNotice("请先在当前任务完成品牌长文，再进入问题文章。");
+        return;
+      }
+      handoffLocked.current = true;
+      setHandoffPending(true);
+      setNotice("");
+      try {
+        const accepted = await sendMessage(nextMode === "p0"
+          ? `我明确请求沿用刚交付的品牌资料包，在当前原会话、原 Job 内继续 P0 品牌长文。当前修订号 ${progress.runnerRevision}；请使用原生阶段接续，不新建任务，停在下一处实际确认节点。`
+          : `我明确请求沿用刚完成的 P0 与最新资料包，在当前原会话、原 Job 内继续问题文章。当前修订号 ${progress.runnerRevision}；请使用原生阶段接续，不新建任务，不代选问题。`, []);
+        if (accepted === false) throw new Error("阶段接续尚未确认成功，请查看当前任务的提示。");
+        if (currentId.current === conversationId) await refresh();
+      } catch (error) {
+        if (currentId.current === conversationId) setNotice(error instanceof Error ? error.message : "阶段接续失败，请查看当前任务。");
+      } finally {
+        handoffLocked.current = false;
+        if (currentId.current === conversationId) setHandoffPending(false);
+      }
+      return;
+    }
+    if (!file) return;
     const source = { ...file };
     const name = progress.enterpriseName;
     const url = contentArtifactUrl(source.fileUrl);
@@ -952,33 +923,35 @@ function ContentProductionInner({
   const confirmationKey = confirmationConversation && progress?.confirmation
     ? `${confirmationConversation.id}:${taskId}:${progress.runnerRevision}:${progress.confirmation}`
     : null;
-  const confirmationView =
-    confirmationConversation && progress?.confirmation && progress.availableActions.length > 0 &&
-    !busy && !["running", "pending"].includes(task?.status ?? "") && acceptedConfirmation !== confirmationKey ? (
-      <ContentProductionConfirmation
-        key={confirmationKey}
-        progress={progress}
-        busy={busy}
-        onPendingChange={setConfirmationPending}
-        onAction={async (prompt, files, action) => {
-          const id = confirmationConversation.id;
-          if (currentId.current !== id)
-            throw new Error("任务已切换，请在当前任务重新确认。");
-          setNotice("");
-          const accepted = await sendMessage(prompt, files, {
-            contentProductionAction: action,
-          });
-          if (accepted === false)
-            throw new Error("本轮提交尚未确认成功，请查看任务回复中的提示。");
-          if (currentId.current === id) {
-            // Do not reopen the consumed pause while an older snapshot is still visible.
-            setAcceptedConfirmation(confirmationKey);
-            await refresh();
-          }
-        }}
-        onNotice={setNotice}
-      />
-    ) : null;
+  const confirmationEnabled = Boolean(confirmationConversation && progress?.confirmation && progress.availableActions.length &&
+    !busy && !["running","pending"].includes(task?.status ?? "") && acceptedConfirmation !== confirmationKey);
+  const composerConfirmation=useComposerConfirmation(confirmationEnabled?confirmationKey:null,progress,async(prompt,files,action)=>{
+    const id=confirmationConversation?.id;
+    if(!id||currentId.current!==id)throw new Error("任务已切换，请在当前任务重新确认。");
+    setNotice("");setConfirmationPending(true);
+    try {
+      const accepted=await sendMessage(prompt,files,{contentProductionAction:action,contentWorkflowPosition:position});
+      if(accepted===false)throw new Error("本轮提交尚未确认成功，请查看任务回复中的提示。");
+      if(currentId.current===id){setAcceptedConfirmation(confirmationKey);await refresh();}
+      return true;
+    }finally{setConfirmationPending(false);}
+  },setNotice);
+  useWorkspaceDraftGuard({dirty:Boolean(composerConfirmation.pending),label:"待确认的聊天输入与附件"});
+  const confirmationView=confirmationEnabled || composerConfirmation.pending ? (
+    <section className="cp-composer-confirmation" aria-label="本轮输入确认">
+      <div className="cp-composer-confirmation-heading"><span>{composerConfirmation.pending?"待提交":"本轮问题"}</span><strong>{contentProductionPauseTitle(progress?.confirmation??null,progress?.pauseTitle??null)??"当前内容确认"}</strong></div>
+      {composerConfirmation.pending ? <>
+        <p className="cp-composer-confirmation-hint">已提取：{contentConfirmationActionLabel(composerConfirmation.pending.action)}</p>
+        <p className="cp-composer-confirmation-text">{composerConfirmation.pending.prompt||"已选择本轮资料文件"}</p>
+        {composerConfirmation.pending.files.length>0&&<ul className="cp-composer-confirmation-files">{composerConfirmation.pending.files.map((file,index)=><li key={index}>{file.name}</li>)}</ul>}
+        <div className="cp-confirm-actions">
+          <button type="button" className="cp-primary" disabled={composerConfirmation.submitting} onClick={()=>void composerConfirmation.confirm()}>{composerConfirmation.submitting?"正在提交…":"确认提交"}</button>
+          <button type="button" className="cp-secondary" disabled={composerConfirmation.submitting} onClick={composerConfirmation.cancel}>返回修改</button>
+          <span className="cp-muted">{composerConfirmation.submitting?"请等待本轮提交结果":"尚未上传或发送"}</span>
+        </div>
+      </>:<p className="cp-composer-confirmation-hint">在底部输入或上传，发送后先整理为确认卡片。{composerConfirmation.hint}</p>}
+    </section>
+  ):null;
   const resultView = showResult ? (
     <div className={`cp-result-surface ${workbench ? "is-agent" : ""}`}>
         <aside className="cp-results" aria-label="任务进度与交付成果">
@@ -1003,6 +976,37 @@ function ContentProductionInner({
             </button>
           </header>
           <div className="cp-results-scroll">
+            <details
+              className="cp-progress"
+              open={sessionPhases || !finished}
+            >
+              <summary>
+                制作进度 <span>{statusLabel}</span>
+              </summary>
+              {!modeKnown ? (
+                <p className="cp-progress-empty">
+                  制作阶段将在本任务的信息读取后显示。
+                </p>
+              ) : (
+                <ol className="cp-lane" aria-label="内容制作进度">
+                  {steps.map((step,index)=>{
+                    const done=finished || index<currentStep;
+                    const current=!finished && index===currentStep;
+                    return <li key={step.title} className={done?"is-done":current?"is-current":""} aria-current={current?"step":undefined}>
+                      <span className="cp-step-icon">{done?<Check size={16}/>:index+1}</span>
+                      <div>
+                        {index===currentStep||stageAnchors.has(index)?<a className="cp-lane-step-link" data-lane-index={index}
+                          href={index===currentStep?"#content-chat-latest":`#content-message-${stageAnchors.get(index)}`}
+                          aria-current={(inspectedLane??currentStep)===index?"location":undefined}
+                          onClick={event=>{event.preventDefault();viewConversationStage(index);}}><strong>{step.title}</strong></a>
+                          :<span className="cp-lane-step-title" aria-disabled="true" title="本会话尚无该阶段的聊天记录"><strong>{step.title}</strong></span>}
+                        <p>{step.detail}</p>
+                      </div>
+                    </li>;
+                  })}
+                </ol>
+              )}
+            </details>
             {progress?.factGate && !progress.factGate.publishReady && <section className="cp-handoff" role="alert">
               <strong>事实校验未通过{progress.factGate.issueCount > 0 ? `：${progress.factGate.issueCount} 项` : ""}</strong>
               <p>{progress.factGate.categories.join("、")}。原稿和校验结果均已保存；返工会从全文编辑阶段重新运行。</p>
@@ -1024,42 +1028,7 @@ function ContentProductionInner({
                 } finally {startLocked.current=false;if(currentId.current===conversationId)setConfirmationPending(false);}
               }}>从编辑阶段返工</button>
             </section>}
-            <details
-              className="cp-progress"
-              open={!finished}
-            >
-              <summary>
-                制作进度 <span>{statusLabel}</span>
-              </summary>
-              {!modeKnown ? (
-                <p className="cp-progress-empty">
-                  制作阶段将在本任务的信息读取后显示。
-                </p>
-              ) : (
-                <ol className="cp-lane">
-                  {steps.map((step, index) => {
-                    const done = finished || index < currentStep;
-                    const current = !finished && index === currentStep;
-                    return (
-                      <li
-                        key={step.title}
-                      className={done ? "is-done" : current ? "is-current" : ""}
-                        aria-current={current ? "step" : undefined}
-                      >
-                        <span className="cp-step-icon">
-                          {done ? <Check size={16} /> : index + 1}
-                        </span>
-                        <div>
-                          <strong>{step.title}</strong>
-                          <p>{step.detail}</p>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </details>
-            {handoffAvailable && (
+            {handoffAvailable && !sessionPhases && (
               <section className="cp-handoff">
                 <strong>
                   {packFinished
@@ -1199,7 +1168,6 @@ function ContentProductionInner({
         </div>
         <span>FrontMind 内容智能体</span>
       </div>
-      {sixStepProgress}
       {activeConversation ? (
         <>
           {failedStart?.id === activeConversation.id && (
@@ -1236,7 +1204,19 @@ function ContentProductionInner({
               purpose="content_production"
               contentProduction={input}
               standardWelcomeVariant="simple"
-              conversationFooter={confirmationView ? <section className="cp-inline-confirmation"><div className="cp-inline-confirmation-heading"><span>当前需要确认</span><strong>{progress?.pauseTitle ?? statusLabel}</strong></div>{confirmationView}</section> : undefined}
+              transcriptNavigation={transcriptNavigation}
+              onReturnToLatest={() => setInspectedLane(null)}
+              onComposerSubmit={confirmationEnabled ? (prompt,files)=>{viewConversationStage(currentStep);return composerConfirmation.stage(prompt,files);} : undefined}
+              conversationFooter={<div hidden={inspectedLane !== null}>
+                {confirmationView}
+                {handoffAvailable && sessionPhases && <div className="cp-confirm-actions">
+                  <button type="button" className="cp-primary" disabled={handoffPending || busy || progress?.runnerRevision == null} onClick={() => void prepareNextTask(packFinished ? "p0" : "single_article")}>
+                    {handoffPending && <Loader2 size={16} className="animate-spin"/>}
+                    {packFinished ? "继续制作品牌长文" : "继续选择问题并写文章"}
+                  </button>
+                </div>}
+              </div>}
+
             />
           </div>
         </>

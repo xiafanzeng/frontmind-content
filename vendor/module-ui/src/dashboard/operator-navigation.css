@@ -1,4 +1,9 @@
 /* Navigation-specific layout. Kept separate so workspace styling can evolve independently. */
+.operator-module-children:empty,
+.operator-sidebar[data-collapsed="true"] .operator-module-children {
+  display: none;
+}
+.operator-module-children { min-width: 0; }
 .operator-module-nav {
   display: grid;
   gap: 4px;

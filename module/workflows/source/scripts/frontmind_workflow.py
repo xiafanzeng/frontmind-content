@@ -437,6 +437,7 @@ def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
         value["metadata"].update(article_pool_policy=article_pool.CONTRACT,
                                  question_positioning_handoff=question_positioning_handoff.CONTRACT,
                                  pattern_example_profile=recommendation_references.STYLE_PROFILE)
+    value["metadata"].update(session_phase_contract="frontmind-session-phases/1", completed_phase_confirmations=[])
     return value
 
 
@@ -6078,6 +6079,12 @@ def restart_p02_for_requirement_scope(job_root: Path, *, changes: dict, scope_ch
 
 def continue_workflow(args: argparse.Namespace) -> int:
     job_root = assert_regular_source(args.job_dir, allow_directory=True)
+    if getattr(args, "next_task", None):
+        allowed = {"command", "job_dir", "revision", "next_task", "func"}
+        if any(value for key, value in vars(args).items() if key not in allowed):
+            raise WorkflowError("阶段接续请单独提交，不能同时确认或重写其他阶段。")
+        from shared.session_phases import advance
+        return advance(sys.modules[__name__], args, job_root)
     if getattr(args, 'reject_fact_claim', []) and not getattr(args, 'repair_facts', False):
         raise WorkflowError('--reject-fact-claim 须与 --repair-facts 同时使用')
     if getattr(args, 'repair_facts', False):
@@ -6914,6 +6921,7 @@ def parser() -> argparse.ArgumentParser:
     cont.add_argument("--return-to-positioning-directions", action="store_true")
     cont.add_argument("--explore-positioning-alternatives", action="store_true")
     cont.add_argument("--p0-route", type=normalize_p0_route)
+    cont.add_argument("--next-task", choices=("p0", "article"), help="在当前原 Job 中显式接续已交付资料包或 P0；不创建新 Job")
     cont.add_argument("--p0-input", type=Path)
     cont.add_argument("--p0", type=Path, help=argparse.SUPPRESS)
     cont.add_argument("--accept-p0-example-route")

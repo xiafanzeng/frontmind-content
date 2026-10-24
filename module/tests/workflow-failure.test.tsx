@@ -37,9 +37,10 @@ it.each(["running", "completed"])("shows market research failure when the outer 
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("市场研究执行失败");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("tool_call_source_mismatch");
     expect(container.querySelector('[data-testid="shell-status"]')?.textContent).not.toContain("正在执行");
-    expect(container.querySelector('.cp-six-progress-status')?.textContent).toContain("确认定位与资料包本轮执行失败");
-    expect(container.querySelector('.cp-six-progress-status')?.textContent).not.toContain("正在处理");
-    expect(container.querySelector('.cp-six-progress [aria-current="step"]')?.textContent).toContain("确认定位与资料包");
+    expect(container.querySelector('.cp-progress > summary')?.textContent).toContain("本轮执行失败");
+    expect(container.querySelector('.cp-progress > summary')?.textContent).not.toContain("正在处理");
+    expect(container.querySelector('.cp-composer-confirmation')).toBeNull();
+    expect([...container.querySelectorAll('button')].some(button => /^(?:确认提交|继续制作品牌长文|继续问题与监控数据)$/u.test(button.textContent ?? ""))).toBe(false);
     expect(host.retrieveTask).toHaveBeenCalledWith("synthetic-task", expect.any(Object));
   } finally { await act(async () => root.unmount()); container.remove(); }
 });

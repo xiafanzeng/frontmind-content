@@ -67,6 +67,10 @@ const runnerStateSchema = z.object({
     article_blueprint_confirmation: decision.optional(),
   }),
   p0_route: z.enum(["create", "import"]).nullable(),
+  metadata: z.object({
+    session_phase_contract: z.literal("frontmind-session-phases/1").optional(),
+    completed_phase_confirmations: z.array(contentProductionConfirmationSchema).max(100).optional(),
+  }).optional(),
 });
 export type ContentRunnerObservation = {
   providerRank: number;
@@ -133,7 +137,8 @@ export function parseContentRunnerState(
 function completedRunnerConfirmations(
   state: ContentRunnerObservation["state"],
 ): ContentProductionConfirmation[] {
-  const result: ContentProductionConfirmation[] = [];
+  const result: ContentProductionConfirmation[] = state.metadata?.session_phase_contract === "frontmind-session-phases/1"
+    ? [...(state.metadata.completed_phase_confirmations ?? [])] : [];
   const decisions = state.decisions;
   if (decisions.reference_pack_route)
     result.push("awaiting_reference_pack_route");
@@ -161,7 +166,7 @@ function completedRunnerConfirmations(
     result.push("awaiting_question_positioning_confirmation");
   if (decisions.article_blueprint_confirmation)
     result.push("awaiting_blueprint_confirmation");
-  return result.filter((status) => status !== state.status);
+  return [...new Set(result)].filter((status) => status !== state.status);
 }
 
 export function reduceContentProductionProgress(
@@ -205,7 +210,9 @@ export function reduceContentProductionProgress(
     lastObservation: observation,
     progressPosition: Math.max(
       current?.progressPosition ?? 0,
-      isComplete ? 20 : Math.min(position, 19),
+      state.metadata?.session_phase_contract === "frontmind-session-phases/1"
+        ? state.job_kind === "article" && state.status === "completed" ? 20 : Math.min(position, 19)
+        : isComplete ? 20 : Math.min(position, 19),
     ),
     completedConfirmations: completedRunnerConfirmations(state),
   };

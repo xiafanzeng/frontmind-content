@@ -1,11 +1,11 @@
-import { useState, type CSSProperties } from "react";
+import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
 import { ChartNoAxesCombined, ChevronDown, Database, FolderOpen, PanelLeftClose, PanelLeftOpen, PenLine, Plus, Send, Settings, Sparkles, Target, Wrench } from "lucide-react";
 
-export type OperatorModuleNavigationItem = { id: string; label: string; color: string; active?: boolean };
+export type OperatorModuleNavigationItem = { id: string; label: string; color: string; active?: boolean; href?: string };
 const moduleIcons = { brand: Database, intent: Target, progress: ChartNoAxesCombined, content: PenLine, publish: Send, publishing: Send, extensions: Wrench };
 
 /** The Dashboard's original visual navigation, shared without account/project behavior. */
-export function OperatorModuleNavigation({ modules, onSelect, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void }) {
+export function OperatorModuleNavigation({ modules, onSelect, onNavigate, activeModuleChildren, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void; onNavigate?: (href: string) => void; activeModuleChildren?: ReactNode }) {
   const [modulesExpanded, setModulesExpanded] = useState(true);
   return <>
     <div className="operator-brand"><div className="operator-brand-logo"><img src={logoSrc} alt="FrontMind" /></div></div>
@@ -17,7 +17,24 @@ export function OperatorModuleNavigation({ modules, onSelect, logoSrc = new URL(
         </button>
       </h2>
       <div id="operator-brand-modules" className="operator-brand-modules" hidden={!modulesExpanded}>
-        {modules.map(module => { const Icon = moduleIcons[module.id as keyof typeof moduleIcons] ?? Database; return <button key={module.id} type="button" className={`operator-nav-entry operator-module-entry ${module.active ? "active" : ""}`} style={{ "--module-accent": module.color } as CSSProperties} title={module.label} aria-label={module.label} aria-current={module.active ? "page" : undefined} onClick={() => onSelect(module.id)}><Icon size={20} /><span>{module.label}</span></button>; })}
+        {modules.map(module => {
+          const Icon = moduleIcons[module.id as keyof typeof moduleIcons] ?? Database;
+          const common = {
+            className: `operator-nav-entry operator-module-entry ${module.active ? "active" : ""}`,
+            style: { "--module-accent": module.active ? "#5e6174" : module.color } as CSSProperties,
+            title: module.label,
+            "aria-label": module.label,
+            "aria-current": module.active ? "page" as const : undefined,
+          };
+          const content = <><Icon size={20} /><span>{module.label}</span></>;
+          return <Fragment key={module.id}>{module.href
+            ? <a {...common} href={module.href} onClick={event => {
+                if (!onNavigate || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                onNavigate(module.href!);
+              }}>{content}</a>
+            : <button {...common} type="button" onClick={() => onSelect(module.id)}>{content}</button>}{module.active && activeModuleChildren}</Fragment>;
+        })}
       </div>
     </nav>
   </>;

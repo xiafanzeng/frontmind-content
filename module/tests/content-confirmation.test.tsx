@@ -19,9 +19,10 @@ it('分别提交文风与文章池选择；缺选择或提交失败时保留草�
     await act(async()=>button.click());expect(action).not.toHaveBeenCalled();expect(notice).toHaveBeenCalled();
     const input=el.querySelector<HTMLInputElement>('input[aria-label="文章池构思参考"]')!;
     await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'1、5');input.dispatchEvent(new Event('input',{bubbles:true}));});
-    await act(async()=>button.click());
+    const submit=[...el.querySelectorAll('button')].find(b=>b.textContent==='确认文风与构思参考')!;
+    await act(async()=>submit.click());
     expect(action).toHaveBeenLastCalledWith(expect.stringContaining('文章池构思参考选择：1、5'),[],{kind:'choose_examples',revision:9,route:'B'});
     expect(action.mock.calls[0]![0]).toContain('AI 答案不作为文风样本');expect(input.value).toBe('1、5');
-    await act(async()=>button.click());expect(input.value).toBe('');
+    await act(async()=>submit.click());expect(input.value).toBe('');
   }finally{await act(async()=>root.unmount());el.remove();}
 });

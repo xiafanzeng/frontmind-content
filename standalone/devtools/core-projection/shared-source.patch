@@ -1,0 +1,44 @@
+--- a/packages/module-ui/src/dashboard/ModuleShell.tsx
++++ b/packages/module-ui/src/dashboard/ModuleShell.tsx
+@@ -1 +1 @@
+-import { useEffect, useRef, useState, type ReactNode } from "react";
++import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+@@ -21,0 +22,3 @@
++const ModuleSidebarTarget = createContext<HTMLElement | null>(null);
++/** 业务目录挂到当前模块下，保留同一主侧栏及其折叠行为。 */
++export function useModuleSidebarTarget() { return useContext(ModuleSidebarTarget); }
+@@ -28,0 +32 @@
++  const [sidebarTarget, setSidebarTarget] = useState<HTMLDivElement | null>(null);
+@@ -62 +66 @@
+-    <DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
++    <ModuleSidebarTarget.Provider value={sidebarTarget}><DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
+@@ -64 +68 @@
+-        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} />
++        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} activeModuleChildren={<div ref={setSidebarTarget} className="operator-module-children" />} />
+@@ -71 +75 @@
+-    </DashboardFrame>
++    </DashboardFrame></ModuleSidebarTarget.Provider>
+--- a/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx
++++ b/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx
+@@ -1 +1 @@
+-import { useState, type CSSProperties } from "react";
++import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
+@@ -8 +8 @@
+-export function OperatorModuleNavigation({ modules, onSelect, onNavigate, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void; onNavigate?: (href: string) => void }) {
++export function OperatorModuleNavigation({ modules, onSelect, onNavigate, activeModuleChildren, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void; onNavigate?: (href: string) => void; activeModuleChildren?: ReactNode }) {
+@@ -30,2 +30,2 @@
+-          return module.href
+-            ? <a key={module.id} {...common} href={module.href} onClick={event => {
++          return <Fragment key={module.id}>{module.href
++            ? <a {...common} href={module.href} onClick={event => {
+@@ -36 +36 @@
+-            : <button key={module.id} {...common} type="button" onClick={() => onSelect(module.id)}>{content}</button>;
++            : <button {...common} type="button" onClick={() => onSelect(module.id)}>{content}</button>}{module.active && activeModuleChildren}</Fragment>;
+--- a/packages/module-ui/src/dashboard/operator-navigation.css
++++ b/packages/module-ui/src/dashboard/operator-navigation.css
+@@ -1,0 +2,5 @@
++.operator-module-children:empty,
++.operator-sidebar[data-collapsed="true"] .operator-module-children {
++  display: none;
++}
++.operator-module-children { min-width: 0; }
