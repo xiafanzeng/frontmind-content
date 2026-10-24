@@ -17,11 +17,14 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
   let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],contentIntakeReceipt:options.contentIntakeReceipt,createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
   const subjects:ContentSubjectWorkspace={schemaVersion:1,revision:0,folders:[{id:"subject",name:"合成主体",versions:kind==="article"||options.latest?[{id:"pack-v1",folderId:"subject",version:1,sourceConversationId:"source",file:{fileUrl:"/local-pack.zip",fileName:"资料包.zip",mimeType:"application/zip"},createdAt:"2026-10-23T00:00:00.000Z",includesP0:true}]:[]}],bindings:{chat:{folderId:"subject",kind,packVersionId:kind==="article"?"pack-v1":null,generation:options.generation??0},source:{folderId:"subject",kind:"pack",packVersionId:null,generation:0},other:{folderId:"subject",kind:"pack",packVersionId:null,generation:0}}};
+  if(options.unbound)delete subjects.bindings.chat;
+  if(options.emptyWorkspace){subjects.folders=[];subjects.bindings={};}
+  if(options.missingPack){subjects.folders[0].versions=[];subjects.bindings.chat.packVersionId=null;}
   const send=vi.fn(async()=>true);
   const task=vi.fn(async(id:string)=>({id,status:options.status??"awaiting_input",purpose:"content_production" as const,contentProduction:options.progress??nativeProgress}));
   const refresh=vi.fn(async()=>{});
@@ -35,6 +38,52 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
+
+it("历史项目无需归属和新资料包即可打开，原消息、附件、任务均不改写",async()=>{
+  const history:ContentConversation["messages"]=[{id:"legacy-user",role:"user",content:"原客户资料",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file",name:"原附件.pdf"}]},{id:"legacy-answer",role:"assistant",content:"原回答",timestamp:2,contentWorkflowPosition:3,contentWorkflowGeneration:4,outputFiles:[{fileUrl:"/original-output.md",fileName:"原交付.md",mimeType:"text/markdown"}]}];
+  const original=structuredClone(history);
+  const view=await mount({unbound:true,emptyWorkspace:true,taskId:"original-task",messages:history});
+  try{
+    expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("历史项目");expect(view.container.textContent).toContain("原任务与附件");
+    expect(view.container.textContent).not.toContain("请先明确所属主体");expect(view.container.textContent).not.toContain("当前文件夹尚无已确认资料包");
+    expect(view.home().knowledgeEditingBlocked).toBe(false);expect(view.container.textContent).toContain("交付文件（1）");
+    expect(view.task).toHaveBeenCalledWith("original-task",expect.anything());
+    expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();expect(view.client.save).not.toHaveBeenCalled();expect(view.client.upload).not.toHaveBeenCalled();expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();
+    expect(history).toEqual(original);
+    const first=[...view.container.querySelectorAll('[data-stage-index]')].find(item=>item.getAttribute("data-stage-index")==="0")!;
+    await act(async()=>{first.dispatchEvent(new MouseEvent("click",{bubbles:true}));});
+    expect(view.home().transcriptNavigation?.messageId).toBe("legacy-user");
+  }finally{await view.cleanup();}
+});
+
+it("历史任务确认沿用原动作和代际，不创建新流程或补主体绑定",async()=>{
+  const view=await mount({unbound:true,emptyWorkspace:true,taskId:"original-task",messages:[{id:"original-message",role:"assistant",content:"历史方案",timestamp:1,contentWorkflowGeneration:3}]});
+  try{
+    let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("确认写作方案",[]);});
+    expect(view.send).not.toHaveBeenCalled();await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);
+    expect(view.send.mock.calls[0][2]).toMatchObject({contentProductionAction:{kind:"confirm_blueprint",revision:12},contentWorkflowGeneration:3});
+    expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProduction");expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();
+    expect(view.task.mock.calls.every(([id])=>id==="original-task")).toBe(true);
+  }finally{await view.cleanup();}
+});
+
+it("已有任务的旧文章不因新版没有资料包登记而被阻断",async()=>{
+  const view=await mount({kind:"article",missingPack:true,taskId:"original-task"});
+  try{expect(view.home()).toBeDefined();expect(view.container.textContent).not.toContain("请先完成资料包，再继续这篇文章");expect(view.home().knowledgeEditingBlocked).toBe(false);expect(view.container.querySelector('[aria-current="step"]')?.getAttribute("data-stage-index")).toBe("5");expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();}
+  finally{await view.cleanup();}
+});
+
+it("没有任务的历史记录也直接显示，打开时不补建任务",async()=>{
+  const view=await mount({unbound:true,emptyWorkspace:true,messages:[{id:"old",role:"assistant",content:"旧聊天",timestamp:1}]});
+  try{expect(view.home()).toBeDefined();expect(view.home().knowledgeEditingBlocked).toBe(true);expect(view.container.textContent).toContain("历史记录可直接查看");expect(view.task).not.toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.client.save).not.toHaveBeenCalled();}
+  finally{await view.cleanup();}
+});
+
+it("旧聊天归入主体后保留原内容，不因尚未登记版本而重新被遮挡",async()=>{
+  const view=await mount({kind:"article",missingPack:true,messages:[{id:"existing",role:"assistant",content:"原有文章",timestamp:1,outputFiles:[{fileUrl:"/existing.md",fileName:"原文章.md",mimeType:"text/markdown"}]}]});
+  try{expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("交付文件（1）");expect(view.container.textContent).not.toContain("请先完成资料包，再继续这篇文章");expect(view.home().knowledgeEditingBlocked).toBe(true);expect(view.client.save).not.toHaveBeenCalled();expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();}
+  finally{await view.cleanup();}
+});
 
 it("首轮企业材料先核对，确认后才提交配置；不伪造原生状态或提前上传",async()=>{
   const view=await mount({intake:true});
