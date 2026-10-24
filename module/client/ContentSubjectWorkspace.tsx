@@ -6,6 +6,7 @@ import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/mod
 import {useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
 import type {ContentBusinessClient} from "./runtime";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput} from "../contracts/content-production";
+import {receivedContentIntake} from "../contracts/content-intake-receipt";
 import {emptySubjectWorkspace,createSubjectFolder,bindSubjectChat,boundSubjectPack,latestSubjectPack,switchSubjectPack,updateSubjectChatMetadata,type ContentSubjectWorkspace as SubjectState} from "../contracts/content-subject-workspace";
 import {ContentCreationLane,contentCreationTranscriptAnchors} from "./ContentCreationLane";
 import {useComposerConfirmation,contentConfirmationActionLabel} from "./useComposerConfirmation";
@@ -41,7 +42,8 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const pack=current&&binding?boundSubjectPack(subjects,current.id):null;
  const latest=folder?latestSubjectPack(subjects,folder.id):null;
  const progress=task?.id===current?.taskId?task?.contentProduction??null:null;
- const intakeReceived=Boolean(client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"));
+ // 正常入口沿用服务端回执；显式验收客户端保留旧版本回填的兼容显示。
+ const intakeReceived=Boolean(receivedContentIntake(current))||Boolean(client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"));
  const turnFailed=Boolean(progress?.executionFailure)||Boolean(task&&task.id===current?.taskId&&["error","failed","cancelled"].includes(task.status));
  const busy=saving||["running","pending"].includes(current?.status??"");
  const missing=Boolean(binding?.kind==="article"&&!pack);

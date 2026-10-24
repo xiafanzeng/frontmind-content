@@ -17,9 +17,9 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];latest?:boolean;generation?:number} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
-  let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],createdAt:1,updatedAt:1};
+  let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],contentIntakeReceipt:options.contentIntakeReceipt,createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
   const subjects:ContentSubjectWorkspace={schemaVersion:1,revision:0,folders:[{id:"subject",name:"合成主体",versions:kind==="article"||options.latest?[{id:"pack-v1",folderId:"subject",version:1,sourceConversationId:"source",file:{fileUrl:"/local-pack.zip",fileName:"资料包.zip",mimeType:"application/zip"},createdAt:"2026-10-23T00:00:00.000Z",includesP0:true}]:[]}],bindings:{chat:{folderId:"subject",kind,packVersionId:kind==="article"?"pack-v1":null,generation:options.generation??0},source:{folderId:"subject",kind:"pack",packVersionId:null,generation:0},other:{folderId:"subject",kind:"pack",packVersionId:null,generation:0}}};
   const send=vi.fn(async()=>true);
@@ -107,6 +107,26 @@ it("正常生成模式中已有用户消息仍可继续本轮输入，不被仅�
   try{
     await act(async()=>{void view.home().onComposerSubmit!("继续补充产品材料",[]);});
     expect(button(view.container,"确认提交")).toBeDefined();expect(view.container.textContent).not.toContain("服务器已收件");expect(view.send).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
+
+it("普通客户端首次和更新读回有效收件回执后不再确认或重复提交",async()=>{
+  const receipt:NonNullable<ContentConversation["contentIntakeReceipt"]>={schemaVersion:1,id:"received-request",conversationId:"chat",messageId:"received-user",acceptedAt:2,status:"received",executionStarted:false};
+  const messages:ContentConversation["messages"]=[{id:"received-user",role:"user",content:"合成已收件材料",timestamp:2,generalChatDispatch:{kind:"pending_user",clientRequestId:"received-request"}}];
+  const view=await mount({messages,contentIntakeReceipt:receipt});
+  const assertReceived=()=>{
+    expect(view.container.textContent).toContain("服务器已收件，生成尚未启动");
+    expect(view.container.textContent).not.toContain("可直接输入主体简介");
+    expect(view.container.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
+  };
+  try{
+    expect(view.client.submitIntake).toBeUndefined();assertReceived();
+    await view.update({messages:structuredClone(messages),contentIntakeReceipt:structuredClone(receipt),updatedAt:3});assertReceived();
+    const file=new File(["重复材料"],"duplicate.txt",{type:"text/plain"});let accepted:boolean|void;
+    await act(async()=>{accepted=await view.home().onComposerSubmit!("重复提交已收件材料",[file]);});
+    expect(accepted!).toBe(false);assertReceived();
+    expect(view.container.textContent).toContain("请勿重复提交当前聊天");
+    expect(view.send).not.toHaveBeenCalled();expect(view.client.upload).not.toHaveBeenCalled();expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.task).not.toHaveBeenCalled();
   }finally{await view.cleanup();}
 });
 
