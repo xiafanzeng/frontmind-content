@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useContentWorkspaceHost } from "../client/host";
 import type { ContentConversation } from "../client/host";
 
-vi.mock("../client/ContentProductionWorkspace", () => ({ default: () => {
+vi.mock("../client/ContentSubjectWorkspace", () => ({ default: () => {
   const state = useContentWorkspaceHost().useConversation();
   return <div data-active={state.activeConversation?.id ?? ""}>{String(state.hydrated)}</div>;
 } }));
@@ -20,7 +20,7 @@ it("keeps the remembered task while loading and restores it after remount", asyn
   let finish!: (rows: ContentConversation[]) => void;
   const pending = new Promise<ContentConversation[]>(resolve => { finish = resolve; });
   const reject = vi.fn(async (): Promise<never> => { throw new Error("Unexpected write"); });
-  const client = { list: vi.fn(() => pending), save: reject, remove: reject, upload: reject, dispatch: reject, task: reject, stop: reject };
+  const client = { list: vi.fn(() => pending), readSubjectWorkspace: reject, saveSubjectWorkspace: reject, save: reject, remove: reject, upload: reject, dispatch: reject, task: reject, stop: reject };
   const container = document.createElement("div"); document.body.append(container);
   const props = { context: { module: "content", workspace: { id: "synthetic-workspace", ownerUserId: 1 }, marketEdition: "cn", capabilities: [] }, client };
   let root = createRoot(container);
@@ -39,7 +39,7 @@ it("keeps the remembered task while loading and restores it after remount", asyn
 function readOnlyClient(list: ContentBusinessClient["list"]) {
   // 恢复过程只能读列表；任何写入、上传或任务派发都会使断言失败。
   const unexpectedWrite = vi.fn(async (): Promise<never> => { throw new Error("Unexpected write"); });
-  const client: ContentBusinessClient = { list, save: unexpectedWrite, remove: unexpectedWrite, upload: unexpectedWrite, dispatch: unexpectedWrite, task: unexpectedWrite, stop: unexpectedWrite };
+  const client: ContentBusinessClient = { list, readSubjectWorkspace: unexpectedWrite, saveSubjectWorkspace: unexpectedWrite, save: unexpectedWrite, remove: unexpectedWrite, upload: unexpectedWrite, dispatch: unexpectedWrite, task: unexpectedWrite, stop: unexpectedWrite };
   return { client, unexpectedWrite };
 }
 

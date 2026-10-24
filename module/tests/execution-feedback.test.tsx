@@ -5,7 +5,7 @@ import {afterEach,expect,it,vi} from "vitest";
 import ExecutionFeedback from "../client/ExecutionFeedback";
 import type {ContentConversation,TaskResponse} from "../client/host";
 import {useContentWorkspaceHost} from "../client/host";
-vi.mock("../client/ContentProductionWorkspace",()=>({default:()=>{const host=useContentWorkspaceHost();const state=host.useConversation();const Home=host.Home;return state.activeConversation?<Home purpose="content_production"/>:null;}}));
+vi.mock("../client/ContentSubjectWorkspace",()=>({default:()=>{const host=useContentWorkspaceHost();const state=host.useConversation();const Home=host.Home;return state.activeConversation?<Home purpose="content_production"/>:null;}}));
 vi.mock("@frontmind/module-ui/components/BusinessChatInput",()=>({default:()=>null}));
 import {ModuleWorkspace,liveContentClient} from "../client/runtime";
 afterEach(()=>{vi.restoreAllMocks();vi.useRealTimers();localStorage.clear();document.body.innerHTML="";});
@@ -62,7 +62,7 @@ it("surfaces polling and stop failures in the real runtime without resubmitting 
  localStorage.setItem("frontmind-content-active:feedback-runtime","conversation");
  let broken=true;
  const forbidden=vi.fn(async():Promise<never>=>{throw new Error("Generation is forbidden");});
- const client={list:async()=>[structuredClone(base)],save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,task:async()=>{if(broken)throw new Error("offline");return {id:"task",status:"running"};},stop:async()=>{throw new Error("offline");}};
+ const client={list:async()=>[structuredClone(base)],readSubjectWorkspace:forbidden,saveSubjectWorkspace:forbidden,save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,task:async()=>{if(broken)throw new Error("offline");return {id:"task",status:"running"};},stop:async()=>{throw new Error("offline");}};
  const el=document.createElement("div");document.body.append(el);const root=createRoot(el);
  try{
   await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:"feedback-runtime",ownerUserId:0},marketEdition:"cn",capabilities:[]}} client={client}/>));
@@ -79,7 +79,7 @@ it("reads native failure from task polling without rewriting outer status and re
  const original={...base,status:"completed"};
  const forbidden=vi.fn(async():Promise<never>=>{throw new Error("Unexpected write or generation");});
  const failure={action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:"synthetic-attempt"};
- const client={list:async()=>[structuredClone(original)],save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,stop:forbidden,
+ const client={list:async()=>[structuredClone(original)],readSubjectWorkspace:forbidden,saveSubjectWorkspace:forbidden,save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,stop:forbidden,
   task:async():Promise<TaskResponse>=>{if(broken)throw new Error("offline");return {id:"task",status:"completed",contentProduction:{executionFailure:failed?failure:null} as TaskResponse["contentProduction"]};}};
  const el=document.createElement("div");document.body.append(el);const root=createRoot(el);
  try{

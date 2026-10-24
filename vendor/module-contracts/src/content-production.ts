@@ -14,6 +14,12 @@ export const contentProductionInputSchema = z
     mode: contentProductionModeSchema,
     enterpriseName: z.string().trim().min(1).max(200),
     knowledgeSource: z.enum(["published", "files"]),
+    // 仅表示浏览器期望的主体版本；文件身份和归属由宿主在事务内重新核对。
+    subjectContext: z.object({
+      folderId: z.string().trim().min(1).max(128),
+      generation: z.number().int().min(0),
+      packVersionId: z.string().trim().min(1).max(128).nullable(),
+    }).strict().optional(),
     entry: z
       .enum([
         "industry_ranking",

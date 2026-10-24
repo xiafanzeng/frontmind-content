@@ -16,7 +16,6 @@ import {BusinessWorkspaceInspector} from "@frontmind/module-ui/dashboard/Busines
 import {createContext,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from "react";
 import {navigateContentTranscript} from "./content-transcript-navigation";
 import {ContentWorkspaceHostProvider,type ContentConversation,type ContentConversationApi,type ContentHomeProps,type ContentSendOptions,type ContentWorkspaceHost,type TaskResponse} from "./host";
-import ContentProductionWorkspace from "./ContentProductionWorkspace";
 import ContentSubjectWorkspace from "./ContentSubjectWorkspace";
 import type {ContentSubjectWorkspace as SubjectWorkspaceState} from "../contracts/content-subject-workspace";
 export type ModuleContext={module:string;workspace:{id:string;ownerUserId:number};marketEdition:string;capabilities:string[]};
@@ -41,6 +40,8 @@ async function json<T>(url:string,init:RequestInit={}):Promise<T>{
  finally{clearTimeout(timer);init.signal?.removeEventListener("abort",abort);}
 }
 export const liveContentClient:ContentBusinessClient={
+ readSubjectWorkspace:()=>json("/api/modules/content/subject-workspace"),
+ saveSubjectWorkspace:value=>json("/api/modules/content/subject-workspace",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}),
  list:()=>json("/api/content/conversations"),
  save:value=>json(`/api/content/conversations/${encodeURIComponent(value.id)}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(value)}),
  remove:async id=>{await json(`/api/content/conversations/${encodeURIComponent(id)}`,{method:"DELETE"});},
@@ -97,7 +98,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
  }
  const activeConversation=conversations.find(row=>row.id===activeId)??null;
  useEffect(()=>{if(!hydrated)return;if(activeId)localStorage.setItem(storageKey,activeId);else localStorage.removeItem(storageKey);},[activeId,storageKey,hydrated]);
- useEffect(()=>{if(!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
+ useEffect(()=>{if(client.submitIntake||!activeConversation?.taskId)return;let cancelled=false;let timer:ReturnType<typeof setTimeout>;const controller=new AbortController();const id=activeConversation.taskId;
  async function poll(){try{const task=await client.task(id!,controller.signal);if(!cancelled){setObservation({taskId:id!,checkedAt:Date.now(),executionFailure:task.contentProduction?.executionFailure??null});await refresh();}}catch{if(!cancelled)setObservation(previous=>({...(previous?.taskId===id?previous:{}),taskId:id!,checkedAt:Date.now(),error:true}));}finally{if(!cancelled)timer=setTimeout(poll,3000);}}
  void poll();return()=>{cancelled=true;controller.abort();clearTimeout(timer);};},[activeConversation?.taskId,client,refresh]);
  const sendMessage=useCallback(async(prompt:string,files:File[]=[],options:ContentSendOptions={})=>{
@@ -207,5 +208,5 @@ const contentComposerRuntime: BusinessComposerRuntime<ContentProductionInput, ne
  chatAttachmentSizeError:file=>file.size>512*1024*1024?`文件“${file.name||"未命名文件"}”不能超过 512 MB`:null,
  knowledgeLogoNoticeCode:"unused-content-knowledge-logo",
 };
-function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host=useMemo<ContentWorkspaceHost>(()=>({connections:{publishedKnowledge:false},ConversationPurposeProvider:ContentMessageActions,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector}),[client]);return <ContentWorkspaceHostProvider value={host}><>{client.readSubjectWorkspace&&client.saveSubjectWorkspace?<ContentSubjectWorkspace client={client}/>:<ContentProductionWorkspace workbench/>}</></ContentWorkspaceHostProvider>}
-export function ModuleWorkspace({context,client=liveContentClient}:{context:ModuleContext;client?:ContentBusinessClient}) {return <RuntimeProvider client={client} workspaceId={context.workspace.id}><InstalledWorkspace client={client}/></RuntimeProvider>}
+function InstalledWorkspace({client}:{client:ContentBusinessClient}){const host=useMemo<ContentWorkspaceHost>(()=>({connections:{publishedKnowledge:false},ConversationPurposeProvider:ContentMessageActions,useConversation:useRuntime,useSendMessage:()=>({sendMessage:useRuntime().sendMessage}),retrieveTask:(id,options)=>client.task(id,options?.signal),captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive(){signal.throwIfAborted();},fetch:(url,init)=>fetch(url,{...init,signal})}),useWorkspaceDraftGuard:useDraftGuard,requestWorkspaceNavigation:requestDraftNavigation,Home:ContentDialogue,FilePreview,WorkbenchTaskToolbar,AgentWorkbenchShell,BusinessWorkspaceInspector}),[client]);return <ContentWorkspaceHostProvider value={host}><ContentSubjectWorkspace client={client}/></ContentWorkspaceHostProvider>}
+export function ModuleWorkspace({context,client=liveContentClient}:{context:ModuleContext;client?:ContentBusinessClient}) {if(typeof client.readSubjectWorkspace!=="function"||typeof client.saveSubjectWorkspace!=="function")return <div className="cp-notice" role="alert">当前内容客户端缺少主体资料库接口，无法打开新版内容工作区。请刷新或更新服务后重试。</div>;return <RuntimeProvider client={client} workspaceId={context.workspace.id}><InstalledWorkspace client={client}/></RuntimeProvider>}

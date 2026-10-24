@@ -11,6 +11,20 @@ export type FrozenContentTaskContext = {
   contentProduction?: ContentProductionInput;
   inputFiles?: { localAssetId: string; filename: string }[];
   contentWorkflow?: ContentWorkflowBinding;
+  subjectContext?: FrozenContentSubjectContext;
+};
+
+/** 只由宿主根据权威主体账本和已校验的本地产物冻结，浏览器不得指定文件地址。 */
+export type FrozenContentSubjectContext = {
+  revision: 1;
+  conversationId: string;
+  folderId: string;
+  generation: number;
+  packVersionId: string | null;
+  sourceTaskId?: string;
+  artifactId?: string;
+  localAssetId?: string;
+  contentSha256?: string;
 };
 
 export type ContentWorkflowBinding = {

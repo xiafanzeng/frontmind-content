@@ -2,12 +2,11 @@
   "schemaVersion": 1,
   "canonicalRepository": "xiafanzeng/frontmind-system",
   "coreBaselineRef": "origin/main",
-  "coreBaselineSha": "902c7460debec17b9e5bd5f154b66b61f16ae49b",
-  "strategy": "latest-core-main-plus-reviewed-sidebar-slot",
-  "projection": "byte-identical canonical packages/module-ui source to child vendor/module-ui",
-  "coreSourceCommitted": false,
-  "privateRepositoryPushed": false,
-  "deployed": false,
+  "coreBaselineSha": "e57e9e2ff06cc3c8bcf30fb9e466a58657c81b12",
+  "strategy": "latest-core-main-plus-reviewed-subject-sidebar-provider",
+  "projection": "byte-identical canonical module-ui and module-contracts source to child vendor projections",
+  "coreSourceCommitted": true,
+  "privateRepositoryPushed": true,
   "modelCalls": 0,
   "preservedUpstream": [
     "navigationModules[].href",
@@ -22,37 +21,47 @@
       "name": "ModuleShell.tsx",
       "canonicalPath": "packages/module-ui/src/dashboard/ModuleShell.tsx",
       "projectionPath": "vendor/module-ui/src/dashboard/ModuleShell.tsx",
-      "stagedFile": "ModuleShell.tsx",
       "mode": "100644",
       "baselineGitBlob": "b3a820f6455e2d02b7c03e64688498a480e5dff8",
       "baselineSha256": "f4b64df8fef296211be8fa25079903885b7be1f611d51f5f385c1970783cf634",
-      "sha256": "0e7b9230df6ee22ccc17eaff533177a2c40e5c16e134902af4068f5c03d4ca68",
-      "gitBlob": "34573452ac455bb8394d7f637aafc0cb6080b409",
-      "bytes": 6704
+      "sha256": "0370e1178f18797a57b6e053fc1dec717d2c818c4bd22968d8d6797612fba421",
+      "gitBlob": "14e0cb55a88c340293f5ae5f713fa23d1a4c8175",
+      "bytes": 6844
     },
     {
       "name": "OperatorModuleNavigation.tsx",
       "canonicalPath": "packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx",
       "projectionPath": "vendor/module-ui/src/dashboard/OperatorModuleNavigation.tsx",
-      "stagedFile": "OperatorModuleNavigation.tsx",
       "mode": "100644",
-      "baselineGitBlob": "c46e569059795dc738237ba45321255d348c0864",
-      "baselineSha256": "2f14865033f53f630e4afcace278a77805ed1cb0f37120ade71b5ce1dcf25497",
-      "sha256": "5b3cc5351512c5f43ef6d1cbfe779cb1f487902bcb861f19e9e1a65c6e759dcc",
-      "gitBlob": "80f1c33ea7410840f80dd1c19aa3494953ccd3ff",
-      "bytes": 5071
+      "baselineGitBlob": "cfc3fce3fd42ddc1135dea21896759498a6a2cae",
+      "baselineSha256": "3755a67f690e2eca2c6781a243f60c1eeebf77214b3b8aed016ab7cf07f4d548",
+      "sha256": "d35a37636e6ec85f2c53eaeaad31c652762c3c270d88ec1614eb5a93f832d0e9",
+      "gitBlob": "8a9f602fca952b8a6e14af265d616db8fe43cb38",
+      "bytes": 5043
     },
     {
       "name": "operator-navigation.css",
       "canonicalPath": "packages/module-ui/src/dashboard/operator-navigation.css",
       "projectionPath": "vendor/module-ui/src/dashboard/operator-navigation.css",
-      "stagedFile": "operator-navigation.css",
       "mode": "100644",
       "baselineGitBlob": "3731a3fc0aa2376adb377741431423972559282c",
       "baselineSha256": "1e1d53b38e0bba2f4de30ba31935d34f6272ed4c36fb66c550832e3fad78a5cb",
       "sha256": "537f9d2f275249b86b6774a16a5349280b64db87a298954227dd5928c3824227",
       "gitBlob": "5a4df83d984169015e1404e6e8d63bf77596a30b",
       "bytes": 9789
+    },
+    {
+      "name": "content-production.ts",
+      "canonicalPath": "packages/module-contracts/src/content-production.ts",
+      "projectionPath": "vendor/module-contracts/src/content-production.ts",
+      "mode": "100644",
+      "baselineGitBlob": "98d01a5edd1b37593ce8ee485b6273cf0fd72e2e",
+      "baselineSha256": "3fe97cd98c27b4419cff39aa268ba447170486bbe19078adf48c0d1a1e9dd574",
+      "sha256": "5ea26fa5daaf6fe78547b18ae8dd1d1339930b95dda7d32e2b2948c6345e7b1c",
+      "gitBlob": "8cd50b09e86e720e1174b8ff6a90a322b858a496",
+      "bytes": 12857
     }
-  ]
+  ],
+  "coreCompatibleSha": "7bb040ce3f5e42281ba825a030601a9e3a75d472",
+  "coreSourceCommit": "b5811f0a853aff20b60164256954f590bd30bb33"
 }

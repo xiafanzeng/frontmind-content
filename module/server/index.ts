@@ -6,3 +6,5 @@ export * from "./workflow-catalog.js";
 export * from "./task-handlers.js";
 export * from "./task-persistence.js";
 export * from "./conversations.js";
+export * from "./subject-workspace.js";
+export * from "./confirmed-native-pack.js";
