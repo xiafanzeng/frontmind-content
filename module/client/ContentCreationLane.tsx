@@ -3,6 +3,7 @@ import {CONTENT_PRODUCTION_RUNNER_STATUSES,contentProductionStagePosition,type C
 import {contentProductionPauseTitle} from "../contracts/content-production-public";
 import type {ContentMessage} from "./host";
 import {contentWorkflowTranscriptAnchors} from "./content-workflow-transcript";
+import {contentLiveProgressLabel} from "./content-live-progress";
 import "./content-creation-lane.css";
 
 /** 这六个阶段只负责展示和回看；原生工作流的独立确认节点保持不变。 */
@@ -27,6 +28,7 @@ export type ContentCreationLaneProps={
   packIncludesP0?:boolean;
   onNavigate(request:ContentCreationNavigation):void;
   inspectedStage?:number|null;
+  executing?:boolean;
   onOpenPack?(stageIndex:number):void;
 };
 type MarkedMessage=ContentMessage&{contentWorkflowStatus?:string;contentWorkflowKind?:ContentProductionJobKind};
@@ -61,26 +63,33 @@ function reviewStatus(message:MarkedMessage):string|null {
 /** 使用工作流标记及原生确认稿文件名，绝不把正文关键词当成历史阶段。 */
 export function contentCreationTranscriptAnchors(messages:readonly MarkedMessage[]):Map<number,string>{
   const anchors=new Map<number,string>();
+  let precedingUser:MarkedMessage|undefined;
   messages.forEach((message,index)=>{
+    if(message.role==="user")precedingUser=message;
     const status=reviewStatus(message);
     const position=status?contentProductionStagePosition(null,status):[...contentWorkflowTranscriptAnchors([message]).keys()][0];
     let stage=position===undefined?null:contentCreationStageIndex(position,status,message.contentWorkflowKind);
+    // 选题停点上传的资料是数据输入；后续目录回复才属于选题，不将空目录当成已选题。
+    if(message.role==="user"&&message.contentWorkflowStatus==="awaiting_question_selection"&&message.attachments?.length){stage=3;anchors.delete(4);}
     // 旧版明确记录的第 4 阶段属于“问题与监控数据”，可安全兼容。
     if(stage===null&&message.contentPhase===3&&message.contentWorkflowPosition===undefined)stage=3;
     if(stage===null||anchors.has(stage))return;
-    const preceding=messages[index-1];
-    anchors.set(stage,message.role==="assistant"&&preceding?.role==="user"?preceding.id:message.id);
+    // 原生回复与附件常分成多条助手消息；应回到整轮输入，不能只停在最后一张附件卡。
+    anchors.set(stage,message.role==="assistant"&&precedingUser?precedingUser.id:message.id);
   });
   return anchors;
 }
 
-export function contentCreationLaneModel(input:Pick<ContentCreationLaneProps,"progress"|"messages"|"kind"|"boundPack"|"packIncludesP0">&{hasPackSource?:boolean}){
+export function contentCreationLaneModel(input:Pick<ContentCreationLaneProps,"progress"|"messages"|"kind"|"boundPack"|"packIncludesP0"|"executing">&{hasPackSource?:boolean}){
   const {progress,messages,kind,boundPack,packIncludesP0,hasPackSource=false}=input;
   const status=progress?.workflowStatus??progress?.confirmation??progress?.currentStage??null;
   const position=progress?contentProductionStagePosition(progress.currentStage,status):0;
   const missingPack=kind==="article"&&boundPack===false;
-  const current=missingPack?0:contentCreationStageIndex(position,status,progress?.jobKind)??contentCreationStageIndex(position,progress?.currentStage,progress?.jobKind)??(kind==="pack"?0:boundPack?2:0);
+  // 原生选题页在目录为空时也使用 awaiting_question_selection；此时业务仍在补数据。
+  const needsQuestionData=status==="awaiting_question_selection"&&Boolean(progress?.choices.some(choice=>choice.includes("导入")&&choice.includes("问答")))&&!progress?.choices.some(choice=>/^(?:选择\s*)?\d+(?:[.．、]\s*|$)/u.test(choice));
+  const current=missingPack?0:needsQuestionData?3:contentCreationStageIndex(position,status,progress?.jobKind)??contentCreationStageIndex(position,progress?.currentStage,progress?.jobKind)??(kind==="pack"?0:boundPack?2:0);
   const anchors=contentCreationTranscriptAnchors(messages);
+  if(needsQuestionData){const emptyCatalog=anchors.get(4);if(emptyCatalog&&!anchors.has(3))anchors.set(3,emptyCatalog);anchors.delete(4);}
   const observed=new Set(anchors.keys());
   for(const confirmation of progress?.completedConfirmations??[]){
     const stage=contentCreationStageIndex(contentProductionStagePosition(null,confirmation),confirmation,progress?.jobKind);
@@ -99,6 +108,7 @@ export function contentCreationLaneModel(input:Pick<ContentCreationLaneProps,"pr
     if(ownPackReady){done.add(0);done.add(1);}
     if(ownP0Ready)done.add(2);
     if(ownArticleReady){done.add(4);done.add(5);}
+    if(current>=4&&status!=="awaiting_question_selection"&&progress?.completedConfirmations.includes("awaiting_question_selection"))done.add(3);
     if(current===5)done.add(4);
   }
   const steps=CONTENT_CREATION_STAGES.map((step,index)=>{
@@ -108,8 +118,10 @@ export function contentCreationLaneModel(input:Pick<ContentCreationLaneProps,"pr
     const target:LaneTarget=index<2&&hasPackSource&&!messageId&&(boundPack||missingPack)?"pack"
       :index===current?{stageIndex:index,latest:true}
       :messageId?{stageIndex:index,messageId}:null;
-    const detail=index===current&&missingPack?"等待本文件夹的资料包"
-      :index===current?contentProductionPauseTitle(status,progress?.pauseTitle??null)??step.description:step.description;
+    const detail=index===current&&input.executing?contentLiveProgressLabel(progress)??"正在处理本轮提交，等待服务端最新阶段"
+      :index===current&&missingPack?"等待本文件夹的资料包"
+      :index===current&&needsQuestionData?"等待导入监控问答表与引用信源"
+      :index===current?contentLiveProgressLabel(progress)??contentProductionPauseTitle(status,progress?.pauseTitle??null)??step.description:step.description;
     return {...step,state,detail,target};
   });
   return {current,steps,missingPack};

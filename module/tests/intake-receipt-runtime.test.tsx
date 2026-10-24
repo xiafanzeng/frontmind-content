@@ -59,6 +59,18 @@ async function mount(client: ContentBusinessClient, workspaceId: string) {
   };
 }
 
+it("已绑定任务的旧首轮回执不再显示重试或误建第二个任务", async () => {
+  const {client}=clientFor({...pendingConversation(),taskId:"mock-task",status:"awaiting_input"});
+  const view=await mount(client,"existing-task-pending-receipt");
+  try{
+    expect(view.container.querySelector(".cp-live-retry")).toBeNull();
+    await act(async()=>view.container.querySelector<HTMLButtonElement>('[data-testid="direct-send"]')!.click());
+    expect(client.dispatch).toHaveBeenCalledTimes(1);
+    expect(client.dispatch).toHaveBeenCalledWith(expect.objectContaining({conversationId:"conversation-1",prompt:"合成收件材料"}),"mock-task");
+    expect(vi.mocked(client.dispatch).mock.calls[0][0]).not.toHaveProperty("contentProduction");
+  }finally{await view.unmount();}
+});
+
 it("普通客户端在刷新和重挂载后保留已收件状态，且发送入口不会派发任务", async () => {
   const { client, unexpected } = clientFor({ ...pendingConversation(), contentIntakeReceipt: receipt });
   expect(client.submitIntake).toBeUndefined();

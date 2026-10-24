@@ -6,9 +6,11 @@ import type {ContentProductionDto,ContentProductionInput,ContentProductionAction
 export type ContentOutputFile={fileUrl:string;fileName:string;mimeType:string};
 export type ContentMessage={id:string;role:"user"|"assistant";content:string;timestamp:number;serverSequence?:number;contentPhase?:number;contentWorkflowPosition?:number;contentWorkflowStatus?:string;contentWorkflowGeneration?:number;contentWorkflowKind?:"reference_pack"|"reference_pack_refresh"|"p0"|"article";generalChat?:{turnId:string;providerEventId:string;isFinalAnswer?:boolean};outputFiles?:ContentOutputFile[];attachments?:{id:string;type:"file"|"image";name:string;fileId?:string}[];generalChatDispatch?:Record<string,unknown>};
 export type ContentConversation={id:string;title:string;purpose?:"content_production"|"enterprise_qa";taskId?:string;previousResponseId?:string;status:string;messages:ContentMessage[];contentIntakeReceipt?:ContentIntakeReceipt;execution?:GeneralExecutionDto;processes?:ConversationProcess[];createdAt:number;updatedAt:number;executionKind?:"general_chat_v2"|"response_logic"};
-export type TaskResponse={id:string;purpose?:"content_production"|"enterprise_qa"|"general";status:string;contentProduction?:ContentProductionDto|null;output?:unknown[];metadata?:{task_title?:string};error?:{message?:string}};
+export type TaskResponse={id:string;purpose?:"content_production"|"enterprise_qa"|"general";status:string;contentProduction?:ContentProductionDto|null;contentProgressReadError?:boolean;output?:unknown[];metadata?:{task_title?:string};error?:{message?:string}};
 export type ContentSendOptions={purpose?:"content_production";contentProduction?:ContentProductionInput;contentProductionAction?:ContentProductionAction;contentWorkflowPosition?:number;contentWorkflowStatus?:string;contentWorkflowGeneration?:number;contentWorkflowKind?:"reference_pack"|"reference_pack_refresh"|"p0"|"article"};
 export interface ContentConversationApi {
+ /** 正式运行时共用一次任务轮询；旧宿主未提供时由业务组件读取。 */
+ activeTask?:TaskResponse|null;taskReadError?:string;submittingIds?:ReadonlySet<string>;
  state:{conversations:ContentConversation[]};activeConversation:ContentConversation|null;hydrated:boolean;
  createConversation(options:{title:string;reuseEmpty:false;purpose:"content_production"}):string;
  setActive(id:string):void;deleteConversation(id:string):void;

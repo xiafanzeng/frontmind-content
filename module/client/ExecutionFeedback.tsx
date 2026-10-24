@@ -2,6 +2,8 @@ import {useEffect,useState} from "react";
 import type {ContentConversation} from "./host";
 import type {ContentProductionExecutionFailure} from "../contracts/content-production";
 import {receivedContentIntake} from "../contracts/content-intake-receipt";
+import type {ContentProductionDto} from "../contracts/content-production";
+import {contentLiveProgressLabel} from "./content-live-progress";
 
 type Notice={id:string;code:"model_fallback"|"model_failure";reason:string};
 const reasons:Record<string,string>={timeout:"模型服务响应超时",connection:"无法连接模型服务",rate_limit:"模型服务限流",upstream:"模型上游服务返回错误",access:"模型服务认证或权限异常",quota:"模型服务额度异常",request:"模型请求被服务拒绝",unknown:"具体原因未提供"};
@@ -18,9 +20,11 @@ export function executionNotices(conversation:ContentConversation):Notice[]{
   return [{id:entry.id,code:notice.code,reason:typeof notice.reason==="string"&&Object.hasOwn(reasons,notice.reason)?notice.reason:"unknown"}];
  });
 }
-export type FeedbackObservation={taskId:string;checkedAt:number;error?:boolean;executionFailure?:ContentProductionExecutionFailure|null};
+export type FeedbackObservation={taskId:string;checkedAt:number;error?:boolean;awaitingConfirmation?:boolean;executionFailure?:ContentProductionExecutionFailure|null;contentProduction?:ContentProductionDto|null};
 export default function ExecutionFeedback({conversation,submitting,stopping,observation}:{conversation?:ContentConversation;submitting?:boolean;stopping?:boolean;observation?:FeedbackObservation}){
  const [now,setNow]=useState(Date.now);
+ const [submissionStartedAt,setSubmissionStartedAt]=useState<number|null>(null);
+ useEffect(()=>{setSubmissionStartedAt(submitting?Date.now():null);},[submitting,conversation?.id]);
  const intakeReceipt=receivedContentIntake(conversation);
  const failure=observation?.taskId===conversation?.taskId?observation?.executionFailure:null;
  const active=!intakeReceipt&&!failure&&(!!submitting||!!stopping||["running","pending"].includes(conversation?.status??""));
@@ -32,27 +36,29 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  const notices=executionNotices(conversation);
  const entries=conversation.execution?.timeline??[];
  const latest=entries.at(-1),turn=latest?.turnId;
- const start=entries.find(e=>e.turnId===turn)?.timestamp??conversation.messages.findLast(m=>m.role==="user")?.timestamp??conversation.updatedAt;
+ const start=submitting?(submissionStartedAt??now):Math.max(entries.find(e=>e.turnId===turn)?.timestamp??0,conversation.messages.findLast(m=>m.role==="user")?.timestamp??0)||conversation.updatedAt;
  const elapsed=Math.max(0,Math.floor((now-start)/1000));
  const pollFailed=observation?.error&&observation.taskId===conversation.taskId;
- const unacknowledged=conversation.messages.some(m=>m.generalChatDispatch);
+ const progress=observation?.taskId===conversation.taskId?observation?.contentProduction:null;
+ const liveLabel=contentLiveProgressLabel(progress);
+ const unacknowledged=conversation.messages.some(m=>m.generalChatDispatch&&(!conversation.taskId||m.generalChatDispatch.localTaskId===conversation.taskId));
  let text="";
  if(failure)text=`${failure.action==="positioning_market_research"?"市场研究执行失败":"本轮执行失败"}，已提交资料和执行记录已保留。`;
  else if(stopping)text="正在请求停止，等待服务器确认。";
  else if(submitting)text="正在上传资料并提交任务，请稍候。";
  else if(pollFailed)text="状态更新暂时失败，正在重试；当前无法确认服务器进度。";
  else if(conversation.status==="pending")text="任务已接收，正在等待执行。";
- else if(conversation.status==="running")text="任务正在执行，等待下一条服务端记录。";
+ else if(conversation.status==="running")text=liveLabel?`${liveLabel}。`:["positioning_ready","p0_ready","completed"].includes(progress?.workflowStatus??"")?"正在处理本次接续，等待服务端返回最新阶段。":"任务正在执行，等待服务端返回最新阶段。";
  else if(status==="error")text="本轮执行失败，已提交资料和执行记录已保留。";
  else if(status==="cancelled")text="本轮已停止，已提交资料和执行记录保留。";
  else if(unacknowledged)text="本次提交尚未确认，请使用“重试本次提交”核对提交结果。";
- else if(status==="awaiting_input")text="等待你确认或补充材料。";
+ else if(status==="awaiting_input"||(observation?.taskId===conversation.taskId&&observation?.awaitingConfirmation))text="等待你确认或补充材料。";
  else if(status==="completed"||status==="ended")text="本轮已结束，请查看回复、交付文件或下一步确认。";
  if(!text&&!notices.length)return null;
  const lastRecord=latest?.timestamp??start;
  return <section className="cp-execution-feedback" aria-label="执行状态反馈">
   {text&&<p role={status==="error"||pollFailed?"alert":"status"}>{text}</p>}
-  {active&&<p className="cp-feedback-time" role="timer" aria-label="本轮等待时长">本轮已等待 {elapsed} 秒{!submitting&&now-lastRecord>=30000?" · 暂未收到新记录，可停止当前执行。":""}</p>}
+  {active&&<p className="cp-feedback-time" role="timer" aria-label="本轮等待时长">本轮已等待 {elapsed} 秒{pollFailed?" · 进度暂时无法同步。":!submitting&&observation?.checkedAt?` · 状态已同步于 ${new Date(observation.checkedAt).toLocaleTimeString("zh-CN",{hour12:false})}`:!submitting&&now-lastRecord>=30000?" · 暂未收到新阶段。":""}</p>}
   {notices.map(notice=><p className="cp-feedback-service" key={notice.id} role={notice.code==="model_failure"?"alert":"status"}>{notice.code==="model_fallback"?"主模型不可用，已切换备用模型（GLM-5.3）。":"模型调用失败。"}{notice.reason!=="unknown"?`原因：${reasons[notice.reason]}。`:notice.code==="model_failure"?"具体原因未提供。":""}</p>)}
  </section>;
 }

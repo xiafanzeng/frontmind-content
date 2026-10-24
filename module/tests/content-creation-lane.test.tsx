@@ -32,6 +32,25 @@ it("六阶段标题和说明与新版 HTML 保持一致",()=>{
     {title:"蓝图、写作与交付",description:"定位、蓝图、写作与导出"},
   ]);
 });
+it("问题目录为空时停留第4步，不把原生选题停点误映射到第5步",()=>{
+ const model=contentCreationLaneModel({progress:progress("awaiting_question_selection",{choices:["导入监控问答表","更换 Reference Pack"]}),messages:[reviewed("selection","awaiting_question_selection")],kind:"article",boundPack:true,packIncludesP0:true});
+ expect(model.current).toBe(3);expect(model.steps[3].state).toBe("current");expect(model.steps[3].detail).toBe("等待导入监控问答表与引用信源");expect(model.steps[4].state).toBe("pending");
+});
+it("已有真实选项可进入第5步；后端通过问题输入后才完成第4步",()=>{
+ const selected=contentCreationLaneModel({progress:progress("awaiting_question_selection",{choices:["选择 1","导入监控问答表"]}),messages:[],kind:"article",boundPack:true});
+ expect(selected.current).toBe(4);expect(selected.steps[3].state).toBe("pending");
+ const accepted=contentCreationLaneModel({progress:progress("awaiting_response_brief",{completedConfirmations:["awaiting_question_selection"]}),messages:[],kind:"article",boundPack:true});
+ expect(accepted.steps[3].state).toBe("done");
+});
+it("空目录不产生第5步回看锚点，上传记录归到第4步并替换旧空目录锚点",()=>{
+ const empty=contentCreationLaneModel({progress:progress("awaiting_question_selection",{choices:["导入监控问答表"]}),messages:[{id:"continue",role:"user",content:"接续",timestamp:1},reviewed("empty-catalog","awaiting_question_selection")],kind:"article",boundPack:true});
+ expect(empty.steps[4].target).toBeNull();
+ const upload:ContentMessage={id:"upload",role:"user",content:"资料",timestamp:3,contentWorkflowStatus:"awaiting_question_selection",contentWorkflowPosition:13,attachments:[{id:"original-input",type:"file",name:"输入.json"}]};
+ const anchors=contentCreationTranscriptAnchors([reviewed("empty-catalog","awaiting_question_selection"),upload,reviewed("real-catalog","awaiting_question_selection")]);
+ expect(anchors.get(3)).toBe("upload");expect(anchors.get(4)).toBe("upload");
+ const running=contentCreationLaneModel({progress:progress("awaiting_question_selection",{choices:["导入监控问答表"]}),messages:[],kind:"article",boundPack:true,executing:true});
+ expect(running.steps[3].detail).toBe("正在处理本轮提交，等待服务端最新阶段");
+});
 
 it("精确区分位置相同的数据导入与选题，并把紧邻用户输入作为回看起点",()=>{
   const anchors=contentCreationTranscriptAnchors([
@@ -39,6 +58,17 @@ it("精确区分位置相同的数据导入与选题，并把紧邻用户输入�
     {id:"question-user",role:"user",content:"序号 1",timestamp:2},reviewed("question","awaiting_question_selection"),
   ]);
   expect([...anchors]).toEqual([[3,"data-user"],[4,"question-user"]]);
+});
+it("回复与原生附件分成多条助手消息时，回看仍回到该轮输入开头",()=>{
+  const anchors=contentCreationTranscriptAnchors([
+    {id:"materials",role:"user",content:"本轮材料",timestamp:1},
+    {id:"reply",role:"assistant",content:"比较范围完整回复",timestamp:2},
+    reviewed("files","awaiting_competitor_selection"),
+    {id:"confirm",role:"user",content:"确认比较对象",timestamp:3},
+    {id:"positioning",role:"assistant",content:"核心定位完整回复",timestamp:4},
+    reviewed("positioning-files","awaiting_core_positioning_confirmation"),
+  ]);
+  expect([...anchors]).toEqual([[0,"materials"],[1,"confirm"]]);
 });
 
 it("结构化原生状态优先于兼容位置，不凭正文或含糊的位置 13 伪造节点",()=>{
