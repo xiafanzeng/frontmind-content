@@ -38,6 +38,45 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
+it("执行期间隐藏上轮确认卡和快捷确认按钮，不重复提交",async()=>{
+ const view=await mount({taskId:"same-task",status:"running"});
+ try{expect(view.container.textContent).not.toContain("当前需要确认");expect(button(view.container,"确认蓝图，开始写作")).toBeUndefined();expect(view.send).not.toHaveBeenCalled();}
+ finally{await view.cleanup();}
+});
+it("服务器已接受后立即结束确认卡，不等待慢速列表刷新而显示正在提交",async()=>{
+ const view=await mount({taskId:"same-task"});
+ let release!:()=>void;vi.mocked(view.refresh).mockImplementationOnce(()=>new Promise<void>(resolve=>{release=resolve;}));
+ try{
+  let sent!:Promise<boolean|void>;await act(async()=>{sent=view.home().onComposerSubmit!("确认写作方案",[]);});
+  await act(async()=>button(view.container,"确认提交").click());
+  expect(await sent).toBe(true);expect(view.send).toHaveBeenCalledTimes(1);expect(view.container.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
+ }finally{await act(async()=>release?.());await view.cleanup();}
+});
+it("装配中断后仅在明确继续时复用原任务，不创建新流程或重跑研究",async()=>{
+  const view=await mount({taskId:"original-task",status:"completed",progress:{...nativeProgress,jobKind:"reference_pack",workflowStatus:"running_reference_pack_assembly",confirmation:null,availableActions:[]}});
+  try{
+    expect(view.send).not.toHaveBeenCalled();expect(view.container.textContent).toContain("继续未完成步骤");
+    await act(async()=>{await view.home().onComposerSubmit!("继续原任务中未完成的资料包装配",[]);});
+    expect(view.send).toHaveBeenCalledTimes(1);
+    expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProduction");
+    expect(view.client.dispatch).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
+
+it("保存归档元数据期间不借用知识库锁禁用输入，避免重复点击",async()=>{
+  const view=await mount();
+  let release!:(state:ContentSubjectWorkspace)=>void;
+  let pending!:ContentSubjectWorkspace;
+  vi.mocked(view.client.saveSubjectWorkspace!).mockImplementationOnce(value=>{pending=value;return new Promise(resolve=>{release=resolve;});});
+  try{
+    const archive=view.container.querySelector<HTMLButtonElement>('[aria-label="归档聊天：合成聊天"]')!;
+    await act(async()=>archive.click());
+    expect(archive.disabled).toBe(true);
+    expect(view.home().knowledgeEditingBlocked).toBe(false);
+    await act(async()=>release(pending));
+    expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
 
 it("历史项目无需归属和新资料包即可打开，原消息、附件、任务均不改写",async()=>{
   const history:ContentConversation["messages"]=[{id:"legacy-user",role:"user",content:"原客户资料",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file",name:"原附件.pdf"}]},{id:"legacy-answer",role:"assistant",content:"原回答",timestamp:2,contentWorkflowPosition:3,contentWorkflowGeneration:4,outputFiles:[{fileUrl:"/original-output.md",fileName:"原交付.md",mimeType:"text/markdown"}]}];

@@ -115,7 +115,7 @@ export function createSubjectFolder(state: ContentSubjectWorkspace, name: string
   if (next.folders.some((item) => item.name.trim().toLowerCase() === folder.name.toLowerCase())) {
     throw new ContentSubjectWorkspaceError("folder_name_exists", "该主体文件夹已存在，请使用已有主体");
   }
-  next.folders.push(folder);
+  next.folders.unshift(folder);
   next.revision += 1;
   return next;
 }

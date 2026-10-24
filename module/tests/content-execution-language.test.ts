@@ -16,6 +16,11 @@ it("不为未知英文编造完成事实，也不翻译中文摘要中的产品�
   expect(chineseContentSummary("I might have completed a product comparison, but this was not verified.")).toBe("本条过程记录暂无中文摘要。");
   expect(chineseContentSummary("正在核对 ThinkPad 与品牌材料的适用范围。")).toBe("正在核对 ThinkPad 与品牌材料的适用范围。");
 });
+it("没有中文摘要时不生成重复空白思考卡，保留后端状态与事件标识",()=>{
+  const original={schemaVersion:1,timeline:[{id:"pending",kind:"status",status:"thinking",turnId:"turn",timestamp:1,publicSummary:"本条过程记录暂无中文摘要。"}]} as unknown as GeneralExecutionDto;
+  expect(projectContentExecutionLanguage(original)?.timeline[0]).toEqual({id:"pending",kind:"status",status:"thinking",turnId:"turn",timestamp:1});
+  expect(original.timeline[0]).toHaveProperty("publicSummary");
+});
 it("只对原生文件名归组，不猜测普通上传材料的阶段",()=>{
   expect(contentProductionFilePhase("review_awaiting_p0_blueprint_confirmation_r5.md")).toBe(2);
   expect(contentProductionFilePhase("review_awaiting_example_confirmation_r8.md")).toBe(4);

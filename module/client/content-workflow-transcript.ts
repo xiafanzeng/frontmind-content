@@ -36,8 +36,10 @@ function artifactPosition(filename:string):number|null {
 /** 每个原生阶段保留第一次明确出现的消息，供动态任务泳道定位。 */
 export function contentWorkflowTranscriptAnchors(messages:readonly WorkflowMessage[]):Map<number,string> {
   const anchors = new Map<number,string>();
+  let precedingUser:WorkflowMessage|undefined;
   for (let index=0;index<messages.length;index++) {
     const message = messages[index];
+    if(message.role==="user")precedingUser=message;
     const explicit = message.contentWorkflowPosition;
     const positions = (message.outputFiles??[]).map(file=>artifactPosition(file.fileName))
       .filter((position):position is number=>position!==null);
@@ -49,8 +51,7 @@ export function contentWorkflowTranscriptAnchors(messages:readonly WorkflowMessa
       : typeof legacy==="number"&&Number.isInteger(legacy)&&legacy>=0&&legacy<legacyPositions.length ? legacyPositions[legacy]
       : null;
     if (position===null||anchors.has(position)) continue;
-    const preceding = messages[index-1];
-    anchors.set(position,message.role==="assistant"&&preceding?.role==="user" ? preceding.id : message.id);
+    anchors.set(position,message.role==="assistant"&&precedingUser ? precedingUser.id : message.id);
   }
   return anchors;
 }
