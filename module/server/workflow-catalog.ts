@@ -6,11 +6,15 @@ import type { ContentWorkflowBinding, FrozenContentTaskContext } from "../contra
 
 /** Only explicitly reviewed releases may receive the native provider transport. */
 export function isNativeContentWorkflowVersion(version: string): boolean {
-  return ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8"].includes(version);
+  return ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1"].includes(version);
 }
 
 export function supportsStructuredContentArticle(version: string): boolean {
-  return ["4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8"].includes(version);
+  return ["4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1"].includes(version);
+}
+
+export function supportsContentSessionPhases(version: string | null | undefined): boolean {
+  return version === "4.13.2-v16.8-app1";
 }
 
 // Compatibility for tasks created before version binding was introduced.

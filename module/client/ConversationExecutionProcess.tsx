@@ -2,6 +2,7 @@ import {useState} from "react";
 import {ChevronDown,Brain,LoaderCircle,Wrench} from "lucide-react";
 import {compareProcessSummaries,processStatusText,type ConversationProcess} from "../contracts/conversation-process";
 import "./conversation-process.css";
+import {chineseContentSummary} from "../contracts/content-execution-language";
 
 /** A chronological stream of public summaries. Icons identify the two kinds;
  * headings and tool counters would obscure what actually happened. */
@@ -16,7 +17,7 @@ export default function ConversationExecutionProcess({process,onRecover}:{proces
   {process.status!=="running"&&status}
 
   <ol className="cp-process-stream" id={`process-${process.id}`}>{rows.map(item=><li key={item.id} hidden={!open||item.status==="running"} data-summary-id={item.id} data-summary-kind={item.kind} data-summary-origin={item.summaryOrigin??"record"} data-summary-status={item.status} className={item.status==="failed"?"is-failed":item.kind==="thinking"?"is-thinking":""}>
-   {item.kind==="thinking"?<Brain size={15} aria-label="思考"/>:<Wrench size={15} aria-label="工具"/>}<div><span>{item.text}</span>{item.kind==="tool"&&<small className="cp-process-row-state">{({running:"进行中",completed:"已返回",failed:"失败",unknown:"结果未确认",cancelled:"已取消",recorded:"已记录",awaiting_input:"等待确认"})[item.status]}</small>}{item.reason&&<p>{item.reason} {item.nextStep}</p>}</div>
+   {item.kind==="thinking"?<Brain size={15} aria-label="思考"/>:<Wrench size={15} aria-label="工具"/>}<div><span>{chineseContentSummary(item.text)}</span>{item.kind==="tool"&&<small className="cp-process-row-state">{({running:"进行中",completed:"已返回",failed:"失败",unknown:"结果未确认",cancelled:"已取消",recorded:"已记录",awaiting_input:"等待确认"})[item.status]}</small>}{item.reason&&<p>{item.reason} {item.nextStep}</p>}</div>
   </li>)}</ol>
   {process.status==="running"&&status}
   {open&&process.status!=="running"&&!rows.length&&<p className="cp-process-empty">暂无可公开的过程摘要。最终交付不受影响。</p>}

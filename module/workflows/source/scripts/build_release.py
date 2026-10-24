@@ -35,6 +35,7 @@ ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 # maintainers, while old package models, ledgers, scoring modules, tests and
 # work output cannot enter the v4.11 release projection.
 RELEASE_FILES = frozenset({
+    "shared/session_phases.py", "scripts/tests_v411/test_session_phases.py",
     "shared/article_focus.py", "shared/fdnv2_guidance.py", "shared/industry_roundup.py",
     "shared/p01_expression.py", "shared/p02_selection.py",
     "shared/runtime_credentials.py", "shared/agents_runtime.py",

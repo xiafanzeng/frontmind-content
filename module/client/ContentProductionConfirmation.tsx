@@ -1,5 +1,5 @@
 import { useContentWorkspaceHost } from "./host";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import type {
   ContentProductionAction,
@@ -12,6 +12,7 @@ import {
 } from "../contracts/content-production-public";
 
 type Props = {
+  cardBody?: boolean;
   progress: ContentProductionDto;
   busy: boolean;
   onPendingChange?: (pending: boolean) => void;
@@ -21,6 +22,7 @@ type Props = {
     action: ContentProductionAction,
   ) => Promise<unknown>;
   onNotice: (message: string) => void;
+  referencePreview?: ReactNode;
 };
 const FILE_TYPES =
   ".zip,.pdf,.docx,.doc,.txt,.md,.json,.csv,.xlsx,.png,.jpg,.jpeg,.webp";
@@ -30,11 +32,13 @@ export function createContentProductionConfirmation(
   useWorkspaceDraftGuard: (input: { dirty: boolean; label: string }) => void = () => {},
 ) {
 return function ContentProductionConfirmation({
+  cardBody = false,
   progress,
   busy,
   onPendingChange,
   onAction,
   onNotice,
+  referencePreview,
 }: Props) {
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
@@ -60,6 +64,7 @@ return function ContentProductionConfirmation({
   const [edits, setEdits] = useState("");
   const [revisions, setRevisions] = useState("");
   const [poolSelection, setPoolSelection] = useState("");
+  const [styleRoute, setStyleRoute] = useState<"A" | "B" | null>(null);
   useWorkspaceDraftGuard({
     dirty:
       pending ||
@@ -74,7 +79,7 @@ return function ContentProductionConfirmation({
           recognition ||
           edits ||
           revisions ||
-          poolSelection,
+          poolSelection || styleRoute,
       ),
     label: "内容阶段确认",
   });
@@ -112,6 +117,7 @@ return function ContentProductionConfirmation({
         setEdits("");
         setRevisions("");
         setPoolSelection("");
+        setStyleRoute(null);
       }
     } catch (error) {
       if (liveRef.current)
@@ -170,6 +176,11 @@ return function ContentProductionConfirmation({
     void submit({ kind: "choose_examples", revision: revision ?? 0, route },
       note + (poolSelection.trim() ? `\n文章池构思参考选择：${poolSelection.trim()}。请保留独立文风选择，按当前修订号提交。` : ""));
   }
+  function chooseStyle(route: "A" | "B") {
+    if (!poolRequired) { submitExamples(route); return; }
+    setStyleRoute(route);
+    onNotice("文风选择已保留；可先查看文章池，选择构思参考后再确认，不会提前推进任务。");
+  }
   const revisionValue = revision ?? 0;
   const isInput =
     has("provide_reference_pack_inputs") ||
@@ -177,19 +188,18 @@ return function ContentProductionConfirmation({
   const isBlueprint = has("confirm_blueprint") || has("confirm_p0_blueprint");
 
   return (
-    <section className="cp-confirmation" aria-label="当前内容确认">
-      <strong>
+    <section className={`cp-confirmation${cardBody ? " cp-confirmation--card-body" : ""}`} aria-label="当前内容确认">
+      {!cardBody && <strong>
         {contentProductionPauseTitle(
           progress.confirmation,
           progress.pauseTitle,
         ) || "当前内容确认"}
-      </strong>
-      <p>
-        请先阅读左侧完整回复、表格和附件，再作出本轮选择。修改内容可在这里提交，也可以继续在对话中说明。
-      </p>
+      </strong>}
+      {!cardBody && <p>阅读本轮回复后确认，也可在聊天中补充要求。</p>}
       {progress.choices.length > 0 && (
-        <p className="cp-native-choices">
-          本轮可选：
+        <details className="cp-native-choices">
+          <summary>本轮可选处理</summary>
+          <p>
           {progress.choices
             .map((choice) =>
               progress.confirmation === "awaiting_core_positioning_direction"
@@ -197,7 +207,8 @@ return function ContentProductionConfirmation({
                 : contentProductionPublicText(choice),
             )
             .join("；")}
-        </p>
+          </p>
+        </details>
       )}
 
       <fieldset className="cp-confirmation-fields" disabled={disabled}>
@@ -574,10 +585,15 @@ return function ContentProductionConfirmation({
               <input aria-label="文章池构思参考" value={poolSelection} onChange={(event) => setPoolSelection(event.target.value)} placeholder="例如：1、5；或填写“不采用”" />
               <small>先查看回复中的 Top20 或完整文章池；这里选择构思参考，下面独立选择文风。</small>
             </label>}
+            {poolRequired && referencePreview}
             <div className="cp-confirm-actions">
-              {button("参考例文的文风", () => submitExamples("A"))}
-              {button(modernStyle ? "使用工作流写作规范" : "参考 AI 答案的文风", () => submitExamples("B"), true)}
+              {button("参考例文的文风", () => chooseStyle("A"))}
+              {button(modernStyle ? "使用工作流写作规范" : "参考 AI 答案的文风", () => chooseStyle("B"), true)}
             </div>
+            {poolRequired && styleRoute && <>
+              <p>已保留文风{styleRoute === "A" ? " A：参考例文的文风" : " B：使用工作流写作规范"}。文章池只作为选材与构思参考。</p>
+              <div className="cp-confirm-actions">{button("确认文风与构思参考", () => submitExamples(styleRoute))}</div>
+            </>}
           </>
         )}
         {has("confirm_question_positioning") && (
