@@ -17,11 +17,11 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];latest?:boolean;generation?:number} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
-  let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:[],createdAt:1,updatedAt:1};
+  let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
-  const subjects:ContentSubjectWorkspace={schemaVersion:1,revision:0,folders:[{id:"subject",name:"合成主体",versions:kind==="article"?[{id:"pack-v1",folderId:"subject",version:1,sourceConversationId:"source",file:{fileUrl:"/local-pack.zip",fileName:"资料包.zip",mimeType:"application/zip"},createdAt:"2026-10-23T00:00:00.000Z",includesP0:true}]:[]}],bindings:{chat:{folderId:"subject",kind,packVersionId:kind==="article"?"pack-v1":null,generation:0},source:{folderId:"subject",kind:"pack",packVersionId:null,generation:0},other:{folderId:"subject",kind:"pack",packVersionId:null,generation:0}}};
+  const subjects:ContentSubjectWorkspace={schemaVersion:1,revision:0,folders:[{id:"subject",name:"合成主体",versions:kind==="article"||options.latest?[{id:"pack-v1",folderId:"subject",version:1,sourceConversationId:"source",file:{fileUrl:"/local-pack.zip",fileName:"资料包.zip",mimeType:"application/zip"},createdAt:"2026-10-23T00:00:00.000Z",includesP0:true}]:[]}],bindings:{chat:{folderId:"subject",kind,packVersionId:kind==="article"?"pack-v1":null,generation:options.generation??0},source:{folderId:"subject",kind:"pack",packVersionId:null,generation:0},other:{folderId:"subject",kind:"pack",packVersionId:null,generation:0}}};
   const send=vi.fn(async()=>true);
   const task=vi.fn(async(id:string)=>({id,status:options.status??"awaiting_input",purpose:"content_production" as const,contentProduction:options.progress??nativeProgress}));
   const refresh=vi.fn(async()=>{});
@@ -47,7 +47,7 @@ it("首轮企业材料先核对，确认后才提交配置；不伪造原生状�
     expect(view.container.textContent).not.toContain("服务器已收件");
     await act(async()=>button(view.container,"确认提交").click());
     expect(await result).toBe(true);
-    expect(view.send).toHaveBeenCalledWith("本公司提供便携式设备。",[file],{contentProduction:{mode:"new_reference_pack",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[]},contentWorkflowGeneration:0});
+    expect(view.send).toHaveBeenCalledWith("本公司提供便携式设备。",[file],{contentProduction:{mode:"new_reference_pack",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:null}},contentWorkflowGeneration:0});
     expect(view.task).not.toHaveBeenCalled();
   }finally{await view.cleanup();}
 });
@@ -60,13 +60,13 @@ it("首轮返回修改保留原提交承诺，不调用宿主发送",async()=>{
 
 it("首轮文章完整题目也先建卡，确认时保留原单篇配置",async()=>{
   const view=await mount({kind:"article"});
-  try{let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("如何选择便携式健康终端？",[]);});expect(view.send).not.toHaveBeenCalled();expect(button(view.container,"确认提交")).toBeDefined();await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"single_article",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[]},contentWorkflowGeneration:0});}
+  try{let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("如何选择便携式健康终端？",[]);});expect(view.send).not.toHaveBeenCalled();expect(button(view.container,"确认提交")).toBeDefined();await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"single_article",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:"pack-v1"}},contentWorkflowGeneration:0});}
   finally{await view.cleanup();}
 });
 
 it("首轮提交失败保留卡片及原输入，重试成功后才结束承诺",async()=>{
   const view=await mount();
-  try{view.send.mockRejectedValueOnce(new Error("收件未确认"));let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("企业介绍与产品服务材料",[]);});await act(async()=>button(view.container,"确认提交").click());expect(view.container.textContent).toContain("收件未确认");expect(button(view.container,"确认提交").disabled).toBe(false);expect(view.container.querySelector('[aria-label="输入确认卡片"]')?.textContent).toContain("企业介绍与产品服务材料");await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send).toHaveBeenCalledTimes(2);}
+  try{view.send.mockRejectedValueOnce(new Error("收件未确认"));let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("企业介绍与产品服务材料",[]);});await act(async()=>button(view.container,"确认提交").click());expect(view.container.textContent).toContain("收件未确认");expect(button(view.container,"确认提交").disabled).toBe(false);expect(view.container.querySelector('[aria-label="输入确认卡片"]')?.textContent).toContain("企业介绍与产品服务材料");await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send).toHaveBeenCalledTimes(2);expect(view.container.textContent).not.toContain("收件未确认");}
   finally{await view.cleanup();}
 });
 
@@ -86,6 +86,28 @@ it("只在宿主回填已接受用户消息后显示收件提示，仍不宣称�
   const view=await mount({intake:true});
   try{expect(view.container.textContent).not.toContain("服务器已收件");await view.update({messages:[{id:"accepted-input",role:"user",content:"实际收件后回填的输入",timestamp:2}]});expect(view.container.textContent).toContain("服务器已收件，生成尚未启动");expect(view.task).not.toHaveBeenCalled();}
   finally{await view.cleanup();}
+});
+
+it("刷新后的已收件聊天保留持久提示，不再提示补资料或生成第二张确认卡",async()=>{
+  const view=await mount({intake:true,messages:[{id:"received-input",role:"user",content:"已存储的真实材料",timestamp:2,generalChatDispatch:{kind:"pending_user"}}]});
+  try{
+    expect(view.container.textContent).toContain("服务器已收件，生成尚未启动");
+    expect(view.container.textContent).not.toContain("可直接输入主体简介");
+    expect(view.container.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
+    expect(view.home().knowledgeEditingBlocked).toBe(false);
+    let accepted:boolean|void;await act(async()=>{accepted=await view.home().onComposerSubmit!("重复输入",[]);});
+    expect(accepted!).toBe(false);expect(view.container.textContent).toContain("请勿重复提交当前聊天");
+    expect(view.container.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
+    expect(view.send).not.toHaveBeenCalled();expect(view.client.upload).not.toHaveBeenCalled();expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.task).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
+
+it("正常生成模式中已有用户消息仍可继续本轮输入，不被仅收件状态拦截",async()=>{
+  const view=await mount({messages:[{id:"normal-user",role:"user",content:"普通首轮原文",timestamp:1}]});
+  try{
+    await act(async()=>{void view.home().onComposerSubmit!("继续补充产品材料",[]);});
+    expect(button(view.container,"确认提交")).toBeDefined();expect(view.container.textContent).not.toContain("服务器已收件");expect(view.send).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
 });
 
 it.each(["running","completed"])("主体工作区：外层 %s 不掩盖实际失败，也不采用遗留确认动作",async(status)=>{
@@ -152,4 +174,39 @@ it("确认提交中阶段失效且请求失败，清除旧确认卡，不把重�
     await act(async()=>{await confirmation.confirm();});
     expect(commit).toHaveBeenCalledTimes(1);
   }finally{await act(async()=>root.unmount());container.remove();}
+});
+
+
+it("资料包更新首轮携带最新已确认版本和当前代际，不从浏览器传文件地址",async()=>{
+  const view=await mount({latest:true,generation:2});
+  try{
+    let result!:Promise<boolean|void>;
+    await act(async()=>{result=view.home().onComposerSubmit!("更新企业产品材料",[]);});
+    await act(async()=>button(view.container,"确认提交").click());
+    expect(await result).toBe(true);
+    expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"refresh_reference_pack",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:2,packVersionId:"pack-v1"}},contentWorkflowGeneration:2});
+    expect(view.client.dispatch).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
+
+
+it("同一聊天重启后清除旧失败任务，不阻塞新首轮确认且保留历史交付",async()=>{
+  const history:ContentConversation["messages"]=[{id:"old-answer",role:"assistant",content:"历史交付",timestamp:1,outputFiles:[{fileUrl:"/historical-output.md",fileName:"历史文章.md",mimeType:"text/markdown"}]}];
+  const view=await mount({kind:"article",taskId:"old-failed-task",status:"error",messages:history});
+  try{
+    let rejected:boolean|void;
+    await act(async()=>{rejected=await view.home().onComposerSubmit!("旧任务未重启时不能继续",[]);});
+    expect(rejected!).toBe(false);expect(view.send).not.toHaveBeenCalled();
+    const oldReads=view.task.mock.calls.length;
+    await view.update({taskId:undefined,previousResponseId:undefined,status:"idle"});
+    let result!:Promise<boolean|void>;
+    await act(async()=>{result=view.home().onComposerSubmit!("切换后重新确认本篇题目",[]);});
+    expect(view.container.querySelector('[aria-label="输入确认卡片"]')?.textContent).toContain("核对本次输入");
+    expect(view.container.textContent).toContain("交付文件（1）");
+    await act(async()=>button(view.container,"确认提交").click());
+    expect(await result).toBe(true);
+    expect(view.send.mock.calls[0][2]).toMatchObject({contentProduction:{mode:"single_article",subjectContext:{folderId:"subject",generation:0,packVersionId:"pack-v1"}}});
+    expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProductionAction");
+    expect(view.task.mock.calls).toHaveLength(oldReads);
+  }finally{await view.cleanup();}
 });

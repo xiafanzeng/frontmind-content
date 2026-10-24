@@ -1,39 +1,57 @@
+diff --git a/packages/module-contracts/src/content-production.ts b/packages/module-contracts/src/content-production.ts
+index 98d01a5..8cd50b0 100644
+--- a/packages/module-contracts/src/content-production.ts
++++ b/packages/module-contracts/src/content-production.ts
+@@ -16,0 +17,6 @@ export const contentProductionInputSchema = z
++    // 仅表示浏览器期望的主体版本；文件身份和归属由宿主在事务内重新核对。
++    subjectContext: z.object({
++      folderId: z.string().trim().min(1).max(128),
++      generation: z.number().int().min(0),
++      packVersionId: z.string().trim().min(1).max(128).nullable(),
++    }).strict().optional(),
+diff --git a/packages/module-ui/src/dashboard/ModuleShell.tsx b/packages/module-ui/src/dashboard/ModuleShell.tsx
+index b3a820f..14e0cb5 100644
 --- a/packages/module-ui/src/dashboard/ModuleShell.tsx
 +++ b/packages/module-ui/src/dashboard/ModuleShell.tsx
 @@ -1 +1 @@
 -import { useEffect, useRef, useState, type ReactNode } from "react";
 +import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-@@ -21,0 +22,3 @@
+@@ -21,0 +22,4 @@ const SIDEBAR_KEY = "frontmind.operator.sidebarCollapsed";
 +const ModuleSidebarTarget = createContext<HTMLElement | null>(null);
-+/** 业务目录挂到当前模块下，保留同一主侧栏及其折叠行为。 */
++export const ModuleSidebarTargetProvider = ModuleSidebarTarget.Provider;
++/** 同一插槽供独立模块与正式 Dashboard 宿主挂载业务目录。 */
 +export function useModuleSidebarTarget() { return useContext(ModuleSidebarTarget); }
-@@ -28,0 +32 @@
+@@ -28,0 +33 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
 +  const [sidebarTarget, setSidebarTarget] = useState<HTMLDivElement | null>(null);
-@@ -62 +66 @@
+@@ -62 +67 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
 -    <DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
-+    <ModuleSidebarTarget.Provider value={sidebarTarget}><DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
-@@ -64 +68 @@
++    <ModuleSidebarTargetProvider value={activeView === "content" ? sidebarTarget : null}><DashboardFrame immersive={immersive} collapsed={(compact && !mobileOpen) || savedCollapsed} mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
+@@ -64 +69 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
 -        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} />
-+        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} activeModuleChildren={<div ref={setSidebarTarget} className="operator-module-children" />} />
-@@ -71 +75 @@
++        <OperatorModuleNavigation modules={(navigationModules ?? [{ ...module, views }]).map(item => ({ ...item, active: item.views.some(view => view.id === activeView) }))} onSelect={id => requestNavigation(() => select((navigationModules ?? [{ ...module, views }]).find(item => item.id === id)?.views[0]?.id ?? activeView))} onNavigate={href => requestNavigation(() => window.location.assign(href))} activeModuleChildren={activeView === "content" ? <div ref={setSidebarTarget} className="operator-module-children" /> : undefined} />
+@@ -71 +76 @@ export function ModuleShell({ module, views, activeView, onSelectView, children,
 -    </DashboardFrame>
-+    </DashboardFrame></ModuleSidebarTarget.Provider>
++    </DashboardFrame></ModuleSidebarTargetProvider>
+diff --git a/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx b/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx
+index cfc3fce..8a9f602 100644
 --- a/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx
 +++ b/packages/module-ui/src/dashboard/OperatorModuleNavigation.tsx
 @@ -1 +1 @@
 -import { useState, type CSSProperties } from "react";
 +import { Fragment, useState, type CSSProperties, type ReactNode } from "react";
-@@ -8 +8 @@
+@@ -8 +8 @@ const moduleIcons = { brand: Database, intent: Target, progress: ChartNoAxesComb
 -export function OperatorModuleNavigation({ modules, onSelect, onNavigate, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void; onNavigate?: (href: string) => void }) {
 +export function OperatorModuleNavigation({ modules, onSelect, onNavigate, activeModuleChildren, logoSrc = new URL("../assets/frontmind-wordmark.svg", import.meta.url).href }: { logoSrc?: string; modules: readonly OperatorModuleNavigationItem[]; onSelect: (id: string) => void; onNavigate?: (href: string) => void; activeModuleChildren?: ReactNode }) {
-@@ -30,2 +30,2 @@
+@@ -30,2 +30,2 @@ export function OperatorModuleNavigation({ modules, onSelect, onNavigate, logoSr
 -          return module.href
 -            ? <a key={module.id} {...common} href={module.href} onClick={event => {
 +          return <Fragment key={module.id}>{module.href
 +            ? <a {...common} href={module.href} onClick={event => {
-@@ -36 +36 @@
+@@ -36 +36 @@ export function OperatorModuleNavigation({ modules, onSelect, onNavigate, logoSr
 -            : <button key={module.id} {...common} type="button" onClick={() => onSelect(module.id)}>{content}</button>;
 +            : <button {...common} type="button" onClick={() => onSelect(module.id)}>{content}</button>}{module.active && activeModuleChildren}</Fragment>;
+diff --git a/packages/module-ui/src/dashboard/operator-navigation.css b/packages/module-ui/src/dashboard/operator-navigation.css
+index 3731a3f..5a4df83 100644
 --- a/packages/module-ui/src/dashboard/operator-navigation.css
 +++ b/packages/module-ui/src/dashboard/operator-navigation.css
 @@ -1,0 +2,5 @@
