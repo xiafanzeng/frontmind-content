@@ -9,7 +9,6 @@ import type {ContentProductionDto} from "../contracts/content-production";
 import type {ContentSubjectWorkspace} from "../contracts/content-subject-workspace";
 import {useComposerConfirmation} from "../client/useComposerConfirmation";
 
-vi.mock("@frontmind/module-ui/dashboard/ModuleShell", () => ({useModuleSidebarTarget: () => null}));
 
 const nativeProgress: ContentProductionDto = {
   mode:"single_article",enterpriseName:"合成主体",workflowVersion:"4.13.2-v16.8-app1",workflowStatus:"awaiting_blueprint_confirmation",
@@ -38,6 +37,26 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
+
+it("主体文件夹内嵌在工作区第二列，搜索只过滤当前目录且不依赖全局侧栏 portal",async()=>{
+ const view=await mount();
+ try{
+  const nav=view.container.querySelector<HTMLElement>('nav[aria-label="主体文件夹与聊天"]');
+  expect(nav).not.toBeNull();
+  expect(nav?.parentElement?.classList.contains("cp-subject-workspace")).toBe(true);
+  expect(nav?.querySelector('input[aria-label="搜索主体与聊天"]')).not.toBeNull();
+  expect(view.container.querySelector(".cp-subject-nav--sidebar")).toBeNull();
+  expect(view.container.querySelector(".is-sidebar-integrated")).toBeNull();
+  const input=nav!.querySelector("input") as HTMLInputElement;
+  const setValue=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")?.set;
+  await act(async()=>{setValue?.call(input,"合成聊天");input.dispatchEvent(new Event("input",{bubbles:true}));});
+  expect(nav!.textContent).toContain("合成主体");
+  expect(nav!.textContent).toContain("合成聊天");
+  await act(async()=>{setValue?.call(input,"没有匹配项");input.dispatchEvent(new Event("input",{bubbles:true}));});
+  expect(nav!.textContent).toContain("没有匹配的主体或聊天");
+  expect(nav!.querySelector(".cp-subject-chat")).toBeNull();
+ }finally{await view.cleanup();}
+});
 it("执行期间隐藏上轮确认卡和快捷确认按钮，不重复提交",async()=>{
  const view=await mount({taskId:"same-task",status:"running"});
  try{expect(view.container.textContent).not.toContain("当前需要确认");expect(button(view.container,"确认蓝图，开始写作")).toBeUndefined();expect(view.send).not.toHaveBeenCalled();}
