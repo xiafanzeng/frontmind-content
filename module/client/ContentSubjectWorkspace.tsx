@@ -1,7 +1,5 @@
 import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
-import {createPortal} from "react-dom";
-import {useModuleSidebarTarget} from "@frontmind/module-ui/dashboard/ModuleShell";
-import {Archive,ArchiveRestore,ChevronDown,Folder,FolderOpen,Pin,Plus,X} from "lucide-react";
+import {Archive,ArchiveRestore,ChevronDown,Folder,FolderOpen,Pin,Plus,Search,X} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
 import {useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
 import type {ContentBusinessClient} from "./runtime";
@@ -16,7 +14,6 @@ import "./content-subject-workspace.css";
 /** 主体、版本与聊天属于业务层；预览和正式宿主共用本组件。 */
 export default function ContentSubjectWorkspace({client}:{client:ContentBusinessClient}) {
  const host=useContentWorkspaceHost();
- const sidebarTarget=useModuleSidebarTarget();
  const api=host.useConversation();
  const {sendMessage}=host.useSendMessage();
  const {Home,FilePreview}=host;
@@ -34,7 +31,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const sourceNavigation=useRef<{conversationId:string;stageIndex:number}|null>(null);
  const navigationRef=useRef<HTMLElement|null>(null);
  const [formFolder,setFormFolder]=useState(""),[preview,setPreview]=useState<string|null>(null);
- const [showArchived,setShowArchived]=useState<Record<string,boolean>>({}),[showAll,setShowAll]=useState<Record<string,boolean>>({});
+ const [showArchived,setShowArchived]=useState<Record<string,boolean>>({}),[showAll,setShowAll]=useState<Record<string,boolean>>({}),[folderSearch,setFolderSearch]=useState("");
  const [localChoices,setLocalChoices]=useState<Record<string,{style?:"A"|"B";requirements?:string}>>({});
  const current=api.activeConversation;
  const currentRef=useRef(current?.id);currentRef.current=current?.id;
@@ -42,7 +39,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   // 创建或切换后让已选聊天出现在目录可视范围内，避免新记录落在屏幕之外。
   const selected=navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
   selected?.scrollIntoView?.({block:"nearest"});
- },[current?.id,sidebarTarget,loaded]);
+ },[current?.id,loaded]);
  const binding=current?subjects.bindings[current.id]:undefined;
  const historical=Boolean(current&&(!binding||(binding.kind==="article"&&!binding.packVersionId&&!current.taskId&&current.messages.length>0)));
  const generation=binding?.generation??current?.messages.findLast(message=>message.contentWorkflowGeneration!==undefined)?.contentWorkflowGeneration??0;
@@ -214,14 +211,48 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const updateAvailable=pack&&latest&&pack.id!==latest.id;
  const outputs=current?.messages.filter(item=>item.role==="assistant").flatMap(item=>item.outputFiles??[])??[];
  const previewPack=subjects.folders.flatMap(item=>item.versions).find(item=>item.id===preview);
+ const normalizedFolderSearch=folderSearch.trim().toLocaleLowerCase();
+ const filteredFolders=subjects.folders.map(item=>{
+  const all=api.state.conversations.filter(value=>subjects.bindings[value.id]?.folderId===item.id);
+  const live=all.filter(value=>!subjects.bindings[value.id].archived).sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned)));
+  const archived=all.filter(value=>subjects.bindings[value.id].archived);
+  const folderMatches=!normalizedFolderSearch||item.name.toLocaleLowerCase().includes(normalizedFolderSearch);
+  const matchingLive=folderMatches?live:live.filter(value=>value.title.toLocaleLowerCase().includes(normalizedFolderSearch));
+  const matchingArchived=folderMatches?archived:archived.filter(value=>value.title.toLocaleLowerCase().includes(normalizedFolderSearch));
+  return {item,live,archived,matchingLive,matchingArchived,folderMatches,expanded:item.expanded!==false};
+ }).filter(entry=>!normalizedFolderSearch||entry.folderMatches||entry.matchingLive.length>0||entry.matchingArchived.length>0);
+ const historicalConversations=api.state.conversations.filter(value=>!subjects.bindings[value.id]&&(!normalizedFolderSearch||value.title.toLocaleLowerCase().includes(normalizedFolderSearch)));
  const subjectNavigation=(
-  <nav ref={navigationRef} className={`cp-subject-nav ${sidebarTarget?"cp-subject-nav--sidebar":""}`} aria-label="主体文件夹与聊天"><header><h2>主体文件夹</h2><button type="button" aria-label="新建主体文件夹" onClick={openFolder} disabled={!loaded||busy}><Plus size={18}/></button></header><button type="button" className="cp-subject-new-chat" onClick={()=>openChat()} disabled={!folder||busy}>＋ 新建聊天</button>
-   {subjects.folders.map(item=>{const all=api.state.conversations.filter(value=>subjects.bindings[value.id]?.folderId===item.id),live=all.filter(value=>!subjects.bindings[value.id].archived).sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned))),archived=all.filter(value=>subjects.bindings[value.id].archived),expanded=item.expanded!==false;const visible=showAll[item.id]?live:live.slice(0,5);if(current&&live.includes(current)&&!visible.includes(current))visible.splice(4,1,current);return <section className="cp-subject-group" key={item.id}><div className="cp-subject-folder-row"><button type="button" className="cp-subject-folder-name" aria-expanded={expanded} onClick={()=>{const different=folder?.id!==item.id;const operation=()=>{setFolderId(item.id);if(different)api.setActive(live[0]?.id??"");report(()=>changeSubjects(value=>({...value,revision:value.revision+1,folders:value.folders.map(f=>f.id===item.id?{...f,expanded:different?true:!expanded}:f)})));};if(different)host.requestWorkspaceNavigation(operation);else operation();}}>{expanded?<FolderOpen size={16}/>:<Folder size={16}/>}<span>{item.name}</span></button><button type="button" aria-label={`在${item.name}中新建聊天`} onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button></div>{expanded&&<>{visible.map(row)}{!live.length&&<p className="cp-subject-nav-empty">暂无聊天</p>}{live.length>5&&<button type="button" className="cp-subject-more" onClick={()=>setShowAll(value=>({...value,[item.id]:!value[item.id]}))}>{showAll[item.id]?"收起显示":"展开显示"}</button>}{archived.length>0&&<><button type="button" className="cp-subject-more" onClick={()=>setShowArchived(value=>({...value,[item.id]:!value[item.id]}))}>{showArchived[item.id]?"收起归档":"已归档"}（{archived.length}）</button>{showArchived[item.id]&&archived.map(row)}</>}</>}</section>;})}
-   {api.state.conversations.some(value=>!subjects.bindings[value.id])&&<section className="cp-subject-group"><h3>历史项目</h3>{api.state.conversations.filter(value=>!subjects.bindings[value.id]).map(row)}</section>}
+  <nav ref={navigationRef} className="cp-subject-nav" aria-label="主体文件夹与聊天">
+   <header><h2>主体文件夹</h2><button type="button" aria-label="新建主体文件夹" title="新建主体文件夹" onClick={openFolder} disabled={!loaded||busy}><Plus size={18}/></button></header>
+   <label className="cp-subject-search"><Search size={16} aria-hidden="true"/><input aria-label="搜索主体与聊天" type="search" value={folderSearch} onChange={event=>setFolderSearch(event.target.value)} placeholder="搜索主体与聊天"/></label>
+   <button type="button" className="cp-subject-new-chat" onClick={()=>openChat()} disabled={!folder||busy}>＋ 新建聊天</button>
+   {filteredFolders.map(({item,live,archived,matchingLive,matchingArchived,folderMatches,expanded})=>{
+    const visible=normalizedFolderSearch?matchingLive:showAll[item.id]?live:live.slice(0,5);
+    if(!normalizedFolderSearch&&current&&live.includes(current)&&!visible.includes(current))visible.splice(4,1,current);
+    const showChildren=expanded||Boolean(normalizedFolderSearch);
+    return <section className="cp-subject-group" key={item.id}>
+     <div className="cp-subject-folder-row">
+      <button type="button" className="cp-subject-folder-name" aria-expanded={expanded} onClick={()=>{const different=folder?.id!==item.id;const operation=()=>{setFolderId(item.id);if(different)api.setActive(live[0]?.id??"");report(()=>changeSubjects(value=>({...value,revision:value.revision+1,folders:value.folders.map(f=>f.id===item.id?{...f,expanded:different?true:!expanded}:f)})));};if(different)host.requestWorkspaceNavigation(operation);else operation();}}>
+       {showChildren?<FolderOpen size={16}/>:<Folder size={16}/>}<span>{item.name}</span>
+      </button>
+      <button type="button" aria-label={`在${item.name}中新建聊天`} title="在当前主体中新建聊天" onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button>
+     </div>
+     {showChildren&&<>
+      {visible.map(row)}
+      {!normalizedFolderSearch&&!live.length&&<p className="cp-subject-nav-empty">暂无聊天</p>}
+      {normalizedFolderSearch&&folderMatches&&!matchingLive.length&&<p className="cp-subject-nav-empty">暂无匹配聊天</p>}
+      {!normalizedFolderSearch&&live.length>5&&<button type="button" className="cp-subject-more" onClick={()=>setShowAll(value=>({...value,[item.id]:!value[item.id]}))}>{showAll[item.id]?"收起显示":"展开显示"}</button>}
+      {archived.length>0&&<><button type="button" className="cp-subject-more" onClick={()=>setShowArchived(value=>({...value,[item.id]:!value[item.id]}))}>{showArchived[item.id]?"收起归档":"已归档"}（{normalizedFolderSearch?matchingArchived.length:archived.length}）</button>{showArchived[item.id]&&(normalizedFolderSearch?matchingArchived:archived).map(row)}</>}
+     </>}
+    </section>;
+   })}
+   {historicalConversations.length>0&&<section className="cp-subject-group"><h3>历史项目</h3>{historicalConversations.map(row)}</section>}
+   {normalizedFolderSearch&&!filteredFolders.length&&!historicalConversations.length&&<p className="cp-subject-nav-empty cp-subject-search-empty">没有匹配的主体或聊天</p>}
   </nav>
  );
- return <section className={`cp-subject-workspace ${sidebarTarget?"is-sidebar-integrated":""}`} aria-label="主体文件夹与内容创作">
-  {sidebarTarget?createPortal(subjectNavigation,sidebarTarget):subjectNavigation}
+ return <section className="cp-subject-workspace" aria-label="主体文件夹与内容创作">
+  {subjectNavigation}
   <main className="cp-subject-main"><header className="cp-subject-heading"><div className="cp-subject-crumb">{historical?"历史项目":folder?.name??"主体文件夹"} / {historical?"原有聊天":binding?.kind==="pack"?"资料包创建与修改":"文章书写"}</div><div className="cp-subject-title"><h1>{current?.title??folder?.name??"内容创作"}</h1>{binding&&<span>{binding.kind==="pack"?"资料包创建与修改":"文章书写"}</span>}</div><div className="cp-subject-reference"><span>{historical?"保留原记录":binding?.kind==="article"?pack?"自动引用":"等待资料包":"归档至"}</span><strong>{historical?current?.taskId?"原任务与附件":"原聊天与附件":binding?.kind==="article"?pack?`${folder?.name}资料包 · v${pack.version}`:"当前文件夹尚无已确认资料包":`${folder?.name??"请选择主体"} / 主体资料包`}</strong>{binding&&(pack||latest)&&<button type="button" onClick={()=>setPreview((pack||latest)!.id)}>查看</button>}</div>{binding?.kind==="article"&&pack&&folder&&<div className="cp-subject-version"><label>引用版本<select aria-label="资料包引用版本" value={pack.id} disabled={busy||Boolean(confirmation.pending)} onChange={event=>report(()=>switchPack(event.target.value))}>{folder.versions.map(item=><option key={item.id} value={item.id}>v{item.version}{item.id===latest?.id?"（最新）":""}{item.includesP0?" · 含P0":""}</option>)}</select><ChevronDown size={12}/></label>{updateAvailable&&<><span>资料包已更新至 v{latest.version}，本篇仍引用 v{pack.version}</span><button type="button" onClick={()=>report(()=>switchPack(latest.id))} disabled={busy||Boolean(confirmation.pending)}>应用新版本</button></>}</div>}</header>
    {(notice||taskError)&&<p className="cp-subject-notice" role="status">{notice||taskError}</p>}
    <ContentProductionFailureNotice failure={progress?.executionFailure}/>
