@@ -13,8 +13,17 @@ const context:FrozenContentTaskContext={
 };
 
 describe("运行时引用服务器冻结资料包",()=>{
- it("快照使用标准库保留中文文件名标记，禁止未声明编码的zip命令",()=>{
+ it("原生任务由宿主保存和恢复快照，不再要求模型重复打包",()=>{
   const text=contentProductionSystemContext(context);
+  expect(text).toContain("The host owns snapshot transport");
+  expect(text).toContain("Do not manually ZIP");
+  expect(text).toContain("frontmind_workflow_job_state_");
+  expect(text).not.toContain("also ZIP the entire current Job tree");
+  expect(text).not.toContain("use Python 3 zipfile.ZipFile");
+  expect(text).not.toContain("select the largest epochMilliseconds");
+ });
+ it("旧版模型传输仍使用标准库保留中文文件名和完整校验",()=>{
+  const text=contentProductionSystemContext({...context,contentWorkflow:{...context.contentWorkflow!,version:"4.11.0",runtime:undefined}});
   expect(text).toContain("ZipFile.write(path, arcname)");
   expect(text).toContain("Never use the Info-ZIP zip command");
   expect(text).toContain("metadata_encoding='utf-8'");
