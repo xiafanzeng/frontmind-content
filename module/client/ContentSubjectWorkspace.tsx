@@ -180,7 +180,8 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   setInspected(null);setNavigation(previous=>({conversationId:current.id,latest:true,sequence:(previous?.sequence??0)+1}));
   if(!current.taskId)return confirmation.stage(prompt,files);
   if(!progress?.confirmation){
-   if(resumableAssembly&&/^继续/u.test(prompt.trim()))return sendMessage(prompt,files,{contentWorkflowStatus:progress!.workflowStatus??undefined,contentWorkflowGeneration:generation,contentWorkflowKind:progress!.jobKind??undefined});
+   const deliveredManuscript=progress?.jobKind==="p0"&&progress.workflowStatus==="p0_ready"||progress?.jobKind==="article"&&progress.workflowStatus==="completed";
+   if(deliveredManuscript||resumableAssembly&&/^继续/u.test(prompt.trim()))return sendMessage(prompt,files,{contentWorkflowStatus:progress!.workflowStatus??undefined,contentWorkflowGeneration:generation,contentWorkflowKind:progress!.jobKind??undefined});
    setNotice("当前没有待确认的写作步骤，请先读取阶段。");return false;
   }
   let text=prompt;
