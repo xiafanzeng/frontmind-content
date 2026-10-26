@@ -138,7 +138,7 @@ class ManagedRouteTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("run_managed", path)
         launcher = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(launcher)
-        for name in ("zhipu", "deepseek"):
+        for name in ("xty", "zhipu", "deepseek"):
             (self.root / (name + ".json")).write_text(json.dumps({"api_key": "fixture-" + name, "unused_secret": "never-inject"}))
         with patch.dict(os.environ, {}, clear=True), patch.object(launcher.os, "execve") as execute, patch.object(launcher.subprocess,"call",return_value=0) as call:
             self.assertEqual(launcher.main(["--config-dir", str(self.root), "--", "preflight"]), 0)
@@ -149,6 +149,8 @@ class ManagedRouteTests(unittest.TestCase):
         else:
             call.assert_not_called()
             executable, arguments, environment = execute.call_args.args
+        self.assertEqual(environment["FRONTMIND_CONTENT_XTY_API_KEY"], "fixture-xty")
+        self.assertEqual(environment["FRONTMIND_CONTENT_HOST_PROVIDER"], "xty")
         self.assertEqual(environment["FRONTMIND_CONTENT_ZHIPU_API_KEY"], "fixture-zhipu")
         self.assertEqual(environment["FRONTMIND_CONTENT_DEEPSEEK_API_KEY"], "fixture-deepseek")
         self.assertNotIn("never-inject", environment.values())

@@ -201,7 +201,12 @@ def build_article(output: Path, pack: Path, case: dict) -> tuple[Path, dict, dic
         "--answer", str(FIXTURE / "answer_01.md"),
         "--answer", str(FIXTURE / "answer_02.md"), "--offline-fixture",
     )
-    require_status(job, "awaiting_reference_pack_route")
+    legacy = require_status(job, "awaiting_reference_pack_route")
+    # This named v4.11 runner exercises the historical answer-only contract.
+    # Freeze that fixture identity rather than acquiring today's external examples.
+    for key in ("article_pool_policy", "question_positioning_handoff", "pattern_example_profile"):
+        legacy["metadata"].pop(key, None)
+    (job / "job_state.json").write_text(json.dumps(legacy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     resume(job, "--reference-pack-route", "use")
     require_status(job, "awaiting_response_brief")
     resume(job, "--no-extra-response-requirements", "--ai-brand-recognition", "insufficient")

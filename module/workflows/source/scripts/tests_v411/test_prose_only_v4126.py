@@ -115,8 +115,12 @@ class ProseOnlyTests(unittest.TestCase):
             self.assertEqual(rt.build_payload(action, 'synthetic task')['response_format'], {'type': 'json_object'})
         self.assertEqual(rt.build_payload('p0_style', bs.MARKER + '\nlegacy')['response_format'], {'type': 'json_object'})
 
-    def test_bundled_rewrite_requirements_do_not_restore_old_reports(self):
-        text=(ROOT/'customer_inputs/yihang/rewrite_requirements.md').read_text()
+    def test_rewrite_requirements_reach_prose_prompt_without_old_reports(self):
+        requirements = '合成历史测试时间为2021年12月21日至23日。正文保留时间范围，交付实际修改后的文章。'
+        self.state['decisions']['response_brief'] = requirements
+        wf.save_state(self.job, self.state)
+        text = self.style_prompt()
+        self.assertIn(requirements, text)
         for phrase in ('第三遍须对照','给出对应段落的实际编辑说明','editorial_plan','reference_alignment'):
             self.assertNotIn(phrase,text)
         self.assertIn('2021年12月21日至23日',text)

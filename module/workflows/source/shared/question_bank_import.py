@@ -20,6 +20,7 @@ from .question_semantics import classify_question, normalize_question_key
 ROOT = qr.QUESTION_RESEARCH_ROOT_MEMBER
 INDEX = qr.QUESTION_RESEARCH_INDEX_MEMBER
 UNKNOWN_PLATFORMS = {"", "unspecified", "unknown", "未知平台", "详细表格", "未提供"}
+PLATFORM_SHEET_NAMES = {"元宝", "千问", "通义千问", "豆包"}
 
 
 def now():
@@ -57,11 +58,12 @@ def looks_like_monitoring(path: Path) -> bool:
     if path.suffix.casefold() not in ri.MONITORING_SUFFIXES:
         return False
     # Only divert positively identified tables. Never infer type from filename.
-    for _, row in export_rows(path):
+    for sheet, row in export_rows(path):
         fields = {ri.field_key(k) for k in row}
         if (fields & {ri.field_key(k) for k in ri.QUESTION_ALIASES}
-                and fields & {ri.field_key(k) for k in ri.PLATFORM_ALIASES}
-                and fields & {ri.field_key(k) for k in ri.ANSWER_ALIASES}):
+                and (fields & {ri.field_key(k) for k in ri.PLATFORM_ALIASES}
+                     or sheet in PLATFORM_SHEET_NAMES)
+                and qr._answer_groups(row)):
             return True
     return False
 
@@ -79,8 +81,8 @@ def read_export(path: Path, *, brand: str = "", aliases=()):
         if not key:
             continue
         # Ignore explanatory sheets even if they repeat a header word.
-        fields = {ri.field_key(k) for k in row}
-        if not fields & {ri.field_key(k) for k in ri.ANSWER_ALIASES}:
+        entries = qr._answer_groups(row)
+        if not entries:
             continue
         raw_brand = ri.normal(ri._field(row, ri.BRAND_ALIASES))
         if brand and raw_brand:
@@ -110,10 +112,10 @@ def read_export(path: Path, *, brand: str = "", aliases=()):
                   "date_raw": str(raw_date) if raw_date is not None else None,
                   "question_text": text}
         target["rows"].append(source)
-        platform = ri.normal(ri._field(row, ri.PLATFORM_ALIASES)) or "未知平台"
+        platform = ri.normal(ri._field(row, ri.PLATFORM_ALIASES)) or (sheet if sheet in PLATFORM_SHEET_NAMES else "未知平台")
         rank = ri._field(row, ri.RANK_ALIASES)
         keyword = ri.normal(ri._field(row, {"核心词", "问题核心词", "keyword", "questionkeyword"})) or None
-        for entry in qr._answer_groups(row):
+        for entry in entries:
             # Do not normalize whitespace in an answer. Headings, paragraph
             # breaks, citations and original text are retained byte-for-text.
             answer = {"platform": platform, "model": None, "sampled_at": sampled_at,
@@ -121,8 +123,8 @@ def read_export(path: Path, *, brand: str = "", aliases=()):
                       "region": entry.get("region"), "exported_rank": str(rank) if rank is not None else entry.get("exported_rank"),
                       "monitor_keyword_rank": entry.get("monitor_keyword_rank"), "brand": raw_brand or None,
                       "question_keyword": keyword, "source_record": source,
-                      "sample_label": ri.normal(ri._field(row, {"提问次数", "sample", "sample_id"})) or None,
-                      "screenshot_url": ri._http_url(ri._field(row, {"回答截图", "截图链接", "screenshot"}))}
+                      "sample_label": ri.normal(ri._field(row, {"提问次数", "sample", "sample_id"})) or entry.get("sample_label"),
+                      "screenshot_url": entry.get("screenshot_url") or ri._http_url(ri._field(row, {"回答截图", "截图链接", "screenshot"}))}
             target["answers"].append(answer)
         total_rows += 1
     if not by_date:

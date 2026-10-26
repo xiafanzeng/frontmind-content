@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Mapping, Sequence
 
 from shared import research_ingestion
+from shared.pptx_material import presentation_text, read_pptx
 from shared.question_research import (
     QuestionResearchError,
     build_from_research_ingestion_index,
@@ -720,27 +721,14 @@ def _text_from_sheet(path: Path) -> str:
         raise ReferencePackBuildError(f"knowledge_base_spreadsheet_unreadable: {path.name}") from exc
 
 
-def _slide_number(name: str) -> int:
-    matched = re.search(r"slide(\d+)\.xml$", name)
-    return int(matched.group(1)) if matched else 0
-
-
 def _text_from_pptx(path: Path) -> str:
     try:
-        with zipfile.ZipFile(path) as archive:
-            names = [name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)]
-            if not names:
-                raise ValueError("no slide XML")
-            if len(names) > MAX_PPTX_SLIDES:
-                raise ReferencePackBuildError(
-                    f"knowledge_base_presentation_slide_limit_exceeded: {path.name}"
-                )
-            lines: list[str] = []
-            for name in sorted(names, key=_slide_number):
-                lines.append(f"# Slide {_slide_number(name)}")
-                xml = archive.read(name).decode("utf-8", errors="replace")
-                lines.extend(html.unescape(item) for item in re.findall(r"<a:t>(.*?)</a:t>", xml, re.S))
-            return enforce_text_budget("\n".join(lines), label=path.name)
+        slides = read_pptx(path)
+        if len(slides) > MAX_PPTX_SLIDES:
+            raise ReferencePackBuildError(
+                f"knowledge_base_presentation_slide_limit_exceeded: {path.name}"
+            )
+        return enforce_text_budget(presentation_text(slides), label=path.name)
     except ReferencePackBuildError:
         raise
     except IntakeSecurityError as exc:

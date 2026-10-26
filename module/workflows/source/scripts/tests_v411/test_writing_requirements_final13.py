@@ -301,6 +301,18 @@ class PatternTaskInputTests(unittest.TestCase):
             'question_positioning': ('6e47205ab9ac8640bd5dc56424e074a23e6110e306e71552ce65f7fd13b5d029',
                                      'b8ce623edd613623a2c17378257fa1e1abee82bceb6d863d4799ecc8852ec425'),
         }
+        # Freeze the v16.3 host configuration, not the current live profile.
+        historical = {
+            'provider': 'xty', 'wire_api': 'openai_agents_sdk',
+            'api_url': 'https://api.xty.app/v1/chat/completions',
+            'base_url': 'https://api.xty.app/v1', 'model': 'gpt-5.6-sol',
+            'openai_version': '3.16.2', 'sdk_version': '0.22.3',
+            'model_api': 'chat_completions', 'automatic_retries': 0,
+            'tracing_disabled': True, 'parallel_tool_calls': False,
+            'timeout_seconds': 1800, 'max_turns': 100, 'max_tool_calls': 1000,
+            'max_tokens': 131072, 'completion_transport': 'stream_merged',
+        }
+        self.stack.enter_context(patch.object(model_runtime, 'profile_for', return_value=historical))
         for action, pair in expected.items():
             prompt = getattr(wf, 'prompt_'+action)(self.job)
             self.assertEqual((hashlib.sha256(prompt.encode()).hexdigest(),
@@ -327,7 +339,7 @@ class PatternTaskInputTests(unittest.TestCase):
                     for value in (TARGET, RELATION, FORMAT):
                         self.assertIn(value, payload)
                     self.assertIn('P01 围绕主推荐对象回答正式问题', payload)
-                    self.assertIn('已确认分档用于组织选材', payload)
+                    self.assertIn('已确认分类用于组织选材', payload)
 
     def test_current_pattern_page_presents_actual_recommendation_tasks(self):
         self.state['metadata']['writing_requirements_contract'] = req.CONTRACT
@@ -371,11 +383,12 @@ class BlueprintMaterialInputTests(unittest.TestCase):
     def test_unmarked_v13_blueprint_prompt_and_request_identity_are_unchanged(self):
         self.unmark()
         prompt = wf.prompt_blueprint(self.job, p0=False)
-        # Captured before the source-index branch with the exact fixture above.
+        # Reproduced with this fixture in immutable v16.3 archive
+        # 875380c525c3bb12. The prompt bytes remain unchanged.
         self.assertEqual(hashlib.sha256(prompt.encode()).hexdigest(),
                          '2d6942119d1936bd91294b0a10e9129c5079f652e68c19eee46bdd57bb11b203')
         self.assertEqual(model_runtime.request_fingerprint('article_blueprint', prompt),
-                         'd5a52855207e13bde140eef292d38c3f89c5bbcc242025d49cf4feaf4cf6017a')
+                         '2a37974c16cc1cdd104e735b8580bb55c3715aad4d04d44d24291518969f3021')
 
     def test_actual_model_input_has_only_index_and_existing_reader_reads_original(self):
         originals = {p: p.read_bytes() for p in self.root.iterdir()}

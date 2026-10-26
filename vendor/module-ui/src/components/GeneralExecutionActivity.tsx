@@ -8,6 +8,7 @@ import {
   generalToolStatusText,
 } from "@frontmind/module-contracts/execution";
 import type { GeneralExecutionEntry } from "@frontmind/module-contracts/execution";
+import MarkdownRenderer from "./MarkdownRenderer";
 type ExecutionDisplayEntry = Exclude<GeneralExecutionEntry, {kind:"message"}> & {animate?:boolean;isCurrent?:boolean};
 import "./GeneralExecutionActivity.css";
 
@@ -114,16 +115,13 @@ function ThinkingBlock({
   );
   if (display === "inline") {
     return (
-      <div className="general-execution__thinking" aria-label="公开过程摘要">
-        <div className="general-execution__thinking-heading">{heading}</div>
-        <div className="general-execution__details">
-          <p
-            className="general-execution__thinking-text"
-            aria-live={live ? "polite" : undefined}
-          >
-            {text}
-          </p>
-        </div>
+      <div className="general-execution__thinking" aria-label="公开过程摘要" aria-live={live ? "polite" : undefined}>
+        <MarkdownRenderer
+          content={text}
+          className="general-execution__thinking-text"
+          allowCopy={false}
+          generalChatLinks
+        />
       </div>
     );
   }

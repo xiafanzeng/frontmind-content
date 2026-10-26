@@ -33,7 +33,8 @@ class JournalSafetyTests(unittest.TestCase):
         rt._atomic(path,row)
         return path,row
 
-    def test_all_three_local_read_tools_can_replay_started_markers(self):
+    def test_readonly_tools_replay_started_markers_on_explicit_resume(self):
+        self.record['retry_explicit']=True
         class LocalTools(FakeTools):
             def __init__(self):super().__init__();self.calls=[]
             def execute(self,name,args):self.calls.append(name);self.read=True;return {'text':'fresh read'}
@@ -46,11 +47,22 @@ class JournalSafetyTests(unittest.TestCase):
                 self.assertEqual(after['status'],'completed');self.assertEqual(after['readonly_replay_count'],1)
                 self.assertEqual(after['readonly_replay_history'][0]['started_at'],row['started_at'])
 
-    def test_external_write_and_submit_started_markers_do_not_reexecute(self):
-        for name in ['web_read','web_search','extract_document','ocr','submit_result','unknown_tool']:
+    def test_write_and_submit_started_markers_do_not_reexecute_on_resume(self):
+        self.record['retry_explicit']=True
+        for name in ['extract_document','ocr','submit_result','unknown_tool']:
             with self.subTest(name=name):
                 path,row=self.prepare(name);before=path.read_bytes();tools=FakeTools()
                 with patch.object(tools,'execute',side_effect=AssertionError('must not execute')) as run:
+                    with self.assertRaises(rt.ProviderActionError) as exc:
+                        asyncio.run(ar.ToolJournal(self.attempt,self.record,tools,valid,[]).invoke(name,row['call_id'],json.dumps(row['arguments'])))
+                self.assertEqual(exc.exception.code,'tool_outcome_unknown');run.assert_not_called()
+                self.assertEqual(path.read_bytes(),before)
+
+    def test_readonly_tools_require_explicit_resume(self):
+        for name in sorted(ar.READONLY_REPLAY_TOOLS):
+            with self.subTest(name=name):
+                path,row=self.prepare(name);before=path.read_bytes();tools=FakeTools()
+                with patch.object(tools,'execute') as run:
                     with self.assertRaises(rt.ProviderActionError) as exc:
                         asyncio.run(ar.ToolJournal(self.attempt,self.record,tools,valid,[]).invoke(name,row['call_id'],json.dumps(row['arguments'])))
                 self.assertEqual(exc.exception.code,'tool_outcome_unknown');run.assert_not_called()
@@ -78,7 +90,7 @@ class JournalSafetyTests(unittest.TestCase):
             second=asyncio.run(journal.invoke('read_material',row['call_id'],json.dumps(row['arguments'])))
         self.assertEqual(run.call_count,1);self.assertEqual(first,second)
         receipt=rt._read_json(path);self.assertEqual(receipt['status'],'completed')
-        self.assertEqual(receipt['output']['ok'],False);self.assertEqual(receipt['output']['error'],'tool_error')
+        self.assertEqual(receipt['output']['ok'],False);self.assertEqual(receipt['output']['error'],'invalid_tool_arguments')
         self.assertNotIn(secret,path.read_text())
 
     def test_external_transport_toolerror_keeps_unknown_guard(self):
@@ -108,7 +120,7 @@ class JournalSafetyTests(unittest.TestCase):
             asyncio.run(journal.invoke('read_material',row['call_id'],json.dumps(row['arguments'])))
 
     def test_tools_with_side_effects_are_not_in_replay_allowlist(self):
-        self.assertEqual(ar.READONLY_REPLAY_TOOLS,{'list_materials','read_material','search_materials'})
+        self.assertEqual(ar.READONLY_REPLAY_TOOLS,{'list_materials','read_material','search_materials','web_read','web_search'})
 
 
 class HostPathAndRestoreTests(unittest.TestCase):

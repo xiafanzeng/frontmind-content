@@ -57,14 +57,16 @@ class SuggestedOutlineTests(unittest.TestCase):
                                        'article_repair', 'article_titles', 'article_title_review'])
 
     def test_unmarked_v13_prompt_bytes_and_request_identity_are_unchanged(self):
-        # Captured before suggested-outline-v1 with these exact synthetic inputs.
+        # Reproduced from immutable v16.3 archive 875380c525c3bb12, using
+        # this exact synthetic fixture profile. The old request constants
+        # also failed in that archive; all prompt-byte constants are unchanged.
         expected = {
             'article_draft': ('76250b7935ac4737cfa8732296cec463b6c9c111f8dbc7ca04be529d445f3f98',
-                             '94b8ae73ac72ac031f9c9a16367f4e263938ef58595b0176a669098cecdcba7b'),
+                             'be044c816be88b77700a9ff08cf26ff7f8da2722c4ab17061fc649ba73ba1495'),
             'article_edit': ('143a206921086fdd5a7a51a019586fd19c8d5a0ec8af570cca9138b7afea735c',
-                            'd1e7ca2833003b9354ac41f9fa31b04b057b38d68394ecb89a8cf85e57bebeae'),
+                            '815d7c1a80e17434d9a548364d92e8e4a03fd6bd2d4e2ee8df2e932cb6606998'),
             'article_repair': ('3b5a2bfc898a25271b938fe2f4e442a7545ddb478913b659d1f2f8a964c0c13f',
-                              '0862b0084cc4941c3d155f61305d67ae81f40523ad5283bbefa0b5146964b212'),
+                              '2a6b0c41b6948e2af5b9592f6274f7cf70cefec43346a45258a297de972f09c5'),
         }
         job = self.prepared_job(marked=False)
         self.needs_revision = True

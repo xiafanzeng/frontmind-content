@@ -26,6 +26,8 @@ Read [CAPABILITIES.md](CAPABILITIES.md) for source coverage, checks actually per
 
 ## Shared Dashboard presentation
 
+Standalone adapter tests live in `standalone/tests/` and run through `pnpm test:standalone`; `pnpm test` also runs them. Keep tests that import standalone code outside `module/`, because only the module tree returns to Core.
+
 The standalone app uses the original Dashboard sidebar, tabs, layout, and controls from vendor/module-ui. It only filters navigation to this business module. Keep business page and style changes in module/client so source synchronization brings them back to Dashboard. standalone/ only supplies runtime adapters and independent inputs; it is not merged into production. Shared shell changes are maintained in main and sent to vendor.
 
 ## 后端 API 开发（2026-09-29）

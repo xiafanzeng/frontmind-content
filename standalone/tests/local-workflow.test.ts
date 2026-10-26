@@ -17,7 +17,9 @@ vi.mock("node:child_process", async importOriginal => {
   Object.defineProperty(execFile, promisify.custom, { value: childProcess.read });
   return { ...original, execFile, spawn: childProcess.spawn };
 });
-import { localWorkflowPlugin, localActionArgs } from "../../standalone/local-workflow";
+import {bindSubjectChat,createSubjectFolder,emptySubjectWorkspace} from "../../module/contracts/content-subject-workspace";
+import { localWorkflowPlugin, localActionArgs } from "../local-workflow";
+import release from "../../module/workflows/release.json";
 
 function runnerState(revision = 7) {
   return {
@@ -50,7 +52,7 @@ function fixture() {
     const finished = new Promise<void>((resolve, reject) => { res.once("finish", resolve); res.once("error", reject); });
     await handler(req, res, () => { throw new Error("Unexpected fall-through"); });
     await finished;
-    return { status, body: text && contentType.startsWith("application/json") ? JSON.parse(text) : null, text };
+    return { status, body: text && contentType.startsWith("application/json") ? JSON.parse(text) : null, text, contentType };
   }
   return { root, job, snapshot, request, restart };
 }
@@ -61,7 +63,10 @@ const confirmation = (requestId: string, extra: Record<string, unknown> = {}) =>
 
 beforeEach(() => {
   childProcess.read.mockReset().mockImplementation(async () => ({ stdout: JSON.stringify(childProcess.snapshots), stderr: "" }));
-  childProcess.spawn.mockReset().mockImplementation(() => Object.assign(new EventEmitter(), { kill: vi.fn() }));
+  childProcess.spawn.mockReset().mockImplementation(() => {
+    const child=Object.assign(new EventEmitter(),{kill:vi.fn(()=>{queueMicrotask(()=>child.emit("close",null));return true;})});
+    return child;
+  });
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -74,7 +79,7 @@ it("polls snapshots without starting a model process or exposing local storage p
     expect(response.text).not.toContain(view.root);
     expect(response.text).not.toContain("private-config");
     const task = await view.request("GET", "/api/frontmind/v2/tasks/job_1");
-    expect(task.body.contentProduction).toMatchObject({ runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation" });
+    expect(task.body.contentProduction).toMatchObject({ runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation", workflowVersion: release.version, sessionPhases: true });
   }
   expect(childProcess.read).toHaveBeenCalledTimes(1);
   expect(childProcess.read.mock.calls[0][1][1]).toMatch(/workflow_snapshot\.py$/);
@@ -139,6 +144,37 @@ it("creates at most one native job per conversation even with concurrent request
   expect(childProcess.spawn).toHaveBeenCalledTimes(1);
   const args = childProcess.spawn.mock.calls[0][1];
   expect(args.slice(args.indexOf("--") + 1, args.indexOf("--") + 3)).toEqual(["reference-pack", "create"]);
+  expect(args.slice(args.indexOf("--positioning-brief"))).toEqual(["--positioning-brief",input.prompt]);
+});
+
+it("retains uploaded input attachments and serves the original bytes after restart", async () => {
+  const view = fixture();
+  const original = "企业原始资料，不是模型生成的交付文件";
+  const upload = await view.request("POST", "/api/frontmind/v2/assets", original, { "x-frontmind-filename": encodeURIComponent("企业简介.pptx") });
+  const id = upload.body.localAssetId;
+  const attachment = { id, fileId: id, type: "file", name: "企业简介.pptx" };
+  const conversation = (await view.request("GET", "/api/content/conversations")).body[0];
+  await view.request("PUT", "/api/content/conversations/job_1", {
+    ...conversation,
+    messages: [{ id: "upload_message", role: "user", content: "补充企业材料", timestamp: 1, attachments: [attachment] }],
+  });
+  view.restart();
+  const restored = (await view.request("GET", "/api/content/conversations")).body[0];
+  expect(restored.messages.find((m: any) => m.id === "upload_message").attachments).toEqual([attachment]);
+  const download = await view.request("GET", `/api/frontmind/v2/assets/${id}/content`);
+  expect(download.status).toBe(200);
+  expect(download.text).toBe(original);
+  expect(download.contentType).toBe("application/vnd.openxmlformats-officedocument.presentationml.presentation");
+  expect((await view.request("GET", "/api/frontmind/v2/assets/asset_missing/content")).status).toBe(404);
+  expect(childProcess.spawn).not.toHaveBeenCalled();
+});
+
+it("creates a brand intake before the user supplies its original materials", async () => {
+ const view=fixture();
+ const result=await view.request("POST","/api/frontmind/v2/tasks",{clientRequestId:"brand_only",conversationId:"brand_only_conversation",prompt:"创建品牌资料包",localAssetIds:[],contentProduction:{mode:"new_reference_pack",enterpriseName:"合成测试品牌",knowledgeSource:"files"}});
+ expect(result.status).toBe(202);
+ const args=childProcess.spawn.mock.calls.at(-1)?.[1];
+ expect(args).toContain("create");expect(args).toContain("合成测试品牌");expect(args).not.toContain("--input");
 });
 
 it("passes the frozen v16.3 article genre and ordered subjects as separate arguments", async () => {
@@ -176,9 +212,15 @@ it("retains the original confirmation after a CLI failure and keeps its diagnost
   const result = await view.request("GET", "/api/frontmind/v2/tasks/job_1");
   expect(result.body).toMatchObject({ status: "error", contentProduction: { runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation" } });
   expect(result.text).not.toContain("PRIVATE_FIXTURE_SENTINEL");
-  const retry = await view.request("POST", "/api/frontmind/v2/tasks/job_1/messages", confirmation("corrected_retry"));
+  expect(result.body.contentProduction.availableActions).toEqual(["resume_current_execution"]);
+  const retry = await view.request("POST", "/api/frontmind/v2/tasks/job_1/messages", confirmation("corrected_retry", { contentProductionAction: { kind: "resume_current_execution", revision: 7 } }));
   expect(retry.status).toBe(202);
   expect(childProcess.spawn).toHaveBeenCalledTimes(2);
+  const args = childProcess.spawn.mock.calls[1][1];
+  expect(args.slice(args.indexOf("--") + 1)).toEqual(["continue", "--job-dir", view.job, "--revision", "7", "--retry-current-action"]);
+  childProcess.spawn.mock.results[1].value.emit("close", 0);
+  expect((await view.request("GET", "/api/frontmind/v2/tasks/job_1")).body).toMatchObject({ status: "awaiting_input", contentProduction: { runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation" } });
+  expect((await view.request("POST", "/api/frontmind/v2/tasks/job_1/messages", confirmation("confirm_after_recovery"))).status).toBe(202);
 });
 
 it("blocks foreign hosts and origins without reading or launching a workflow", async () => {
@@ -266,7 +308,7 @@ it("runs the snapshot reader offline and excludes raw provider traces and escape
   mkdirSync(join(view.job, "deliverables")); writeFileSync(join(view.job, "deliverables", "article.md"), "合成测试文章");
   writeFileSync(join(view.root, "private.json"), "PRIVATE_FIXTURE_SENTINEL");
   symlinkSync(join(view.root, "private.json"), join(view.job, "deliverables", "escape.md"));
-  const script = fileURLToPath(new URL("../../standalone/workflow_snapshot.py", import.meta.url));
+  const script = fileURLToPath(new URL("../workflow_snapshot.py", import.meta.url));
   const result = spawnSync(testPython, ["-B", script, view.root], { encoding: "utf8", env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" } });
   expect(result.status, result.stderr).toBe(0);
   const snapshots = JSON.parse(result.stdout);
@@ -284,7 +326,7 @@ it("turns native review links into safe artifact URLs while preserving external 
   const material = join(view.job, "research", "source.md"); writeFileSync(material, "合成业务材料");
   const review = `# 确认例文\n[打开完整 Markdown](<${material}>)\n[原网页](https://example.org/evidence)`;
   writeFileSync(join(view.job, "reviews", "review_r7.md"), review);
-  const script = fileURLToPath(new URL("../../standalone/workflow_snapshot.py", import.meta.url));
+  const script = fileURLToPath(new URL("../workflow_snapshot.py", import.meta.url));
   const snapshot = spawnSync(testPython, ["-B", script, view.root], { encoding: "utf8", env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" } });
   expect(snapshot.status, snapshot.stderr).toBe(0);
   childProcess.snapshots = JSON.parse(snapshot.stdout);
@@ -303,7 +345,7 @@ it("re-registers persisted review attachments after a server restart without dup
   const material = join(view.job, "research", "source.md"); writeFileSync(material, "合成业务材料");
   const review = `# 待确认\n[原文](<${material}>)`;
   writeFileSync(join(view.job, "reviews", "review_r7.md"), review);
-  const script = fileURLToPath(new URL("../../standalone/workflow_snapshot.py", import.meta.url));
+  const script = fileURLToPath(new URL("../workflow_snapshot.py", import.meta.url));
   const snapshot = spawnSync(testPython, ["-B", script, view.root], { encoding: "utf8", env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" } });
   expect(snapshot.status, snapshot.stderr).toBe(0);
   childProcess.snapshots = JSON.parse(snapshot.stdout);
@@ -329,7 +371,7 @@ it("lists packaged deliveries and native writing reruns without exposing unpacke
   writeFileSync(join(view.job, "deliverables", "Reference_Pack_v1.zip"), "synthetic zip");
   writeFileSync(join(view.job, "deliverables", "Reference_Pack_v1", "materials", "source.md"), "synthetic source");
   writeFileSync(join(view.job, "deliverables", "rerun_1", "article.md"), "synthetic revision");
-  const script = fileURLToPath(new URL("../../standalone/workflow_snapshot.py", import.meta.url));
+  const script = fileURLToPath(new URL("../workflow_snapshot.py", import.meta.url));
   const result = spawnSync(testPython, ["-B", script, view.root], { encoding: "utf8", env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" } });
   expect(result.status, result.stderr).toBe(0);
   expect(JSON.parse(result.stdout)[0].files).toEqual(["deliverables/Reference_Pack_v1.zip", "deliverables/rerun_1/article.md"]);
@@ -342,7 +384,7 @@ it("does not register provider or out-of-job files from native review links", as
   const provider = join(view.job, "provider", "secret.md"), outside = join(view.root, "outside.md");
   writeFileSync(provider, "PRIVATE_PROVIDER_SENTINEL"); writeFileSync(outside, "PRIVATE_OUTSIDE_SENTINEL");
   writeFileSync(join(view.job, "reviews", "review_r7.md"), `# 待确认\n[运行材料](<${provider}>)\n[外部本地文件](<${outside}>)\n[证据原网页](https://example.org/evidence)`);
-  const script = fileURLToPath(new URL("../../standalone/workflow_snapshot.py", import.meta.url));
+  const script = fileURLToPath(new URL("../workflow_snapshot.py", import.meta.url));
   const snapshot = spawnSync(testPython, ["-B", script, view.root], { encoding: "utf8", env: { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1" } });
   expect(snapshot.status, snapshot.stderr).toBe(0);
   childProcess.snapshots = JSON.parse(snapshot.stdout);
@@ -362,9 +404,13 @@ it("returns only summary processes and anchors imported history without exposing
 });
 
 it("keeps cancellation distinct and permits explicit recovery with a new round",async()=>{
- const view=fixture();await view.request("POST","/api/frontmind/v2/tasks/job_1/messages",confirmation("request_cancel"));await view.request("POST","/api/frontmind/v2/tasks/job_1/stop",{});childProcess.spawn.mock.results[0].value.emit("close",null);
+ const view=fixture();await view.request("POST","/api/frontmind/v2/tasks/job_1/messages",confirmation("request_cancel"));
+ Object.assign(view.snapshot.state,{status:"running_article_production",stage:"E8",current_pause:null,pending_action:{action:"article_draft",requires_provider_action:true}});
+ await view.request("POST","/api/frontmind/v2/tasks/job_1/stop",{});
  const cancelled=await view.request("GET","/api/content/conversations");expect(cancelled.body[0].status).toBe("cancelled");expect(cancelled.body[0].processes.at(-1)).toMatchObject({id:"turn-request_cancel",status:"cancelled",reason:"本次执行已取消。"});
- const retry=await view.request("POST","/api/frontmind/v2/tasks/job_1/messages",{clientRequestId:"retry_cancel",conversationId:"job_1",prompt:"重试当前执行",localAssetIds:[]});expect(retry.status).toBe(202);expect(childProcess.spawn.mock.calls.at(-1)?.[1]).toContain("--retry-current-action");const running=await view.request("GET","/api/content/conversations");expect(running.body[0].processes.find((p:any)=>p.id==="turn-request_cancel").status).toBe("cancelled");expect(running.body[0].processes.at(-1).status).toBe("running");
+ view.restart();
+ expect((await view.request("GET","/api/frontmind/v2/tasks/job_1")).body.contentProduction).toMatchObject({executionStatus:"cancelled",availableActions:["resume_current_execution"]});
+ const retry=await view.request("POST","/api/frontmind/v2/tasks/job_1/messages",{clientRequestId:"retry_cancel",conversationId:"job_1",prompt:"恢复当前执行",localAssetIds:[],contentProductionAction:{kind:"resume_current_execution",revision:7}});expect(retry.status).toBe(202);expect(childProcess.spawn.mock.calls.at(-1)?.[1].slice(-3)).toEqual(["--revision","7","--retry-current-action"]);const running=await view.request("GET","/api/content/conversations");expect(running.body[0].processes.find((p:any)=>p.id==="turn-request_cancel").status).toBe("cancelled");expect(running.body[0].processes.at(-1).status).toBe("running");
 });
 
 it("closes the acknowledged prior process when a confirmation starts the next turn",async()=>{
@@ -374,4 +420,21 @@ it("closes the acknowledged prior process when a confirmation starts the next tu
  const conversation=(await view.request("GET","/api/content/conversations")).body[0];
  expect(conversation.processes.find((p:any)=>p.id==="attempt-prior").status).toBe("completed");
  expect(conversation.processes.find((p:any)=>p.id==="turn-next-confirmation").status).toBe("running");
+});
+
+it("persists subject bindings across restart and rejects stale revisions", async()=>{
+ const view=fixture();
+ const initial=(await view.request("GET","/api/modules/content/subject-workspace")).body;
+ expect(initial).toEqual(emptySubjectWorkspace());
+ const folder=createSubjectFolder(initial,"合成企业","subject-one");
+ expect((await view.request("PUT","/api/modules/content/subject-workspace",folder)).status).toBe(200);
+ const conversation=(await view.request("GET","/api/content/conversations")).body[0];
+ await view.request("PUT","/api/content/conversations/job_1",conversation);
+ const bound=bindSubjectChat(folder,{conversationId:"job_1",folderId:"subject-one",kind:"pack"});
+ expect((await view.request("PUT","/api/modules/content/subject-workspace",bound)).status).toBe(200);
+ view.restart();
+ expect((await view.request("GET","/api/modules/content/subject-workspace")).body).toEqual(bound);
+ expect((await view.request("PUT","/api/modules/content/subject-workspace",folder)).status).toBe(409);
+ expect((await view.request("GET","/api/modules/content/subject-workspace")).body).toEqual(bound);
+ expect(childProcess.spawn).not.toHaveBeenCalled();
 });

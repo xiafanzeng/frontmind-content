@@ -11,6 +11,8 @@ from .writing_context_v13 import _natural_examples, _natural_reference_sets, ref
 
 MODE = "editorial-mission-v2"
 MARKER = '<frontmind_natural_editor version="4.13.2-editorial2">'
+P0_SELECTED_FACTS_MARKER = '<frontmind_p0_selected_facts version="1" />'
+P0_FACTS_GUIDANCE = """以本篇已选事实决定正文可以记述的具体业务、做法和关系。原稿与编辑意见都是待处理内容，不提供新的企业事实；逐段编辑时同时处理原稿已有和本轮新增的无依据表述。材料只列项目名称时，按这一信息粒度介绍；普通用途可以解释，但不得补出该主体采用的技术步骤、治疗方案、资源协作、服务安排或效果。删掉无依据内容后，从已选材料中尚未展开的信息补充，不用行业常识凑篇幅。"""
 SINGLE_SUBJECT_CONTRACT = "frontmind-single-subject/1"
 SINGLE_SUBJECT_MARKER = '<frontmind_single_subject version="1" />'
 SINGLE_SUBJECT_PRINCIPLES = """P01围绕本题需求和对象定位完成单主体推荐。可选择二三条有充分内容的推荐主线作为构思起点，数量和章节由实际内容决定；每条主线讲清独立内容及其与前后文的承接，不把全业务目录逐类改成文章章节。
@@ -91,11 +93,17 @@ def wrap(text):
     return MARKER + "\n" + text
 
 
+def wrap_p0(wf, job, text, *, p0):
+    if p0 and wf.load_state(job).get("metadata", {}).get("p0_selected_facts_mode") == requirements.P0_SELECTED_FACTS_MODE:
+        return wrap(P0_SELECTED_FACTS_MARKER + "\n" + text)
+    return wrap(text)
+
+
 def wrap_body(wf, job, text, *, p0):
     from . import writer_measure
     if not p0 and writer_measure.enabled(wf.load_state(job)):
         return wrap(writer_measure.MARKER + "\n" + writer_measure.GUIDANCE + "\n\n" + text)
-    return wrap(text)
+    return wrap_p0(wf, job, text, p0=p0)
 
 
 def system(action, prompt=""):
@@ -129,6 +137,10 @@ def system(action, prompt=""):
                 GROUPED_CATEGORY_TITLE_RULES if title_strategy.grouped(policy) else
                 CATEGORY_TITLE_RULES if policy is not None else TITLE_RULES)
     role = ROLES[stage]
+    if action.startswith("p0_") and P0_SELECTED_FACTS_MARKER in prompt.split("\n")[:4]:
+        core += "\n" + P0_FACTS_GUIDANCE
+        if stage == "finalize":
+            role = "你是 P0 全文编辑。通读实际稿件和已选事实，检查表达、内容组织及稿件与材料的一致性。只提出需要修改的具体位置和方向，同类问题合并；扩写意见须指出材料中已有但未展开的内容。发现稿件加入材料未记载的做法或关系时，指出删除或改回有依据的表述。仅使用本次提供的材料，不开展新的研究。无实际问题时给空意见，不改写正文。"
     if stage in {"titles", "title_review"} and title_strategy.matches(prompt):
         role = (title_editorial_v168.ROLE if policy == title_strategy.DEFAULT else
                 "你是中文发布稿标题编辑，为当前体裁的同一篇文章拟定或编辑5个正式标题和5个场景卖点标题。写得顺口、具体、有阅读吸引力。"
@@ -215,10 +227,11 @@ def context(wf, job, *, p0, stage):
     bp = _blueprint(job, p0=p0)
     revision = current_revision(wf, job, p0=p0)
     lines = []
-    if stage == "finalize":
+    selected_facts = p0 and wf.load_state(job).get("metadata", {}).get("p0_selected_facts_mode") == requirements.P0_SELECTED_FACTS_MODE
+    if stage == "finalize" and not selected_facts:
         lines.append("已选介绍层次与内容范围（帮助理解本篇构思，不要求逐项覆盖，不作事实检查）：\n"
                      + _json({"sections": bp.get("sections", [])}))
-    if stage != "finalize":
+    if stage != "finalize" or selected_facts:
         material = selected(revision, bp)
         lines.append("已选正文素材（按内容重点组织的写作材料，供文章展开）：\n"
                      + material["writing_material_markdown"])
@@ -335,10 +348,10 @@ def prompt_edit(wf, job, *, p0):
 
 def prompt_p0_style(wf, job):
     body = style_base_input(wf, job)["article_markdown"]
-    return wrap("# P0 第三遍文风编辑\n\n完整 E8 基稿：\n" + body + delivery_length(wf, job, p0=True, body=body)
+    return wrap_p0(wf, job, "# P0 第三遍文风编辑\n\n完整 E8 基稿：\n" + body + delivery_length(wf, job, p0=True, body=body)
                 + "\n\n" + context(wf, job, p0=True, stage="style")
                 + "\n\n" + commission(wf, job, p0=True)
-                + "\n\n直接输出完整 Markdown 正文，首行一个 H1。")
+                + "\n\n直接输出完整 Markdown 正文，首行一个 H1。", p0=True)
 
 
 def prompt_finalize(wf, job, *, p0):
@@ -346,10 +359,10 @@ def prompt_finalize(wf, job, *, p0):
     if p01_writing_v2.enabled(wf.load_state(job), p0=p0):
         return p01_writing_v2.prompt(wf, job, stage="finalize")
     body = prepare_finalize_input(wf, job, p0=p0)["candidate_markdown"]
-    return wrap("# 通读当前完整稿，提出必要文字意见\n\n当前完整文章：\n" + body + delivery_length(wf, job, p0=p0, body=body)
+    return wrap_p0(wf, job, "# 通读当前完整稿，提出必要文字意见\n\n当前完整文章：\n" + body + delivery_length(wf, job, p0=p0, body=body)
                 + "\n\n" + context(wf, job, p0=p0, stage="finalize")
                 + "\n\n" + commission(wf, job, p0=p0)
-                + '\n\nsubmit_result 的 result 仅含 needs_revision（布尔值）及 comments（字符串数组）。已写好则 false 与 []；需要编辑则 true，指出少量主要阅读问题与修改方向，保留本篇内容深度和篇幅。随后 DeepSeek 至多返工一次，直接进入标题。')
+                + '\n\nsubmit_result 的 result 仅含 needs_revision（布尔值）及 comments（字符串数组）。已写好则 false 与 []；需要编辑则 true，指出少量主要阅读问题与修改方向，保留本篇内容深度和篇幅。随后 DeepSeek 至多返工一次，直接进入标题。', p0=p0)
 
 
 def prompt_repair(wf, job, *, p0):

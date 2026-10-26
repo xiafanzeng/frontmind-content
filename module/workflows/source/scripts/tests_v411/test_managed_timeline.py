@@ -29,6 +29,16 @@ def event(number, kind, **fields):
 
 
 class ManagedTimelineTests(unittest.TestCase):
+    def test_failed_attempt_with_generic_error_has_failed_public_reason(self):
+        execution = {"attempts": [{"id": "attempt-1", "status": "failed",
+                     "action": "positioning_market_research", "startedAt": 1,
+                     "diagnosticCode": "execution_error"}], "timeline": []}
+        process = exporter.conversation_projection(execution)[0]
+        self.assertEqual(process['status'], 'failed')
+        self.assertEqual(process['reason'], '本轮执行失败。')
+        execution['attempts'][0]['status'] = 'unknown'
+        self.assertEqual(exporter.conversation_projection(execution)[0]['reason'], '执行结果尚未确认。')
+
     def project(self, events, **record_updates):
         return exporter.project_attempt(fixture_record(**record_updates), events,
                                         task_id="local-test", turn_id="turn-1", user_sequence=3)
@@ -314,3 +324,15 @@ class ConversationProjectionTests(unittest.TestCase):
         self.assertEqual(summaries,exporter.project_thinking(record,events,rows))
         self.assertNotIn('PRIVATE',json.dumps(summaries))
         self.assertNotIn('UNVERIFIED',json.dumps(summaries))
+
+class DocumentCompletenessProjectionTests(unittest.TestCase):
+    def test_native_text_extraction_retains_pending_images_after_model_summary(self):
+        from unittest.mock import patch
+        evidence = {"call": {"call_id":"synthetic-extract", "name":"extract_document"}, "receipt": {"status":"completed", "output":{"complete":False,"image_text_status":"not_extracted"}}, "sequence":1, "timestamp":None}
+        with patch.object(exporter, "sdk_tool_records", return_value=[evidence]):
+            rows = exporter.sdk_tool_summaries(Path("/synthetic/execution.json"), "attempt", active=False)
+        model={"id":rows[0]["id"],"kind":"tool","text":"已取得文档全部原生文字。","revision":4}
+        process=exporter.conversation_projection({"attempts":[{"id":"attempt","action":"positioning_market_research","status":"succeeded","startedAt":1,"toolSummaries":rows,"modelSummaries":[model]}]})[0]
+        self.assertEqual(process["tools"][0]["status"],"completed")
+        self.assertEqual(process["tools"][0]["text"], model["text"])
+        self.assertTrue(process["tools"][0]["pendingImageText"])

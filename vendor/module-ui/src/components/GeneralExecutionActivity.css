@@ -141,6 +141,10 @@
   line-height: 1.85;
 }
 
+.general-execution__thinking-text.markdown-content {
+  white-space: normal;
+}
+
 .chat-message-content > .chat-message-actions {
   margin-top: 8px;
 }

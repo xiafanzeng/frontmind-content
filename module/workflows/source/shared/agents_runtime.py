@@ -25,7 +25,7 @@ from urllib.parse import urlsplit
 WIRE_API = "openai_agents_sdk"
 SDK_VERSION = "0.22.3"
 OPENAI_VERSION = "3.16.2"
-CONTRACT = "frontmind-agents-runtime/4.13.4-local.3"
+CONTRACT = "frontmind-agents-runtime/4.13.4-local.4"
 # Local fix 2026-09-21: a submit_result that fails content validation is now
 # returned to the model as durable bounded tool feedback instead of killing the
 # run, and the agent no longer hard-stops at submit_result, so the model can
@@ -35,7 +35,7 @@ CONTRACT = "frontmind-agents-runtime/4.13.4-local.3"
 # not a prompt/input change. Existing 4.13.0/4.13.1 checkpoints retain their exact
 # plan and fingerprint; never create another paid attempt merely for this patch.
 REQUEST_CONTRACT = "frontmind-agents-runtime/4.13.0-1"
-READONLY_REPLAY_TOOLS = frozenset({"list_materials", "read_material", "search_materials"})
+READONLY_REPLAY_TOOLS = frozenset({"list_materials", "read_material", "search_materials", "web_read", "web_search"})
 DEFAULT_MODEL = "gpt-5.6-sol"  # User-directed host since 2026-09-21 evening; claude-sonnet-5 gateway pool dropped every large request that night (524/404/conn-kill).
 # Optional config/xty.json "completion_transport": "stream_merged" makes the
 # gateway HTTP call streamed and merges chunks back into one completion here,
@@ -269,8 +269,8 @@ def _restore_tools(attempt: Path, tools: Any, state: dict) -> None:
 class ToolJournal:
     """At-most-once for a *completed* call ID. Unknown side effects stop closed.
 
-    Only the three local read-only tools may replay a started-only receipt on
-    explicit action resume. External/writing/submission tools still fail closed.
+    Material reads, webpage reads and searches may replay a started-only receipt on
+    explicit action resume. Writing/submission tools still require a receipt.
     A known HostTools contract error becomes a durable model-visible receipt;
     unexpected exceptions propagate rather than concealing unknown side effects.
 
@@ -317,8 +317,8 @@ class ToolJournal:
                         # it verbatim; these arguments were already rejected, so do
                         # not re-validate them as if they were a success receipt.
                     return rt._json(prior["output"])
-                if prior.get("status")!="started" or name not in READONLY_REPLAY_TOOLS:
-                    raise fail("tool_outcome_unknown", "上次工具已开始但没有完整回执；此工具不属于本地只读白名单，未自动重做。请先核对运行记录。")
+                if prior.get("status")!="started" or name not in READONLY_REPLAY_TOOLS or not self.record.get("retry_explicit"):
+                    raise fail("tool_outcome_unknown", "上次工具已开始但没有完整回执；仅支持在显式恢复时重试资料读取、网页读取和公开搜索，请先核对运行记录。")
                 # Re-execute through HostTools, not from guessed/cached text:
                 # registry, path, credential and content hashes are rechecked.
                 # Keep the prior marker's timing/source in the replacement receipt.
@@ -342,7 +342,7 @@ class ToolJournal:
                 history=list(prior.get("readonly_replay_history", []))
                 history.append({"started_at":prior.get("started_at"), "source":prior.get("source")})
                 row.update(readonly_replay_count=len(history), readonly_replay_history=history,
-                           replay_policy="local_readonly_started_only")
+                           replay_policy="explicit_readonly_started_only")
             # Validate a final result BEFORE the write-ahead side-effect marker.
             if name=="submit_result":
                 try:
@@ -368,9 +368,11 @@ class ToolJournal:
             _write(path,row)
             if name!="submit_result":
                 from .host_tools import ToolError
+                from .example_acquisition import AcquisitionError
+                from .managed_runtime import tool_failure
                 try:
                     output=await asyncio.to_thread(self.tools.execute,name,args)
-                except ToolError as exc:
+                except (ToolError, AcquisitionError) as exc:
                     if getattr(exc, "outcome_unknown", False):
                         # HostTools transport failures used to share ToolError;
                         # do not turn an ambiguous paid call into retry feedback.
@@ -378,8 +380,11 @@ class ToolJournal:
                     # A known contract/read error is feedback, not a crashed run.
                     # Do not catch arbitrary I/O/provider failures here: an absent
                     # receipt for those may hide a charge or a filesystem effect.
-                    output={"ok":False, "error":getattr(exc,"code","tool_error"),
-                            "message":rt.redact(str(exc),self.secrets)[:3000]}
+                    if isinstance(exc, AcquisitionError):
+                        output={"ok":False, **tool_failure(exc, self.secrets)}
+                    else:
+                        output={"ok":False, "error":getattr(exc,"code","tool_error"),
+                                "message":rt.redact(str(exc),self.secrets)[:3000]}
             state=self.tools.export_state()
             row.update(status="completed",output=output,host_state=state,completed_at=rt.utcnow())
             _write(path,_safe_json(row,self.secrets))

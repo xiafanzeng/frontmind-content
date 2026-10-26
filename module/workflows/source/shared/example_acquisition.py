@@ -48,7 +48,7 @@ def atomic_json(path, value):
             os.unlink(tmp)
 
 
-def public_url(url):
+def web_url(url):
     """Disallow local endpoints, credentials and unsupported schemes, including redirects."""
     if any(ord(char) < 32 or ord(char) == 127 for char in str(url)):
         raise AcquisitionError("web URL contains control characters")
@@ -71,6 +71,13 @@ def public_url(url):
         literal = None
     if literal is not None and not literal.is_global:
         raise AcquisitionError("web URL resolves to a non-public address")
+    return str(url)
+
+
+def public_url(url, *, resolve_local=True):
+    """Validate DNS at the process or broker that makes the HTTP connection."""
+    url = web_url(url)
+    parsed = urlsplit(url)
     try:
         from .runtime_credentials import validate_public_destination
     except ImportError:
@@ -80,6 +87,8 @@ def public_url(url):
             return str(url)
     except (ValueError, OSError, http.client.HTTPException) as exc:
         raise AcquisitionError("public web egress validation failed (%s)" % type(exc).__name__) from exc
+    if not resolve_local:
+        return str(url)
     try:
         addresses = socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80))
     except socket.gaierror as exc:
@@ -253,7 +262,8 @@ class ExampleStore:
         return self._save(raw, text, dict(obtained_via="http", original_url=url, final_url=final_url, title=title, http_status=status, content_type=content_type, article_region_closed=article_closed, completeness="partial" if problem else "complete", acquisition_status="incomplete" if problem else "complete", integrity_note=problem or "Text extracted from a closed article region; menus, scripts and page controls removed, no rewriting."))
 
     def acquire_reader(self, url, request_json):
-        public_url(url)
+        # Reader fetches remotely; local DNS may represent a proxy's Fake-IP.
+        url = public_url(url, resolve_local=False)
         response = request_json("reader", {"url": url, "return_format": "markdown", "retain_images": False, "with_links_summary": False, "with_images_summary": False})
         # Official Reader supplies reader_result/content; tolerate wrapper versions without silently using summaries.
         value = response.get("reader_result", response.get("data", response))
@@ -266,7 +276,7 @@ class ExampleStore:
             text = ""
         title = value.get("title", "") if isinstance(value, dict) else ""
         final_url = value.get("url", url) if isinstance(value, dict) else url
-        public_url(final_url)
+        public_url(final_url, resolve_local=False)
         problem = page_problem(text, title)
         if isinstance(value, dict) and (value.get("is_truncated") or value.get("truncated") or value.get("is_summary") or value.get("content_type") in {"summary", "snippet", "search_result"} or value.get("status") in {"partial", "error", "failed"}):
             problem = "Reader reported incomplete or failed content"

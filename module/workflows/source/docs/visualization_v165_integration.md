@@ -8,12 +8,12 @@
 
 界面沿用原始确认和继续动作。新自然文风返工由Workflow内部推进，不使用article_fact_repair、repair_article_facts或--repair-facts。后台只投影实际阶段状态、开始结束时间、公开稿件链接与已有编辑意见；不把后台来源内容、私有路径、凭据或模型内部推理呈现给用户。
 
-关闭run_managed.py中process_summary.py的worker启动与SummaryClient支线，停止向业务启动路径注入用于自动摘要的FRONTMIND_PROCESS_SUMMARY_CACHE。不请求GLM-5.2或其他摘要模型，也不从reasoning_text构造“思考摘要”。GET及历史读取只读取已保存记录。
+网站私有执行器通过content-process-observer.mjs在已授权执行期间启动process_summary.py；本地入口通过run_managed.py启动。使用FRONTMIND_PROCESS_SUMMARY_CACHE保存GLM-5.2生成的中文公开摘要。摘要依据实际完成的模型输出和工具回执；OpenAI Agents SDK仅使用可观察输出。GET及历史读取只读取已保存记录。
 
-需要展示执行进度时，用真实执行记录的动作名称、状态和时间；有实际工具回执才展示其完成或失败状态。写作步骤完成后显示稿件与本轮已有editorial_notes、needs_revision/comments。这里描述的是已发生的结果，无需另一个模型改写。
+需要展示执行进度时，用真实执行记录的动作名称、状态和时间；有实际工具回执才展示其完成或失败状态。写作步骤完成后显示稿件与本轮已有editorial_notes、needs_revision/comments。这些结果与每一步的简短中文摘要一同保留在对话中，摘要直接显示并渲染Markdown。
 
 ## 验证边界
 
-确认创建、继续、GET和历史恢复不会启动摘要worker或摘要HTTP请求；缺少可展示记录时留空，不能编造过程。保留工具身份与时间顺序，完成状态来自Workflow实际交付结果。
+创建与继续使用真实模型和材料验证摘要生成；GET、状态查询和历史读取只读现有摘要。保留工具身份与时间顺序，完成状态来自Workflow实际交付结果。验收需覆盖等待确认、失败、停止、原任务恢复和刷新后的状态。
 
 用户提供的v16.3文件只是一份29文件改动包，缺少现代可视化项目的若干执行器、投影与前端依赖。本文是完整应用的接入说明，不代表已经实现、构建或部署那个外部应用。此次完整交付为Workflow ZIP及其本地过程页面。

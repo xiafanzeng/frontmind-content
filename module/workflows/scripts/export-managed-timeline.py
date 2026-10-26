@@ -18,10 +18,11 @@ import sys
 import os
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from portable_lock import file_lock
-from process_summary import cached_rows, safe_summary, summary_sources, identity as summary_identity
+from process_summary import cached_rows, safe_summary, summary_sources, sdk_tool_records, identity as summary_identity
 
 
 WIRE_API = "zhipu_managed_agents"
+SDK_WIRE_API = "openai_agents_sdk"
 TOOL_LABELS = {
     "list_materials": "查看目录", "read_material": "读取文件",
     "search_materials": "检索文本", "extract_document": "读取文件",
@@ -230,6 +231,7 @@ def _writer_tool_counts(path: Path) -> dict:
 
 def _attempt_summary(record: dict, path: Path, *, active: bool) -> dict:
     managed = record.get("requested_configuration", {}).get("wire_api") == WIRE_API
+    sdk = record.get("requested_configuration", {}).get("wire_api") == SDK_WIRE_API
     identity = _attempt_identity(record)
     session = record.get("session_id")
     status = record.get("status")
@@ -237,7 +239,7 @@ def _attempt_summary(record: dict, path: Path, *, active: bool) -> dict:
     status = status if status in {"succeeded", "failed"} or (status == "running" and active) else "unknown"
     summary = {"id": identity, "turnId": identity,
                "action": record.get("action") if record.get("action") in ACTIONS else "unknown",
-               "phase": _phase(record.get("action")), "provider": "zhipu" if managed else "deepseek",
+               "phase": _phase(record.get("action")), "provider": "zhipu" if managed else "xty" if sdk else "deepseek",
                "status": status, "startedAt": _timestamp(record.get("started_at"))}
     end = record.get("finished_at") or record.get("completed_at")
     if not end and status == "failed":
@@ -249,11 +251,13 @@ def _attempt_summary(record: dict, path: Path, *, active: bool) -> dict:
     previous = sorted(path.parent.glob("resume_*_previous_execution.json"))
     for file in previous:
         prior = json.loads(file.read_text(encoding="utf-8"))
-        if managed and isinstance(session, str) and session and prior.get("session_id") == session and prior.get("attempt_id") == record.get("attempt_id"):
+        if (managed or sdk) and isinstance(session, str) and session and prior.get("session_id") == session and prior.get("attempt_id") == record.get("attempt_id"):
             summary["recovery"] = "same_session"
             if prior.get("status") == "failed":
                 summary["recoveryDiagnosticCode"] = _diagnostic(prior.get("error"))
-    if not managed:
+    if sdk:
+        summary["toolSummaries"] = sdk_tool_summaries(path, identity, active=active)
+    elif not managed:
         summary["toolCounts"] = _writer_tool_counts(path)
         summary["toolSummaries"] = writer_tool_summaries(path, identity)
     return summary
@@ -292,7 +296,8 @@ def export_job(job_dir: Path, *, task_id: str, turn_id: str | None = None,
             continue
         configuration = record.get("requested_configuration", {})
         managed = configuration.get("wire_api") == WIRE_API
-        if not managed and configuration.get("provider") != "deepseek":
+        sdk = configuration.get("wire_api") == SDK_WIRE_API
+        if not managed and not sdk and configuration.get("provider") != "deepseek":
             continue
         attempt_active = _active_attempt(path, record, job_active=active)
         summary = _attempt_summary(record, path, active=attempt_active)
@@ -300,7 +305,7 @@ def export_job(job_dir: Path, *, task_id: str, turn_id: str | None = None,
             summary["turnId"] = turn_id
         attempts.append(summary)
         records.append((record, summary))
-        sources.add("zhipu_managed" if managed else "deepseek_writer")
+        sources.add("zhipu_managed" if managed else "openai_agents_sdk" if sdk else "deepseek_writer")
         if not managed:
             continue
         # Native startup persists events.json before the execution record gets
@@ -423,6 +428,33 @@ def writer_tool_summaries(path: Path, identity: str) -> list[dict]:
     return rows
 
 
+def sdk_tool_summaries(path: Path, ident: str, *, active: bool) -> list[dict]:
+    rows = []
+    for evidence in sdk_tool_records(path.parent):
+        call, receipt = evidence["call"], evidence["receipt"] or {}
+        output = receipt.get("output")
+        returned = receipt.get("status") == "completed"
+        failed = returned and isinstance(output, dict) and (bool(output.get("error")) or output.get("ok") is False)
+        status = "failed" if failed else "completed" if returned else "running" if active else "unknown"
+        task = TOOL_TEXT.get(call.get("name"), "处理工具结果")
+        prefix = {"failed":"未能完成", "completed":"已完成", "unknown":"结果未确认："}.get(status)
+        row = {"id":ident+"-tool-"+_identity(call["call_id"]), "sequence":evidence["sequence"],
+               "text":prefix+task+"。" if prefix else "正在调用工具。", "status":status}
+        if returned and not failed and call.get("name") == "extract_document" and isinstance(output, dict) and output.get("image_text_status") == "not_extracted":
+            row["pendingImageText"] = True
+        timestamp = receipt.get("started_at")
+        if timestamp:
+            row["timestamp"] = _timestamp(timestamp)
+        elif evidence["timestamp"] is not None:
+            row["timestamp"] = evidence["timestamp"]
+        if returned and receipt.get("completed_at"):
+            row["finishedAt"] = _timestamp(receipt["completed_at"])
+        if failed:
+            row["reason"], row["nextStep"] = DIAGNOSTIC_TEXT.get(_diagnostic(output), DIAGNOSTIC_TEXT["execution_error"])
+        rows.append(row)
+    return rows
+
+
 def conversation_projection(execution: dict) -> list[dict]:
     """Only business text, state, time and anonymous identities leave the server."""
     processes = []
@@ -455,6 +487,8 @@ def conversation_projection(execution: dict) -> list[dict]:
             process["finishedAt"] = attempt["finishedAt"]
         if attempt.get("diagnosticCode"):
             process["reason"], process["nextStep"] = DIAGNOSTIC_TEXT.get(attempt["diagnosticCode"], DIAGNOSTIC_TEXT["execution_error"])
+            if status == "failed" and process["reason"] == "执行结果尚未确认。":
+                process["reason"] = "本轮执行失败。"
         if attempt.get("recovery"):
             process["recovery"] = "已沿用原会话恢复。" if attempt["recovery"] == "same_session" else "已创建新尝试；历史失败保留。"
         processes.append(process)

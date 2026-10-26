@@ -9,6 +9,8 @@ export type ContentProductionExecutionFailure = {
 };
 
 export type ContentProductionDto = SharedContentProductionDto & {
+  /** Public projection of the task's frozen session continuation capability. */
+  sessionPhases?: boolean;
   /** Absent in older observations; the original workflow status stays intact. */
   executionFailure?: ContentProductionExecutionFailure | null;
 };
