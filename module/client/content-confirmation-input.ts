@@ -53,7 +53,7 @@ export function parseContentConfirmationInput(
   const simple = (kind: ContentProductionAction["kind"]) => accept({ kind, revision });
 
   // 显式修改优先，避免将“不要确认，请修改”等任意句子误识别为确认。
-  const revisionInput = /^修改\s*[:：]\s*([\s\S]+)$/u.exec(original);
+  const revisionInput = /^修改(?:表述)?\s*[:：]\s*([\s\S]+)$/u.exec(original);
   if (revisionInput) return accept({ kind: "revise_current_step", revision, instructions: revisionInput[1].trim() });
   const selections: Array<[RegExp, ContentProductionAction["kind"], "selection" | "direction"]> = [
     [/^选择问题\s*[:：]\s*([\s\S]+)$/u, "choose_question", "selection"],
@@ -66,6 +66,7 @@ export function parseContentConfirmationInput(
   }
   if (/^(?:我)?确认(?:当前)?(?:比较对象|竞品)$/u.test(command)) return simple("confirm_competitors");
   if (/^(?:我)?确认(?:当前)?核心定位$/u.test(command)) return simple("confirm_core_positioning");
+  if (/^确认并导出(?:\s*(?:品牌资料包|Reference Pack))?$/iu.test(command)) return simple("confirm_core_positioning");
   if (/^(?:我)?确认(?:当前)?(?:问题定位|本题差异化定位)$/u.test(command)) return simple("confirm_question_positioning");
   if (/^(?:我)?确认\s*(?:当前)?(?:(?:P0|品牌文章)\s*)?(?:写作方案|蓝图)(?:[，,]\s*开始正文)?$/iu.test(command)) {
     const blueprints = (["confirm_blueprint", "confirm_p0_blueprint"] as const).filter(has);

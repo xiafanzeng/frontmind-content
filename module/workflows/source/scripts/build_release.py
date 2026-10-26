@@ -35,6 +35,9 @@ ZIP_TIME = (2026, 1, 1, 0, 0, 0)
 # maintainers, while old package models, ledgers, scoring modules, tests and
 # work output cannot enter the v4.11 release projection.
 RELEASE_FILES = frozenset({
+    "scripts/tests_v411/test_p0_selected_facts.py",
+    "scripts/tests_v411/test_wide_monitoring_import.py",
+    "shared/pptx_material.py", "scripts/tests_v411/test_pptx_material.py",
     "shared/session_phases.py", "scripts/tests_v411/test_session_phases.py",
     "shared/article_focus.py", "shared/fdnv2_guidance.py", "shared/industry_roundup.py",
     "shared/p01_expression.py", "shared/p02_selection.py",
@@ -178,14 +181,13 @@ RELEASE_FILES = frozenset({
 })
 RELEASE_TREE_ROOTS = (
     "docs/history",
-    "resources/p0_titles", "customer_inputs/taixin/v16",
+    "resources/p0_titles",
     "acceptance_fixtures/v4.11.7_generalization",
     "scripts/tests_v411",
     "shared/assets/fonts",
     "resources/p0_style",
     "resources/p0_brand_stage",
     "resources/p0_prose_editor",
-    "customer_inputs/yihang",
     "resources/p0_style_legacy_v4121",
     "resources/p0_style_legacy_v4122",
     "acceptance_fixtures/p0_prose_offline",

@@ -425,19 +425,8 @@ class ArticlePoolCliIntegrationTests(unittest.TestCase):
         self.legacy.resume(job, '--pattern', 'P01')
         self.assertEqual('awaiting_example_confirmation', self.legacy.state(job)['status'])
         self.assertIn('实际信源第20篇', self.legacy.page(job))
-        # The historical offline fixture saver accepts synthetic Markdown only.
-        # Register the actual bundled, hash-checked pair via the real acquisition
-        # branch; this local step calls neither network nor a model.
         from shared import recommendation_references
-        current = wf.load_state(job)
-        current['flags']['offline_fixture'] = False
-        wf.save_state(job, current)
-        try:
-            recommendation_references.register(wf, wf.ROOT, job)
-        finally:
-            current = wf.load_state(job)
-            current['flags']['offline_fixture'] = True
-            wf.save_state(job, current)
+        recommendation_references.register(wf, wf.ROOT, job)
         self.legacy.resume(job, '--example-route', 'A', expect=2)
         full = self.base / 'v164-full.md'
         full.write_text('# 选择的完整文章\n\n' + '从机构业务切入，按核心特点安排详略。\n\n' * 50)

@@ -71,6 +71,23 @@ it("回复与原生附件分成多条助手消息时，回看仍回到该轮输�
   expect([...anchors]).toEqual([[0,"materials"],[1,"confirm"]]);
 });
 
+it("重复附带历史确认稿时，按该轮最新修订回看实际阶段",()=>{
+ const files=(...names:string[])=>names.map(fileName=>({fileName,fileUrl:"/file/"+fileName,mimeType:"text/markdown"}));
+ const first="review_awaiting_competitor_selection_r1.md";
+ const second="review_awaiting_core_positioning_confirmation_r2.md";
+ const anchors=contentCreationTranscriptAnchors([
+  {id:"materials",role:"user",content:"原件",timestamp:1},
+  {...marked("comparison",1),contentWorkflowPosition:undefined,outputFiles:files(first)},
+  {id:"confirm",role:"user",content:"确认比较范围",timestamp:2},
+  {...marked("positioning",5),contentWorkflowPosition:undefined,outputFiles:files(first,second)},
+  {id:"p0",role:"user",content:"开始品牌长文",timestamp:3},
+  {...marked("blueprint",10),contentWorkflowPosition:undefined,outputFiles:files(first,second,"review_awaiting_p0_blueprint_confirmation_r6.md")},
+ ]);
+ expect([...anchors]).toEqual([[0,"materials"],[1,"confirm"],[2,"p0"]]);
+ const corrected=contentCreationTranscriptAnchors([{...marked("back",10),contentWorkflowPosition:undefined,outputFiles:files("review_awaiting_p0_blueprint_confirmation_r6.md","review_awaiting_core_positioning_confirmation_r8.md")}]);
+ expect([...corrected]).toEqual([[1,"back"]]);
+});
+
 it("结构化原生状态优先于兼容位置，不凭正文或含糊的位置 13 伪造节点",()=>{
   const anchors=contentCreationTranscriptAnchors([
     {id:"unknown",role:"assistant",content:"问题与监控数据、品牌长文、蓝图已完成",timestamp:1},
@@ -181,4 +198,10 @@ it("节点直接点击和键盘回看只发导航，当前节点返回最新，�
     await act(async()=>container.querySelector<HTMLLIElement>('[data-stage-index="2"]')!.click());
     expect(navigation).toHaveBeenLastCalledWith({stageIndex:2,messageId:"p0-route"});
   }finally{await act(async()=>root.unmount());container.remove();}
+});
+
+// 原生业务阶段在停止后保持不变，展示须使用当前执行状态。
+it.each([['cancelled','本轮已停止，已有进度保留'],['error','本轮执行失败，已有进度保留']] as const)('终止状态 %s 保留阶段并停止显示正在执行', (executionStatus, label)=>{
+ const model=contentCreationLaneModel({progress:progress('running_positioning_market_research',{jobKind:'reference_pack',executionStatus}),messages:[],kind:'pack',executing:false});
+ expect(model.current).toBe(0); expect(model.steps[0].detail).toBe(label); expect(model.steps[0].state).toBe('current');
 });

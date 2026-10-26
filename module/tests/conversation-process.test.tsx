@@ -14,25 +14,39 @@ async function mount(process=fixture()){
  (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT=true;
  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
  const render=async(p:ConversationProcess)=>act(async()=>root.render(<Process process={p}/>));await render(process);
- return {container,render,close:()=>act(async()=>root.unmount()),toggle:()=>act(async()=>container.querySelector<HTMLButtonElement>(".cp-process-toggle")!.click()),button:()=>container.querySelector(".cp-process-toggle")!};
+ return {container,render,close:()=>act(async()=>root.unmount()),button:()=>container.querySelector(".cp-process-toggle")};
 }
-it("automatically opens running and waiting, then collapses on success without remounting",async()=>{
+it("keeps summaries visible through running, confirmation, completion and refresh",async()=>{
+ localStorage.setItem("frontmind-process-open:turn-1","false");
  const view=await mount();const node=view.container.querySelector("section");
- try{expect(view.button()).toBeNull();expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);expect(view.container.querySelector(".cp-process-spinner")).not.toBeNull();await view.render(fixture("awaiting_input"));expect(view.container.querySelector(".cp-process-spinner")).toBeNull();expect(view.button().getAttribute("aria-expanded")).toBe("true");await view.render(fixture("completed"));expect(view.button().getAttribute("aria-expanded")).toBe("false");expect(view.button().textContent).toContain("展开执行过程");expect(view.container.querySelector("section")).toBe(node);}finally{await view.close();}
+ try{
+  expect(view.button()).toBeNull();expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);
+  expect(view.container.querySelector(".cp-process-spinner")).not.toBeNull();
+  for(const status of ["awaiting_input","completed"] as const){
+   await view.render(fixture(status));
+   expect(view.container.querySelector(".cp-process-spinner")).toBeNull();
+   expect(view.button()).toBeNull();expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);
+   expect(view.container.querySelector("section")).toBe(node);
+  }
+ }finally{await view.close();}
+ const refreshed=await mount(fixture("completed"));
+ try{expect(refreshed.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);}finally{await refreshed.close();}
 });
-it.each([true,false])("preserves deliberate open=%s through polling, completion and refresh",async(open)=>{
- const view=await mount(fixture(open?"completed":"awaiting_input"));await view.toggle();await view.render(fixture("completed"));expect(view.button().getAttribute("aria-expanded")).toBe(String(open));await view.close();const reopened=await mount(fixture("completed"));try{expect(reopened.button().getAttribute("aria-expanded")).toBe(String(open));}finally{await reopened.close();}
+it("renders public summary Markdown directly without a thinking disclosure",async()=>{
+ const view=await mount({...fixture("completed"),thinking:[{id:"markdown-summary",text:"已核对**温控资料**，还需补充实际测评。",status:"recorded",summaryOrigin:"model",summaryRevision:7}]});
+ try{
+  expect(view.container.querySelector("strong")?.textContent).toBe("温控资料");
+  expect(view.container.textContent).not.toContain("**");
+  expect(view.container.querySelector("details")).toBeNull();expect(view.button()).toBeNull();
+ }finally{await view.close();}
 });
-it("always shows all running summaries without a collapse control, even with a saved closed choice",async()=>{
- localStorage.setItem("frontmind-process-open:turn-1","false");const view=await mount();
- try{expect(view.button()).toBeNull();await view.render(fixture());expect(view.container.querySelectorAll('li:not([hidden])')).toHaveLength(3);}finally{await view.close();}
-});
-it("folds recovery output with the completed process and reveals it on demand",async()=>{
+it("keeps original-task recovery visible after completion",async()=>{
  const view=await mount({...fixture("completed"),recovery:"已沿用原会话恢复。"});
- try{expect(view.container.querySelector(".cp-process-recovery")).toBeNull();await view.toggle();expect(view.container.querySelector(".cp-process-recovery")?.textContent).toContain("原会话");}finally{await view.close();}
+ try{expect(view.container.querySelector(".cp-process-recovery")?.textContent).toContain("原会话");}finally{await view.close();}
 });
 it.each(["failed","cancelled","unknown"] as const)("does not call %s complete or show a spinner",async(status)=>{
- const view=await mount({...fixture(status),thinking:[],tools:[],reason:status==="cancelled"?"本次执行已取消。":"执行结果尚未确认。"});try{expect(view.button().getAttribute("aria-expanded")).toBe("true");expect(view.container.querySelector(".cp-process-spinner")).toBeNull();expect(view.container.textContent).toContain("暂无可公开的过程摘要");expect(view.container.textContent).not.toContain("已完成");}finally{await view.close();}
+ const view=await mount({...fixture(status),thinking:[],tools:[],reason:status==="cancelled"?"本次执行已取消。":"执行结果尚未确认。"});
+ try{expect(view.button()).toBeNull();expect(view.container.querySelector(".cp-process-spinner")).toBeNull();expect(view.container.textContent).toContain("执行记录尚未返回");expect(view.container.textContent).not.toContain("已完成");}finally{await view.close();}
 });
 it("drops arbitrary summary payloads, unsafe identities and private extras on the server boundary",()=>{
  const input={...fixture(),reason:"SECRET /private/path",nextStep:"read_material(args)",input:"SECRET",thinking:[{...fixture().thinking[0],text:"SECRET internal reasoning"}],tools:[{...fixture().tools[0],args:{key:"SECRET"},result:"SECRET",stack:"SECRET"}]};
@@ -62,7 +76,7 @@ it("enforces the same summary boundary in the installed module router",()=>{
 
 it("accepts bounded model summaries at the server boundary and rejects raw protocol or private text",()=>{
  const base=fixture();
- const summary={...base.tools[0],text:"已读取官网，温控参数仍需与实际使用场景比对。",summaryOrigin:"model",summaryRevision:2};
+ const summary={...base.tools[0],text:"已读取官网，温控参数仍需与实际使用场景比对。",summaryOrigin:"model",summaryRevision:7};
  const safe=readConversationProcesses([{...base,tools:[summary],thinking:[]}]);
  expect(safe[0]?.tools[0]?.text).toContain("温控参数");
  for(const text of ["调用 read_material 获取内容。","读取 /Users/test/private.json 完成。","返回 {参数:内容} 后继续。","实际凭据 sk-secretvalue 已返回。"]){
@@ -71,18 +85,26 @@ it("accepts bounded model summaries at the server boundary and rejects raw proto
  expect(readConversationProcesses([{...base,tools:[{...summary,summaryOrigin:undefined}]}])[0]?.tools).toEqual([]);
 });
 
+it("keeps a real document receipt when its Chinese model summary contains the public term OCR",()=>{
+ const base=fixture("completed");
+ const receipt={...base.tools[0],text:"已提取指定文档，共1791字符并包含一张图片，OCR无待识别页，提取完成。",summaryOrigin:"model",summaryRevision:7,status:"completed"};
+ const first=readConversationProcesses([{...base,thinking:[],tools:[receipt]}]);
+ expect(first[0]?.tools).toHaveLength(1);expect(first[0]?.tools[0]?.status).toBe("completed");
+ expect(readConversationProcesses(first)).toEqual(first);
+});
+
 it("late model summaries update the same completed row without status or caption regression",()=>{
  const prior={...fixture("completed"),tools:[{...fixture().tools[0],status:"completed" as const,text:"已完成读取登记材料。"}]};
- const model={...prior,tools:[{...prior.tools[0],text:"已核对产品材料，噪音数据只适用于指定测试条件。",summaryOrigin:"model" as const,summaryRevision:2}]};
+ const model={...prior,tools:[{...prior.tools[0],text:"已核对产品材料，噪音数据只适用于指定测试条件。",summaryOrigin:"model" as const,summaryRevision:7}]};
  const merged=mergeConversationProcesses([prior],[model]);
  expect(merged[0].tools[0].id).toBe(prior.tools[0].id);expect(merged[0].tools[0].text).toContain("噪音数据");
- const stale={...fixture(),tools:[{...fixture().tools[0],text:"正在读取产品材料。",summaryOrigin:"model" as const,summaryRevision:1}]};
+ const stale={...fixture(),tools:[{...fixture().tools[0],text:"正在读取产品材料。",summaryOrigin:"model" as const,summaryRevision:6}]};
  const again=mergeConversationProcesses(merged,[stale]);expect(again[0].status).toBe("completed");expect(again[0].tools[0].status).toBe("completed");expect(again[0].tools[0].text).toContain("噪音数据");
 });
 
 it("late summaries remain in the archived user turn after the next turn starts",()=>{
  const old={...fixture("completed"),id:"turn-old",userMessageId:"user-old"};
- const native={...old,id:"attempt-old",startedAt:110,tools:[{...old.tools[0],status:"completed" as const,text:"已核对温控材料，测试范围尚不能代表全部使用场景。",summaryOrigin:"model" as const,summaryRevision:2}]};
+ const native={...old,id:"attempt-old",startedAt:110,tools:[{...old.tools[0],status:"completed" as const,text:"已核对温控材料，测试范围尚不能代表全部使用场景。",summaryOrigin:"model" as const,summaryRevision:7}]};
  const messages=[{id:"user-old",role:"user" as const,timestamp:100,content:"旧任务"},{id:"user-new",role:"user" as const,timestamp:300,content:"新任务"}];
  const turns=[{id:"turn-old",userMessageId:"user-old",startedAt:100,baseline:[]},{id:"turn-new",userMessageId:"user-new",startedAt:300,baseline:["attempt-old"]}];
  const result=bindConversationProcesses([native],messages,turns,"running",[old]);
@@ -95,8 +117,30 @@ it("shows only a fixed activity hint before the step ends, then keeps its comple
  try{
   expect(view.container.textContent).toBe("正在思考");expect(view.button()).toBeNull();
   await view.render(pending);expect(view.container.querySelector(".cp-process-status")?.textContent).toBe("正在调用工具");expect(view.container.querySelectorAll("li:not([hidden])")).toHaveLength(0);const pendingNode=view.container.querySelector("li");
-  const complete={...pending,tools:[{...pending.tools[0],text:"已读取示例网页，内容仅用于文档示例说明。",status:"completed" as const,summaryOrigin:"model" as const,summaryRevision:2}]};
+  const complete={...pending,tools:[{...pending.tools[0],text:"已读取示例网页，内容仅用于文档示例说明。",status:"completed" as const,summaryOrigin:"model" as const,summaryRevision:7}]};
   await view.render(complete);const node=view.container.querySelector("li");expect(node).toBe(pendingNode);expect(view.container.textContent).toContain("正在思考");
   await view.render(mergeConversationProcesses([complete],[pending])[0]);expect(view.container.querySelector("li")).toBe(node);expect(view.container.textContent).not.toContain("正在调用工具");
  }finally{await view.close();}
+});
+
+it.each([false,true])("keeps the PPTX receipt and pending image notice across the public boundary, model=%s",async(model)=>{
+ const row={...fixture().tools[0],text:model?"已取得文档全部原生文字。":"已完成提取文档内容。",pendingImageText:true,...(model?{summaryOrigin:"model",summaryRevision:6}:{})};
+ const process=readConversationProcesses([{...fixture("completed"),thinking:[],tools:[row]}])[0];
+ expect(process.tools).toHaveLength(1);expect(process.tools[0].pendingImageText).toBe(true);
+ const view=await mount(process);
+ try{expect(view.container.textContent).toContain("本次提取尚未识别图片文字。");expect(view.container.querySelectorAll("li")).toHaveLength(1);}finally{await view.close();}
+});
+
+
+it("rejects persisted reasoning-source summaries while retaining task history and receipt facts",()=>{
+ const base=fixture("completed");
+ for(const summaryRevision of [1,2,3,4,5]){
+  const legacy={id:"legacy",text:"模型规划了资料整理与文章扩写步骤。",status:"recorded",summaryOrigin:"model",summaryRevision};
+  const input={...base,thinking:[legacy],tools:[...base.tools,{...legacy,id:"legacy-tool",status:"completed"}]};
+  const publicSnapshot=publicContentConversation({id:"saved",taskId:"original",purpose:"content_production",messages:[],processes:[input]});
+  const rows=readConversationProcesses(publicSnapshot.processes);
+  expect(publicSnapshot.taskId).toBe("original");expect(rows[0].id).toBe(base.id);expect(rows[0].status).toBe("completed");
+  expect(rows[0].thinking).toEqual([]);expect(rows[0].tools).toEqual(base.tools);
+  expect(readConversationProcesses([{...base,thinking:[{...legacy,summaryRevision:6}]}])[0].thinking).toHaveLength(1);
+ }
 });

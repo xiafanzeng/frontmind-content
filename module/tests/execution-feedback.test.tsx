@@ -80,7 +80,7 @@ it("reads native failure from task polling without rewriting outer status and re
  const forbidden=vi.fn(async():Promise<never>=>{throw new Error("Unexpected write or generation");});
  const failure={action:"positioning_market_research",code:"tool_call_source_mismatch",attemptId:"synthetic-attempt"};
  const client={list:async()=>[structuredClone(original)],readSubjectWorkspace:forbidden,saveSubjectWorkspace:forbidden,save:forbidden,upload:forbidden,dispatch:forbidden,remove:forbidden,stop:forbidden,
-  task:async():Promise<TaskResponse>=>{if(broken)throw new Error("offline");return {id:"task",status:"completed",contentProduction:{executionFailure:failed?failure:null} as TaskResponse["contentProduction"]};}};
+  task:async():Promise<TaskResponse>=>{if(broken)throw new Error("offline");return {id:"task",status:"completed",contentProduction:{executionFailure:failed?failure:null,availableActions:[]} as TaskResponse["contentProduction"]};}};
  const el=document.createElement("div");document.body.append(el);const root=createRoot(el);
  try{
   await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:"native-failure-runtime",ownerUserId:0},marketEdition:"cn",capabilities:[]}} client={client}/>));

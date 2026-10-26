@@ -73,7 +73,7 @@ class LegacyRuntimeCompatibilityTests(unittest.TestCase):
         self.job=Path(self.tmp.name)/'job';self.job.mkdir()
 
     def test_all_fifteen_historical_fixture_routes_keep_original_configuration(self):
-        self.assertEqual(len(m.GLM_ACTIONS - {"article_polish", "article_editorial_preparation"}),11)
+        self.assertEqual(len(m.GLM_ACTIONS - {"article_polish", "article_editorial_preparation", "question_recommendation_draft", "question_recommendation_review"}),11)
         self.assertEqual(m.DEEPSEEK_ACTIONS, {"p0_draft", "p0_edit", "p0_style", "p0_titles", "article_draft", "article_edit", "article_titles", "p0_repair", "article_repair"})
         with patch.dict(os.environ, {'FRONTMIND_DEEPSEEK_MODEL':'deepseek-flash','FRONTMIND_CONTROLLER_PROVIDER':'fake','FRONTMIND_ZHIPU_REASONING_EFFORT':'high','FRONTMIND_DEEPSEEK_REASONING_EFFORT':'max'}):
             for action in m.GLM_ACTIONS | m.DEEPSEEK_ACTIONS:

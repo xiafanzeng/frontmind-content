@@ -36,7 +36,7 @@ class ProseContractTests(unittest.TestCase):
         f=self.fixture();p=f.prompts()['article'];a=rt.request_fingerprint('p0_draft',p)
         self.assertNotEqual(a,rt.request_fingerprint('p0_draft',p.replace(brand_prose.MARKER,'')))
     def test_prose_policy_adds_no_runtime_actions(self):
-        self.assertEqual(len(rt.HOST_ACTIONS - {"article_polish", "article_editorial_preparation"}),11);self.assertEqual(len(rt.DEEPSEEK_ACTIONS - {"p0_repair", "article_repair"}),7)
+        self.assertEqual(len(rt.HOST_ACTIONS - {"article_polish", "article_editorial_preparation", "question_recommendation_draft", "question_recommendation_review"}),11);self.assertEqual(len(rt.DEEPSEEK_ACTIONS - {"p0_repair", "article_repair"}),7)
         self.assertEqual(set(brand_prose.ROLES),{'blueprint','draft','edit','style','finalize'})
     def test_explicit_offline_examples_never_call_network_and_cannot_be_promoted(self):
         with tempfile.TemporaryDirectory() as tmp:

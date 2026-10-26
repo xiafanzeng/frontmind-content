@@ -1,3 +1,6 @@
+import {emptySubjectWorkspace,type ContentSubjectWorkspace} from "../module/contracts/content-subject-workspace";
+import {validateSubjectWorkspaceUpdate} from "../module/server/subject-workspace";
+import release from "../module/workflows/release.json";
 import {createHash,randomUUID} from "node:crypto";
 import {execFile,spawn,type ChildProcess} from "node:child_process";
 import {promisify} from "node:util";
@@ -6,7 +9,7 @@ import {basename,dirname,extname,isAbsolute,join,relative,resolve,sep} from "nod
 import type {IncomingMessage,ServerResponse} from "node:http";
 import type {Plugin} from "vite";
 import {contentProductionActionSchema,contentProductionInputSchema,type ContentProductionAction,type ContentProductionInput} from "../module/contracts/content-production";
-import {parseContentRunnerState,reduceContentProductionProgress,contentProductionPublicDto} from "../module/server/state";
+import {parseContentRunnerState,reduceContentProductionProgress,contentProductionPublicDto,contentProductionTaskStatus} from "../module/server/state";
 import {projectContentProductionMarkdown,contentProductionArtifactName} from "../module/contracts/content-production-public";
 import type {ContentConversation,TaskResponse} from "../module/client/host";
 import {readConversationProcesses,type ConversationProcess,type ProcessStatus} from "../module/contracts/conversation-process";
@@ -16,9 +19,9 @@ import {bindConversationProcesses,type LocalProcessTurn} from "../module/server/
 const runFile=promisify(execFile);
 type Snapshot={directory:string;brand:string;busy:boolean;state:Record<string,any>;reviews:{path:string;text:string;links?:Record<string,string>;time:number}[];files:string[];processes?:ConversationProcess[];factGate?:{issueCount:number;categories:string[];publishReady:boolean}|null};
 type StoredTask={id:string;directory:string;conversationId:string;input:ContentProductionInput;error?:boolean;cancelled?:boolean;turns?:LocalProcessTurn[];archivedProcesses?:ConversationProcess[]};
-type Store={conversations:Record<string,ContentConversation>;tasks:Record<string,StoredTask>;assets:Record<string,{path:string;filename:string}>;requests:Record<string,{taskId:string;fingerprint:string}>;hidden:string[]};
+type Store={subjectWorkspace?:ContentSubjectWorkspace;conversations:Record<string,ContentConversation>;tasks:Record<string,StoredTask>;assets:Record<string,{path:string;filename:string}>;requests:Record<string,{taskId:string;fingerprint:string}>;hidden:string[]};
 export type LocalWorkflowOptions={root:string;configDir:string;python:string};
-const mime:Record<string,string>={".md":"text/markdown; charset=utf-8",".html":"text/html; charset=utf-8",".docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",".zip":"application/zip"};
+const mime:Record<string,string>={".md":"text/markdown; charset=utf-8",".html":"text/html; charset=utf-8",".docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document",".pptx":"application/vnd.openxmlformats-officedocument.presentationml.presentation",".zip":"application/zip"};
 function reject(message:string,status=400):never{throw Object.assign(new Error(message),{status});}
 function safeId(value:unknown):string{if(typeof value!=="string"||!/^[-a-zA-Z0-9_]{1,100}$/.test(value))reject("无效任务标识。");return value;}
 function contained(root:string,file:string){const p=relative(realpathSync(root),realpathSync(file));return p!==".."&&!p.startsWith(`..${sep}`)&&!isAbsolute(p);}
@@ -27,6 +30,7 @@ function contained(root:string,file:string){const p=relative(realpathSync(root),
 export function localActionArgs(action:ContentProductionAction,status:string):string[]{
  const args=["--revision",String(action.revision)];
  switch(action.kind){
+  case "resume_current_execution":return [...args,"--retry-current-action"];
   case "repair_article_facts":return [...args,"--repair-facts",...action.rejectedClaimIds.flatMap(id=>["--reject-fact-claim",id])];
   case "confirm_competitors":return [...args,"--confirm-competitors"];
   case "confirm_core_positioning":return [...args,"--confirm-core-positioning"];
@@ -118,14 +122,14 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
      record.input={...record.input,enterpriseName:snap.brand};persist();
     }
     const progress=state?reduceContentProductionProgress(null,{state,providerRank:state.revision,eventId:`r${state.revision}`,artifactId:"local-state",sha256:"local"},record.input.mode):null;
-    let dto=contentProductionPublicDto({revision:1,accountUserId:0,purpose:"content_production",knowledgeBase:null,knowledgeText:null,contentProduction:record.input,contentWorkflow:{version:"4.13.2-v16.3",filename:"local-source",sha256:"local-development",rootDirectory:"source"}},progress?{contentProductionProgress:progress}:null);
-    if(dto&&snap?.factGate&&!snap.factGate.publishReady&&state?.pending_action?.action==="article_fact_repair")dto={...dto,factGate:snap.factGate,availableActions:["repair_article_facts"]};
     const busy=processes.has(record.id)||Boolean(snap?.busy);
-    const done=Boolean(state&&["completed","p0_ready","positioning_ready"].includes(state.status));
-    const cancelled=!busy&&Boolean(record.cancelled);
-    const failed=!cancelled&&!busy&&(record.error||Boolean(snap?.state.pending_action?.error)||Boolean(state&&!done&&!dto?.confirmation));
-    const status=busy?"running":cancelled?"cancelled":done?"completed":failed?"error":dto?.confirmation?"awaiting_input":"pending";
-    if(busy&&dto?.confirmation)dto={...dto,confirmation:null,availableActions:[],pauseTitle:"已提交，正在执行下一步。"};
+    const operationStatus=busy?"running":record.cancelled?"cancelled":record.error?"error":"completed";
+    let dto=contentProductionPublicDto({revision:1,accountUserId:0,purpose:"content_production",knowledgeBase:null,knowledgeText:null,contentProduction:record.input},progress?{contentProductionProgress:progress}:null,{operationStatus});
+    // This bridge executes the local source tree, so it has no frozen ZIP binding.
+    if(dto)dto={...dto,workflowVersion:release.version,sessionPhases:release.capabilities.includes("session_phases")};
+    if(!busy&&dto&&snap?.factGate&&!snap.factGate.publishReady&&state?.pending_action?.action==="article_fact_repair")dto={...dto,factGate:snap.factGate,availableActions:["repair_article_facts"]};
+    const status=contentProductionTaskStatus(dto,operationStatus);
+    const done=status==="completed",cancelled=status==="cancelled",failed=status==="error";
     const stored=store.conversations[record.conversationId];
     const start=Date.parse(String(snap?.state.created_at??""))||stored?.createdAt||Date.now();
     const messages=[...(stored?.messages??[])];
@@ -139,7 +143,7 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
     }
     const outputs=(snap?.files??[]).map(p=>fileOutput(join(root,record.directory),p));
     if(done&&!cancelled&&outputs.length)messages.push({id:`delivery-${state?.revision}`,role:"assistant",timestamp:Date.parse(String(state?.updated_at))||Date.now(),content:"本阶段已完成，交付文件如下。请审阅内容及其事实依据。",outputFiles:outputs});
-    if(failed)messages.push({id:`failure-${state?.revision}`,role:"assistant",timestamp:Date.parse(String(state?.updated_at))||start,content:snap?.factGate&&!snap.factGate.publishReady?`事实校验发现 ${snap.factGate.issueCount} 项问题。原稿已保留；请在制作档案中检查分类并启动事实返工。`:"本轮执行已停止。原任务与已有产出已保留；查看运行记录后，可发送“重试当前执行”继续同一任务。"});
+    if(failed)messages.push({id:`failure-${state?.revision}`,role:"assistant",timestamp:Date.parse(String(state?.updated_at))||start,content:snap?.factGate&&!snap.factGate.publishReady?`事实校验发现 ${snap.factGate.issueCount} 项问题。原稿已保留；请在制作档案中检查分类并启动事实返工。`:dto?.availableActions.includes("resume_current_execution")?"本轮执行已停止。原任务与已有产出已保留；查看运行记录后，可点击“恢复当前执行”继续同一任务。":"本轮执行未完成。原任务与已有产出已保留，请查看当前阶段与运行记录。"});
     if(!messages.length&&!(snap?.processes?.length))messages.push({id:"local-start",role:"assistant",timestamp:start,content:"已从本机企业资料启动真实工作流。执行记录会随工具调用更新，研究结束后展示待确认内容。"});
     const label=record.input.mode==="single_article"?"问题文章":record.input.mode==="p0"?"品牌深度文章":"品牌资料包";
     const processStatus:ProcessStatus=status==="error"?"failed":status==="pending"?"unknown":status as ProcessStatus;
@@ -168,6 +172,17 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
     if(!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(req.headers.host??""))reject("仅允许本机访问。",403);
     if(!["GET","HEAD"].includes(req.method??"GET")&&req.headers.origin!==`http://${req.headers.host}`)reject("请从本机工作台提交。",403);
     if(path==="/api/module/context")return send(res,{module:"content",workspace:{id:"local-managed-workflow",ownerUserId:0},marketEdition:"cn",capabilities:["content"]});
+    if(path==="/api/modules/content/subject-workspace"){
+     if(req.method==="GET")return send(res,store.subjectWorkspace??emptySubjectWorkspace());
+     if(req.method==="PUT"){
+      const input=JSON.parse((await body(req)).toString()),previous=store.subjectWorkspace;
+      const value=await validateSubjectWorkspaceUpdate(previous??emptySubjectWorkspace(),input,{conversation:async id=>{
+       const conversation=store.conversations[id];return conversation?.purpose?{id:conversation.id,purpose:conversation.purpose,taskId:conversation.taskId}:null;
+      }});
+      if(store.subjectWorkspace!==previous)reject("主体资料库已在其他窗口更新，请刷新后重试。",409);
+      store.subjectWorkspace=value;persist();return send(res,value);
+     }
+    }
     const all=await current();
     if(path==="/api/content/conversations"&&req.method==="GET")return send(res,[...all.values()].map(x=>x.conversation).concat(Object.values(store.conversations).filter(c=>!Object.values(store.tasks).some(t=>t.conversationId===c.id)).map(c=>publicContentConversation(c) as ContentConversation)));
     const conversationMatch=path.match(/^\/api\/content\/conversations\/([-\w]+)$/);
@@ -185,6 +200,11 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
      const data=await body(req,512*1024*1024),id="asset_"+randomUUID().replaceAll("-","").slice(0,30),folder=join(privateDir,"uploads",id);mkdirSync(folder,{recursive:true,mode:0o700});
      const file=join(folder,filename);writeFileSync(file,data,{mode:0o600});store.assets[id]={path:file,filename};persist();return send(res,{localAssetId:id,filename});
     }
+    const assetMatch=path.match(/^\/api\/frontmind\/v2\/assets\/(asset_[a-zA-Z0-9_]+)\/content$/);
+    if(assetMatch&&req.method==="GET"){
+     const file=store.assets[assetMatch[1]];if(!file||!existsSync(file.path)||!contained(privateDir,file.path))reject("输入文件不存在。",404);
+     res.writeHead(200,{"Content-Type":mime[extname(file.path).toLowerCase()]??"application/octet-stream","Content-Disposition":`attachment; filename*=UTF-8''${encodeURIComponent(file.filename)}`,"X-Content-Type-Options":"nosniff","Cache-Control":"no-store"});createReadStream(file.path).pipe(res);return;
+    }
     const artifactMatch=path.match(/^\/api\/frontmind\/v2\/artifacts\/([a-f0-9]+)\/content$/);
     if(artifactMatch&&req.method==="GET"){
      const file=artifacts.get(artifactMatch[1]);if(!file||!contained(root,file.path))reject("交付文件不存在。",404);
@@ -196,7 +216,10 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
      if(taskId&&!existing)reject("任务不存在。",404);
      if(req.method==="GET")return send(res,existing!.task);
      if(req.method==="POST"&&taskMatch[2]==="stop"){
-      const child=processes.get(taskId!);if(!child)reject("此任务由命令行运行，请在原执行入口停止。",409);existing!.record.cancelled=true;persist();child.kill("SIGINT");return send(res,{ok:true});
+      const child=processes.get(taskId!);if(!child)reject("此任务由命令行运行，请在原执行入口停止。",409);
+      existing!.record.cancelled=true;persist();
+      await new Promise<void>((resolve,reject)=>{child.once("close",()=>resolve());if(!child.kill("SIGINT"))reject(new Error("无法停止当前执行。"));});
+      return send(res,{ok:true});
      }
      if(req.method==="POST"){
       const input=JSON.parse((await body(req)).toString()),requestId=safeId(input.clientRequestId),conversationId=safeId(input.conversationId);
@@ -214,15 +237,14 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
         if(action.revision!==dto?.runnerRevision||!dto.availableActions.includes(action.kind))reject("确认已过期，请刷新当前阶段。",409);
         args.push(...localActionArgs(action,dto.workflowStatus??""));
         args.push(...localAttachmentArgs(action,dto.workflowStatus??"",dto.jobKind,files));
-       }else if(["error","cancelled"].includes(existing.task.status)&&String(input.prompt).trim()==="重试当前执行")args.push("--retry-current-action");
-       else reject("请使用当前阶段的确认或修改控件继续工作流。");
+       }else reject("请使用当前阶段的确认、恢复或修改控件继续工作流。");
       }else{
        if(Object.values(store.tasks).some(t=>t.conversationId===conversationId))reject("此会话已有任务，请重新加载后继续。",409);
-       const config=contentProductionInputSchema.parse(input.contentProduction);if(!files.length)reject("真实任务需要上传企业材料或已确认资料包。");
+       const config=contentProductionInputSchema.parse(input.contentProduction);if(!files.length&&config.mode!=="new_reference_pack")reject("真实任务需要上传企业材料或已确认资料包。");
        const id="task_"+randomUUID().replaceAll("-","");record={id,directory:id,conversationId,input:config};
        const command=config.mode==="new_reference_pack"?["reference-pack","create"]:config.mode==="single_article"?["article"]:config.mode==="p0"?["p0"]:null;
        if(!command)reject("本地真实入口支持新资料包、品牌深度文章和问题文章。");
-        args=[...command,"--job-dir",join(root,id),"--brand",config.enterpriseName];for(const file of files)args.push("--input",file);if(config.question)args.push("--question",config.question);if(config.questionId)args.push("--question-id",config.questionId);
+        args=[...command,"--job-dir",join(root,id),"--brand",config.enterpriseName];for(const file of files)args.push("--input",file);if(config.mode==="new_reference_pack")args.push("--positioning-brief",input.prompt);if(config.question)args.push("--question",config.question);if(config.questionId)args.push("--question-id",config.questionId);
         if(config.mode==="single_article"){
          if(config.articleFocus)args.push("--focus",config.articleFocus);
          for(const value of config.readerQuestions??[])args.push("--reader-question",value);

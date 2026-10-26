@@ -3,7 +3,8 @@ import type { ContentIntakeReceipt } from "../contracts/content-intake-receipt";
 import type { GeneralExecutionDto } from "@frontmind/module-contracts/execution";
 import {createContext,useContext,type ComponentType,type ReactNode} from "react";
 import type {ContentProductionDto,ContentProductionInput,ContentProductionAction} from "../contracts/content-production";
-export type ContentOutputFile={fileUrl:string;fileName:string;mimeType:string};
+export type ContentOutputFile={fileUrl:string;fileName:string;mimeType:string;sha256?:string};
+export function contentOutputIdentity(file:ContentOutputFile){return file.sha256 ? `${file.fileName}\0${file.sha256}` : file.fileUrl;}
 export type ContentMessage={id:string;role:"user"|"assistant";content:string;timestamp:number;serverSequence?:number;contentPhase?:number;contentWorkflowPosition?:number;contentWorkflowStatus?:string;contentWorkflowGeneration?:number;contentWorkflowKind?:"reference_pack"|"reference_pack_refresh"|"p0"|"article";generalChat?:{turnId:string;providerEventId:string;isFinalAnswer?:boolean};outputFiles?:ContentOutputFile[];attachments?:{id:string;type:"file"|"image";name:string;fileId?:string}[];generalChatDispatch?:Record<string,unknown>};
 export type ContentConversation={id:string;title:string;purpose?:"content_production"|"enterprise_qa";taskId?:string;previousResponseId?:string;status:string;messages:ContentMessage[];contentIntakeReceipt?:ContentIntakeReceipt;execution?:GeneralExecutionDto;processes?:ConversationProcess[];createdAt:number;updatedAt:number;executionKind?:"general_chat_v2"|"response_logic"};
 export type TaskResponse={id:string;purpose?:"content_production"|"enterprise_qa"|"general";status:string;contentProduction?:ContentProductionDto|null;contentProgressReadError?:boolean;output?:unknown[];metadata?:{task_title?:string};error?:{message?:string}};

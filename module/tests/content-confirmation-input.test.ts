@@ -32,6 +32,18 @@ describe("底部统一输入的本地确认提取", () => {
     expect(parse(["confirm_blueprint"], "修改：增加验证材料").action).toBeNull();
   });
 
+  it("原生确认页的修改表述选项保留完整修订要求", () => {
+    const instructions = "保留当前比较对象。\n将医疗资源协同改为综合医院背景。";
+    expect(parse(["revise_current_step", "confirm_core_positioning"], `修改表述：${instructions}`).action).toEqual({ kind: "revise_current_step", revision: 17, instructions });
+    expect(parse(["confirm_core_positioning"], `修改表述：${instructions}`).action).toBeNull();
+    expect(parse(["revise_current_step"], "修改表述：").action).toBeNull();
+  });
+
+  it.each(["确认并导出", "确认并导出品牌资料包", "确认并导出 Reference Pack"])("接受定位确认页的导出选择：%s", text => {
+    expect(parse(["confirm_core_positioning"], text).action).toEqual({ kind: "confirm_core_positioning", revision: 17 });
+    expect(parse(["confirm_p0_blueprint"], text).action).toBeNull();
+  });
+
   it("P0 新建与文件导入分别提取", () => {
     expect(parse(["choose_p0_route"], "新建 P0").action).toEqual({ kind: "choose_p0_route", revision: 17, route: "create" });
     expect(parse(["choose_p0_route"], "P0：导入", 1).action).toEqual({ kind: "choose_p0_route", revision: 17, route: "import" });

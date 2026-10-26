@@ -431,6 +431,7 @@ def make_state(job_id: str, job_kind: str) -> dict[str, Any]:
     }
     if job_kind == "p0":
         value["metadata"]["p0_blueprint_commission_mode"] = writing_requirements.P0_BLUEPRINT_COMMISSION_MODE
+        value["metadata"]["p0_selected_facts_mode"] = writing_requirements.P0_SELECTED_FACTS_MODE
         value["metadata"]["title_strategy"] = dict(title_strategy.DEFAULT)
     if job_kind == "article":
         from shared import recommendation_references
@@ -2497,7 +2498,9 @@ def save_examples(job_root: Path, examples: Any, scope: str) -> list[dict[str, A
         if natural_editor.enabled(state) and isinstance(item, dict):
             role = str(item.get("reference_role") or item.get("role") or role)
 
-        if not offline:
+        # Offline model fixtures can still use hash-checked bundled articles.
+        # Preserve their acquisition identity instead of treating them as inline fiction.
+        if not offline or (isinstance(item, dict) and item.get("artifact_id")):
             if not isinstance(item, dict):
                 raise WorkflowError("例文需要已取得正文的 artifact_id")
             acquired = ExampleStore(job_root).resolve(item.get("artifact_id", ""), require_complete=True)
@@ -2821,6 +2824,10 @@ def handle_competitor_selection(args: argparse.Namespace, job_root: Path) -> int
     if load_state(job_root).get('metadata', {}).get('p02_selection_pending'):
         return p02_selection.handle_selection(sys.modules[__name__], args, job_root)
     state = load_state(job_root)
+    if args.positioning_supplement:
+        require_revision(args, state)
+        save_user_material(job_root, args.positioning_supplement, "positioning")
+        return begin_positioning(job_root, force_research=True)
     if args.rerun_positioning_research:
         require_revision(args, state)
         return begin_positioning(job_root, force_research=True)
@@ -5367,6 +5374,11 @@ def _create_material_pack_for_job(job_root: Path, brand: str, inputs: Sequence[P
         return False
     output = job_root / "working/reference_pack_materials"
     result = create_reference_pack(brand_name=brand, knowledge_base=list(inputs), output=output)
+    atomic_json(job_root / "inputs/material_intake_report.json", result)
+    rejected = [item for item in result["input_items"] if item["status"] == "rejected"]
+    if rejected:
+        details = "；".join(f"{item['source_path']}：{item['reason']}" for item in rejected)
+        raise WorkflowError(f"材料接收未完成：{details}。逐文件回执已保存，请修正后重新提交材料。")
     bind_reference_pack(job_root, Path(result["pack_path"]))
     state = load_state(job_root)
     state["metadata"]["created_material_pack_in_job"] = True
@@ -6427,8 +6439,13 @@ def continue_workflow(args: argparse.Namespace) -> int:
     if getattr(args, "retry_current_action", False):
         require_revision(args, state)
         pending = state.get("pending_action") or {}
-        if status in USER_PAUSE_STATUSES or not pending.get("error") or not pending.get("action"):
-            raise WorkflowError("当前没有可显式重试的失败内部动作")
+        if not pending and status.startswith("running_"):
+            return drive(job_root)
+        if (status in USER_PAUSE_STATUSES or not pending.get("action")
+                or not (pending.get("error") or pending.get("requires_provider_action"))):
+            raise WorkflowError("当前没有可恢复的内部动作")
+        # The command owns the original Job lock. An interrupted provider action
+        # can have a saved checkpoint without a completed error receipt.
         state["flags"]["retry_current_action"] = pending["action"]
         save_state(job_root, state)
         return drive(job_root)

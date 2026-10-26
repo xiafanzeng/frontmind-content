@@ -1,3 +1,4 @@
+import { hasContentWorkflowCapability, workflowForTask } from "./workflow-catalog";
 import { z } from "zod";
 import { CONTENT_PRODUCTION_CONFIRMATION_ACTIONS, CONTENT_PRODUCTION_RUNNER_STATUSES, contentProductionConfirmationSchema, contentProductionStagePosition, type ContentProductionConfirmation, type ContentProductionDto, type ContentProductionMode } from "../contracts/content-production";
 import { contentProductionPauseTitle, contentProductionPublicText } from "../contracts/content-production-public";
@@ -43,7 +44,7 @@ const runnerStateSchema = z.object({
       must_stop: z.literal(true),
     })
     .nullable(),
-  pending_action: z.object({ action: z.string().min(1).max(200), error: runnerErrorSchema.optional() }).nullable(),
+  pending_action: z.object({ action: z.string().min(1).max(200), requires_provider_action: z.boolean().optional(), error: runnerErrorSchema.optional() }).nullable(),
   flags: z.object({
     article_fact_gate: z.object({issue_count:z.number().int().min(0).max(100000),publish_ready:z.boolean()}).optional(),
     p0_production_step: z
@@ -192,6 +193,25 @@ export function reduceContentProductionProgress(
   }
   const state = observation.state;
   const position = contentProductionStagePosition(state.stage, state.status);
+  return {
+    revision: 2,
+    lastObservation: observation,
+    progressPosition: Math.max(
+      current?.progressPosition ?? 0,
+      state.metadata?.session_phase_contract === "frontmind-session-phases/1"
+        ? state.job_kind === "article" && state.status === "completed" ? 20 : Math.min(position, 19)
+        : contentRunnerCompleted(state, mode) ? 20 : Math.min(position, 19),
+    ),
+    completedConfirmations: completedRunnerConfirmations(state),
+  };
+}
+
+function contentRunnerCompleted(state: ContentRunnerObservation["state"], mode: ContentProductionMode): boolean {
+  if(state.metadata?.session_phase_contract === "frontmind-session-phases/1") {
+    return (state.job_kind === "p0" && state.status === "p0_ready") ||
+      (state.job_kind === "article" && state.status === "completed") ||
+      (["reference_pack","reference_pack_refresh"].includes(state.job_kind) && state.status === "positioning_ready");
+  }
   const expectedKind = [
     "new_reference_pack",
     "refresh_reference_pack",
@@ -200,23 +220,12 @@ export function reduceContentProductionProgress(
     : ["p0", "foundation_article", "import_foundation"].includes(mode)
       ? "p0"
       : "article";
-  const isComplete =
+  return (
     expectedKind === "reference_pack"
       ? ["reference_pack", "reference_pack_refresh"].includes(state.job_kind) &&
         state.status === "positioning_ready"
       : state.job_kind === expectedKind &&
-        state.status === (expectedKind === "p0" ? "p0_ready" : "completed");
-  return {
-    revision: 2,
-    lastObservation: observation,
-    progressPosition: Math.max(
-      current?.progressPosition ?? 0,
-      state.metadata?.session_phase_contract === "frontmind-session-phases/1"
-        ? state.job_kind === "article" && state.status === "completed" ? 20 : Math.min(position, 19)
-        : isComplete ? 20 : Math.min(position, 19),
-    ),
-    completedConfirmations: completedRunnerConfirmations(state),
-  };
+        state.status === (expectedKind === "p0" ? "p0_ready" : "completed"));
 }
 
 export function compareContentRunnerObservations(
@@ -237,6 +246,7 @@ export function compareContentRunnerObservations(
 export function contentProductionPublicDto(
   context: FrozenContentTaskContext | null,
   providerRuntime?: Record<string, unknown> | null,
+  execution?: { operationStatus?: string },
 ): ContentProductionDto | undefined {
   if (context?.purpose !== "content_production" || !context.contentProduction)
     return undefined;
@@ -256,11 +266,29 @@ export function contentProductionPublicDto(
   const factRepair = state?.status === "running_article_production" &&
     state.flags.article_production_step === "deliver" &&
     state.pending_action?.action === "article_fact_repair";
+  const operationStatus = execution?.operationStatus;
+  const running = ["running", "pending", "queued"].includes(operationStatus ?? "");
+  const complete = Boolean(state && contentRunnerCompleted(state, context.contentProduction.mode));
+  const outerFailure = ["error", "failed", "cancelled"].includes(operationStatus ?? "");
+  const executionStatus: ContentProductionDto["executionStatus"] = running ? "running"
+    : operationStatus === "cancelled" ? "cancelled"
+    : state?.pending_action?.error || ["error", "failed"].includes(operationStatus ?? "") ? "error"
+    : complete ? "completed"
+    : confirmation ? "awaiting_input"
+    : state && operationStatus === "completed" ? "error"
+    : state ? "running" : "pending";
+  const resume = !running && !factRepair && Boolean(state) &&
+    (outerFailure || (!complete && !confirmation &&
+      Boolean(state?.pending_action?.error || state?.pending_action?.requires_provider_action ||
+        (!state?.pending_action && state?.status.startsWith("running_")))));
   return {
     mode: context.contentProduction.mode,
     enterpriseName: context.contentProduction.enterpriseName,
     workflowVersion: context.contentWorkflow?.version ?? "4.11.0",
+    sessionPhases: hasContentWorkflowCapability(workflowForTask(context), "session_phases"),
     workflowStatus: state?.status ?? null,
+    executionStatus,
+    ...(state?.pending_action?.error ? {failureCode: state.pending_action.error.code} : {}),
     executionFailure: state?.pending_action?.error ? {
       action: /^[A-Za-z0-9_]{1,200}$/u.test(state.pending_action.action) ? state.pending_action.action : "content_workflow",
       code: state.pending_action.error.code,
@@ -269,7 +297,7 @@ export function contentProductionPublicDto(
     currentStage: state?.stage ?? null,
     jobKind: state?.job_kind ?? null,
     runnerRevision: state?.revision ?? null,
-    pauseTitle: contentProductionPauseTitle(
+    pauseTitle: running ? null : contentProductionPauseTitle(
       confirmation,
       state?.current_pause?.title ?? null,
     ),
@@ -283,13 +311,25 @@ export function contentProductionPublicDto(
       state?.flags.article_production_step ??
       null,
     ...(factRepair ? {factGate:{issueCount:state?.flags.article_fact_gate?.issue_count ?? 0,categories:["请查看工作流校验结果"],publishReady:false}} : {}),
-    confirmation,
+    confirmation: running ? null : confirmation,
     progressPosition: Math.max(progress?.progressPosition ?? 0,state?contentProductionStagePosition(state.stage,state.status):0),
     completedConfirmations: state ? completedRunnerConfirmations(state) : progress?.completedConfirmations ?? [],
-    availableActions: confirmation
+    availableActions: running ? [] : resume ? ["resume_current_execution"] : confirmation
       ? CONTENT_PRODUCTION_CONFIRMATION_ACTIONS[confirmation]
       : factRepair ? ["repair_article_facts"] : [],
     knowledgeBase: context.knowledgeBase,
     source: state ? "runner_job_state" : "awaiting_runner",
   };
+}
+
+/** An Agent reply ending does not complete its unfinished content Job. */
+export function contentProductionTaskStatus(dto: ContentProductionDto | null | undefined, operationStatus: string): string {
+  if (!dto || dto.source !== "runner_job_state") return operationStatus;
+  if (["running", "pending", "queued"].includes(operationStatus)) return "running";
+  if (dto.executionStatus === "completed") return "completed";
+  if (operationStatus === "cancelled") return "cancelled";
+  if (dto.failureCode || ["error", "failed"].includes(operationStatus)) return "error";
+  if (dto.confirmation) return "awaiting_input";
+  if (operationStatus === "completed") return "error";
+  return dto.executionStatus ?? operationStatus;
 }

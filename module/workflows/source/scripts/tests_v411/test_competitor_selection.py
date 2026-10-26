@@ -516,6 +516,21 @@ class CompetitorSelectionTests(unittest.TestCase):
         self.assertEqual([SYNTHESIS_ACTION], [call["action"] for call in calls])
         self.assertEqual("within_type", self.read(CORE_PATH)["comparison_scope"]["mode"])
 
+    def test_comparison_pause_supplement_reaches_research_and_reopens_confirmation(self):
+        self.research_pause()
+        previous = state(self.job)
+        supplement = "请 OCR 读取 PPTX 第 3 页和第 6 页的图片文字。"
+        with self.assertRaises(C.WorkflowError):
+            self.cont("--positioning-supplement", supplement, revision=previous["revision"] - 1)
+        self.assertFalse((self.job / "inputs/user_materials").exists())
+        calls = self.run_provider(callback=lambda: self.cont("--positioning-supplement", supplement))
+        self.assertEqual([RESEARCH_ACTION], [call["action"] for call in calls])
+        self.assertIn(supplement, calls[0]["prompt"])
+        self.assertEqual(previous["job_id"], state(self.job)["job_id"])
+        self.assertEqual("awaiting_competitor_selection", state(self.job)["status"])
+        self.assertGreater(state(self.job)["revision"], previous["revision"])
+        self.assertFalse(state(self.job)["decisions"].get("comparison_scope", {}).get("confirmed", False))
+
     def test_reresearch_new_c001_cannot_be_shadowed_by_old_selected_c001(self):
         self.research_pause()
         self.confirm_scope()

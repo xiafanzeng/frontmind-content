@@ -711,9 +711,18 @@ class GeneralWritingTests(unittest.TestCase):
                 review = self.prompts[prefix + "_finalize"]
                 self.assertEqual(review.count("EXAMPLE_TRANSFER_GUIDE"), 1)
                 for marker in ("SELECTED_SECTION_SCOPE", "SELECTED_SECTION_TASK"):
-                    self.assertIn(marker, review)
+                    if prefix == "p0":
+                        self.assertNotIn(marker, review)
+                    else:
+                        self.assertIn(marker, review)
+                if prefix == "p0":
+                    # The P0 regression now supplies the same selected facts to
+                    # the editor; its expansion advice must not invent details.
+                    self.assertEqual(review.count(selected), 1)
+                else:
+                    self.assertNotIn("SELECTED_BUSINESS_START", review)
                 for marker in ("DRAFT_ONLY_OPENING", "DRAFT_ONLY_ENDING", "FULL_ORIGINAL_START",
-                               "EXTRACTED_CONTENT_END", "SELECTED_BUSINESS_START", "UNSELECTED_FAQ_INSTRUCTIONS", "PRIVATE_SOURCE_NOTE"):
+                               "EXTRACTED_CONTENT_END", "UNSELECTED_FAQ_INSTRUCTIONS", "PRIVATE_SOURCE_NOTE"):
                     self.assertNotIn(marker, review)
                 self.assertEqual(source.read_text(), body)
 

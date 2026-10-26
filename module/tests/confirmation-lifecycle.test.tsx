@@ -160,7 +160,7 @@ it("品牌资料包任务保持自身五个阶段",async()=>{
 });
 
 it("原会话从资料包接续 P0 后，按当前 jobKind 展示 P0 六阶段",async()=>{
-  const view=await mount({progress:{...progress,mode:"new_reference_pack",jobKind:"p0",workflowVersion:"4.13.2-v16.8-app1",workflowStatus:"awaiting_p0_route",currentStage:"p0_route",confirmation:"awaiting_p0_route",availableActions:["choose_p0_route"],progressPosition:8}});
+  const view=await mount({progress:{...progress,mode:"new_reference_pack",jobKind:"p0",workflowVersion:"4.13.2-v16.8-app1",sessionPhases:true,workflowStatus:"awaiting_p0_route",currentStage:"p0_route",confirmation:"awaiting_p0_route",availableActions:["choose_p0_route"],progressPosition:8}});
   try{
     expect(laneTitles(view.container)).toEqual(p0Titles);
     expect(view.container.querySelector('[aria-current="step"] strong')?.textContent).toBe("制作品牌深度文章");
@@ -192,7 +192,7 @@ it("统一底部输入先整理卡片，泳道回看不提交，返回修改保�
 });
 
 it("新流程的已交付资料包在原会话内接续，不创建新会话", async () => {
-  const view = await mount({progress:{...progress,mode:"new_reference_pack",jobKind:"reference_pack",workflowVersion:"4.13.2-v16.8-app1",workflowStatus:"positioning_ready",currentStage:"reference_pack",confirmation:null,availableActions:[]}});
+  const view = await mount({progress:{...progress,mode:"new_reference_pack",jobKind:"reference_pack",workflowVersion:"4.13.2-v16.8-app1",sessionPhases:true,workflowStatus:"positioning_ready",currentStage:"reference_pack",confirmation:null,availableActions:[]}});
   try {
     const next = [...view.container.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="继续制作品牌长文")!;
     expect(next).toBeDefined();

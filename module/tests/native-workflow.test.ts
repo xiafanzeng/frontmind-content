@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import * as workflowCatalog from "../server/workflow-catalog";
+import { describe, expect, it, vi } from "vitest";
 import { contentProductionActionSchema, contentProductionInputSchema } from "../contracts/content-production";
-import { parseContentRunnerState, reduceContentProductionProgress, contentProductionPublicDto } from "../server/state";
-import { contentProductionSystemContext, contentWorkflowRuntimeFor } from "../server/runtime";
+import { parseContentRunnerState, reduceContentProductionProgress, contentProductionPublicDto, contentProductionTaskStatus } from "../server/state";
+import { contentProductionSystemContext, contentProductionClientOptions, contentWorkflowRuntimeFor } from "../server/runtime";
 import { assertContentConfirmation } from "../server/task-handlers";
 import type { FrozenContentTaskContext } from "../contracts/task-context";
 import release from "../workflows/release.json";
@@ -28,6 +29,19 @@ it("原 Job 跨阶段接续保持进度与历史确认，不把资料包交付�
   expect(after.completedConfirmations).toContain("awaiting_core_positioning_confirmation");
 });
 
+it.each([["p0","p0_ready","reference_pack"],["article","completed","E10"]] as const)("资料包原任务接续到 %s 后按实际阶段判断完成",(kind,status,stage)=>{
+ const parsed=parseContentRunnerState(Buffer.from(JSON.stringify({...state(status,stage),job_kind:kind,
+  metadata:{session_phase_contract:"frontmind-session-phases/1",completed_phase_confirmations:["awaiting_core_positioning_confirmation"]}})))!;
+ const phaseContext={...context,contentProduction:{...context.contentProduction!,mode:"new_reference_pack" as const}};
+ const progress=reduceContentProductionProgress(null,{state:parsed,providerRank:1,eventId:"phase",artifactId:"state",sha256:"a".repeat(64)},"new_reference_pack");
+ const dto=contentProductionPublicDto(phaseContext,{contentProductionProgress:progress},{operationStatus:"completed"})!;
+ expect(dto).toMatchObject({executionStatus:"completed",jobKind:kind,workflowStatus:status});
+ expect(contentProductionTaskStatus(dto,"completed")).toBe("completed");
+ expect(progress.progressPosition).toBe(kind==="p0"?12:20);
+ const failed=contentProductionPublicDto(phaseContext,{contentProductionProgress:progress},{operationStatus:"error"})!;
+ expect(failed).toMatchObject({executionStatus:"error",workflowStatus:status,availableActions:["resume_current_execution"]});
+});
+
 it("阶段接续指令只对新的应用修订启用，历史冻结任务不改变",()=>{
   const current={...context,contentWorkflow:{...context.contentWorkflow!,version:"4.13.2-v16.8-app1"}};
   expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
@@ -35,11 +49,12 @@ it("阶段接续指令只对新的应用修订启用，历史冻结任务不改�
   expect(contentProductionSystemContext({...current,contentWorkflow:{...current.contentWorkflow,version:"4.13.2-v16.8"}})).not.toContain("--next-task p0");
 });
 
-it("v16.8.3 冻结阶段接续能力，同时保留上游编辑规则和失败停止指令",()=>{
+it("v16.8.6 冻结阶段接续能力，同时保留上游编辑规则和失败停止指令",()=>{
   const current:FrozenContentTaskContext={...context,contentWorkflow:{...context.contentWorkflow!,
     version:release.version,runtime:"native_content_v1",capabilities:["structured_article","editorial_v16_8","session_phases"]}};
   const system=contentProductionSystemContext(current);
-  expect(release.version).toBe("4.13.2-v16.8.3");
+  expect(contentProductionPublicDto(current)?.sessionPhases).toBe(true);
+  expect(release.version).toBe("4.13.2-v16.8.6");
   expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
   expect(system).toContain("--next-task p0");
   expect(system).toContain("--pool-selection");
@@ -47,6 +62,7 @@ it("v16.8.3 冻结阶段接续能力，同时保留上游编辑规则和失败�
   expect(system).not.toContain("the next P0/article is a separate task");
   const previous={...current,contentWorkflow:{...current.contentWorkflow!,version:"4.13.2-v16.8.2",
     capabilities:["structured_article","editorial_v16_8"] as ("structured_article"|"editorial_v16_8")[]}};
+  expect(contentProductionPublicDto(previous)?.sessionPhases).toBe(false);
   expect(contentProductionSystemContext(previous)).not.toContain("--next-task p0");
   expect(contentProductionSystemContext(previous)).toContain("the next P0/article is a separate task");
 });
@@ -167,4 +183,43 @@ it("connects v16.8 to the native chain and keeps independent choices",()=>{
  for(const fragment of ["--source-workbook","--source-period","--pool-selection","usage_hint","questions-recommend","never duplicate the Job"])expect(text).toContain(fragment);
  expect(text).toContain("do not insert routine competitor confirmation");
  expect(text).toContain("not the AI answers as style samples");
+});
+
+it("keeps an inner failure distinct from a successfully completed Agent reply",()=>{
+ const parsed=parseContentRunnerState(Buffer.from(JSON.stringify({...state("running_positioning_market_research","positioning_research"),
+  pending_action:{action:"positioning_market_research",requires_provider_action:true,error:{code:"tool_call_source_mismatch",message:"PRIVATE_PROVIDER_ERROR",attempt_id:"private-attempt"}}})))!;
+ const progress=reduceContentProductionProgress(null,{state:parsed,providerRank:1,eventId:"failure",artifactId:"state",sha256:"a".repeat(64)},"single_article");
+ const dto=contentProductionPublicDto(context,{contentProductionProgress:progress},{operationStatus:"completed"})!;
+ expect(dto).toMatchObject({executionStatus:"error",failureCode:"tool_call_source_mismatch",runnerRevision:7,availableActions:["resume_current_execution"]});
+ expect(contentProductionTaskStatus(dto,"completed")).toBe("error");
+ expect(JSON.stringify(parsed)).not.toContain("PRIVATE_PROVIDER_ERROR");
+ expect(contentProductionActionSchema.parse({kind:"resume_current_execution",revision:7})).toEqual({kind:"resume_current_execution",revision:7});
+ expect(()=>assertContentConfirmation({action:{kind:"resume_current_execution",revision:6},runnerRevision:7,availableActions:dto.availableActions})).toThrow();
+});
+
+it("uses actual pause and completion states instead of the outer turn outcome",()=>{
+ const project=(raw:ReturnType<typeof state>,operationStatus:string)=>{
+  const parsed=parseContentRunnerState(Buffer.from(JSON.stringify(raw)))!;
+  const progress=reduceContentProductionProgress(null,{state:parsed,providerRank:1,eventId:"state",artifactId:"state",sha256:"b".repeat(64)},"single_article");
+  return contentProductionPublicDto(context,{contentProductionProgress:progress},{operationStatus})!;
+ };
+ expect(contentProductionTaskStatus(project(state(),"completed"),"completed")).toBe("awaiting_input");
+ for(const outcome of ["error","failed","cancelled"]) {
+  const paused=project(state(),outcome);
+  expect(paused).toMatchObject({confirmation:"awaiting_question_selection",runnerRevision:7,availableActions:["resume_current_execution"]});
+  expect(contentProductionTaskStatus(paused,outcome)).toBe(outcome === "cancelled" ? "cancelled" : "error");
+ }
+ expect(project(state(),"running")).toMatchObject({executionStatus:"running",confirmation:null,availableActions:[]});
+ expect(contentProductionTaskStatus(project(state("completed","E10"),"completed"),"completed")).toBe("completed");
+ const interrupted={...state("running_positioning_market_research","positioning_research"),pending_action:{action:"positioning_market_research",requires_provider_action:true}};
+ expect(project(interrupted as ReturnType<typeof state>,"cancelled")).toMatchObject({executionStatus:"cancelled",availableActions:["resume_current_execution"]});
+});
+
+
+it("原生任务停止后直接续用持久化 Job，保留检查点与用户修订号",()=>{
+ const native={...context,contentWorkflow:{...context.contentWorkflow!,runtime:"native_content_v1" as const}};
+ const archive=vi.spyOn(workflowCatalog,"originalContentWorkflowArchive").mockReturnValue(Buffer.from("synthetic release"));
+ let options:ReturnType<typeof contentProductionClientOptions>;try{options=contentProductionClientOptions(native,{kind:"resume_current_execution",revision:0});}finally{archive.mockRestore();}
+ expect(options.systemContext).toContain("reuse the complete original Job already present");expect(options.systemContext).toContain("Do not overwrite a present Job with an older snapshot");expect(options.turnContext).toContain("only if the Job directory is absent");expect(options.turnContext).toContain("--revision 0 --retry-current-action");expect(options.turnContext).toContain("status --job-dir DIR --json");expect(options.turnContext).toContain("without invoking a business action or model");
+ const legacy={...context,contentWorkflow:{...context.contentWorkflow!,version:"4.11.0"}};expect(contentProductionSystemContext(legacy)).toContain("Before each continuation, restore the complete current Job from its private snapshot");
 });

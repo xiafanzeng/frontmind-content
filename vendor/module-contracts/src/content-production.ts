@@ -87,6 +87,7 @@ const revision = z.number().int().min(0);
 const text = z.string().trim().min(1).max(20_000);
 export const contentProductionActionSchema = z
   .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("resume_current_execution"), revision }).strict(),
     z
       .object({
         kind: z.literal("choose_reference_pack_route"),
@@ -225,6 +226,9 @@ export type ContentProductionDto = {
   enterpriseName: string;
   workflowVersion: string;
   workflowStatus: string | null;
+  /** The current Job outcome, separate from completion of an Agent reply. */
+  executionStatus?: "pending" | "running" | "awaiting_input" | "error" | "cancelled" | "completed";
+  failureCode?: string;
   currentStage: string | null;
   jobKind: ContentProductionJobKind | null;
   runnerRevision: number | null;

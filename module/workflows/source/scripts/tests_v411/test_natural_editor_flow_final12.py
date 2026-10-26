@@ -89,6 +89,8 @@ class NaturalEditorFlowTests(unittest.TestCase):
         state['metadata'].pop('title_strategy', None)
         state['metadata'].pop('p01_expression_policy', None)
         state['metadata'].pop('p02_selection_policy', None)
+        state['metadata'].pop('article_pool_policy', None)
+        state['metadata'].pop('question_positioning_handoff', None)
         state.update(status='running_'+prefix+'_production', stage='production', selected_pattern_id='P00' if prefix=='p0' else 'P02',
                      selected_example_route='default', question={'question_text': '本题相关机构有哪些？'})
         pack = job/'00_input/reference_pack.zip';pack.write_text('offline fixture pack')

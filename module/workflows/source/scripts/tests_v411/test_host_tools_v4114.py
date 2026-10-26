@@ -454,7 +454,7 @@ class HostToolsTests(unittest.TestCase):
         self.assertIn('First.',text);self.assertIn('Middle.',text);self.assertIn('Last.',text);self.assertNotIn('MENU',text);self.assertNotIn('ADS',text)
     def test_reader_provenance_and_flags(self):
         store=ExampleStore(self.job)
-        with patch('example_acquisition.public_url',lambda x:x):
+        with patch('example_acquisition.public_url',lambda x, **kwargs:x):
             record=store.acquire_reader('https://example.org',lambda endpoint,body:{'reader_result':{'content':'Article first\nMiddle\nLast','title':'Title','url':'https://example.org'}})
             self.assertEqual(record['obtained_via'],'zhipu_reader');self.assertEqual(record['content_type'],'application/json');store.resolve(record['artifact_id'])
             record=store.acquire_reader('https://example.org',lambda endpoint,body:{'reader_result':{'content':'Snippet','is_truncated':True}})

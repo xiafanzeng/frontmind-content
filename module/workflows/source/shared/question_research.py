@@ -197,10 +197,12 @@ def _answer_groups(row: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         answers.append({
             "slot": number,
+            "sample_label": str(number),
             "answer_text": str(content),
             "region": _normal(next((value for role, value in group.items() if role in {"区域", "region"}), None)) or None,
             "exported_rank": _normal(next((value for role, value in group.items() if role in {"排名", "rank", "ranking"}), None)) or None,
             "monitor_keyword_rank": _normal(next((value for role, value in group.items() if role in {"监控词排名", "keywordrank", "monitorkeywordrank"}), None)) or None,
+            "screenshot_url": ingestion._http_url(next((value for role, value in group.items() if role in {"截图链接", "回答截图", "screenshot"}), None)),
         })
     if answers:
         return answers

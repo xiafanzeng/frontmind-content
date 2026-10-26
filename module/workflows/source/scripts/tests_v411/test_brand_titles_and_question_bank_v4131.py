@@ -1,6 +1,8 @@
 """Offline request/Pack/selection regressions. Not a model writing-quality test."""
 from __future__ import annotations
 import copy
+from datetime import datetime
+from openpyxl import Workbook
 import hashlib
 import io
 import json
@@ -18,7 +20,6 @@ from Reference_Pack_Workflow.shared import reference_pack_builder as builder
 from scripts.tests_v411 import test_workflow_v411 as old
 
 ROOT = Path(__file__).resolve().parents[2]
-REAL_TABLE = ROOT/'customer_inputs/taixin/东莞台心医院-正式初始-问答明细-20260830-180117.xlsx'
 
 
 def dump(path, obj):
@@ -82,7 +83,22 @@ class TitleContract4131Tests(unittest.TestCase):
 class MonitoringImport4131Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.artifacts,cls.index,cls.report=bank.build_artifacts(REAL_TABLE,brand='东莞台心医院')
+        # Public tests carry synthetic cells; customer originals remain private.
+        cls.table_temp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.table_temp.cleanup)
+        cls.table = Path(cls.table_temp.name)/'synthetic-answers-20260830.xlsx'
+        book = Workbook()
+        sheet = book.active
+        sheet.append(['品牌名称', '监控问题', 'AI大模型', '回答内容', '监控日期'])
+        for question in range(1, 34):
+            title = f'合成问题{question:02}' if question < 33 else '合成腰腹吸脂问题'
+            for answer in range(12 if question == 1 else 10):
+                platform = ('元宝-网页版', '通义千问-网页版')[answer % 2]
+                text = f'  合成答案{question:02}-{answer:02}。\n\n保留原始完整段落。\r\n末段。  '
+                sheet.append(['合成品牌', title, platform, text, datetime(2026, 6, 22)])
+        book.save(cls.table)
+        book.close()
+        cls.artifacts,cls.index,cls.report=bank.build_artifacts(cls.table,brand='合成品牌')
 
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
@@ -95,17 +111,17 @@ class MonitoringImport4131Tests(unittest.TestCase):
         builder.create_reference_pack(brand_name='合成企业',knowledge_base=[f],output=self.root/'old')
         return self.root/'old'
 
-    def test_real_table_33_questions_332_answers(self):
+    def test_workbook_33_questions_332_answers(self):
         self.assertEqual((33,332,332),(self.report['question_count'],self.report['row_count'],self.report['answer_count']))
         self.assertEqual(33,len(self.index['questions']))
 
-    def test_real_dates_are_cell_dates_not_filename(self):
+    def test_cell_dates_are_not_inferred_from_filename(self):
         self.assertEqual(['2026-06-22'],self.report['observed_dates'])
         self.assertEqual('2026-06-22',self.index['periods'][0]['observed_to'])
 
-    def test_real_platforms_provenance_and_full_answers(self):
+    def test_platforms_provenance_and_full_answers(self):
         observed=[a for s in self.index['slices'] for a in self.artifacts[s['monitoring_path']]['answers']]
-        raw=bank.export_rows(REAL_TABLE)
+        raw=bank.export_rows(self.table)
         byrow={r['__frontmind_source_row__']:r for _,r in raw if r.get('监控问题') and r.get('回答内容')}
         self.assertEqual({'元宝-网页版','通义千问-网页版'},{a['platform'] for a in observed})
         for a in observed:
@@ -113,7 +129,7 @@ class MonitoringImport4131Tests(unittest.TestCase):
             self.assertTrue(a['source_record']['file_sha256'].startswith('sha256:'))
         self.assertEqual(332,len(observed))
 
-    def test_real_source_order_and_last_question_preserved(self):
+    def test_source_order_and_last_question_preserved(self):
         self.assertEqual('q000033',self.index['questions'][-1]['question_uid'])
         self.assertIn('腰腹吸脂',self.index['questions'][-1]['question_text'])
         self.assertTrue(all(q['question_id'] is None for q in self.index['questions']))
@@ -232,6 +248,13 @@ class SelectionFlow4131Tests(unittest.TestCase):
         self.assertIn('问题甲',old.page(job));self.assertIn('问题乙',old.page(job))
         self.assertEqual([],old.schema_errors(job/'job_state.json',ROOT/'shared/job_state.schema.json'))
         old.resume(job,'--question-id','2')
+        # The current article-pool contract requires the selected period's
+        # supplied citation records before the response brief can start.
+        self.assertEqual('awaiting_question_research_inputs',old.state(job)['status'])
+        source = dump(self.base/'selected-question-sources.json', [
+            {'问题': '问题乙', '文章链接': 'https://example.com/synthetic/source',
+             '日期': '2026-06-22', '标题': '合成引用来源'}])
+        old.resume(job, '--source-workbook', str(source))
         self.assertEqual('awaiting_response_brief',old.state(job)['status'])
         self.assertEqual('问题乙',old.state(job)['question']['question_text'])
         originals=json.loads((job/'inputs/question_observations.json').read_text())

@@ -31,7 +31,7 @@ export function bindConversationProcesses(input:unknown,messages:ContentMessage[
   processes.push({id:turn.id,userMessageId:turn.userMessageId,startedAt:turn.startedAt,status:state,
    ...(turn.finishedAt?{finishedAt:turn.finishedAt}:{}),
    thinking:owned.flatMap(a=>a.thinking),
-   tools:owned.flatMap(a=>a.tools),...(state==="failed"?{reason:last?.reason??"执行结果尚未确认。",nextStep:last?.nextStep??"检查后台诊断后显式恢复。"}:{}),
+   tools:owned.flatMap(a=>a.tools),...(state==="failed"?{reason:last?.reason??"本轮执行失败。",nextStep:last?.nextStep??"检查后台诊断后显式恢复。"}:{}),
    ...(state==="cancelled"?{reason:"本次执行已取消。",nextStep:"已有产出已保留，可显式恢复当前执行。"}:{}),
    ...(owned.findLast(a=>a.recovery)?.recovery?{recovery:owned.findLast(a=>a.recovery)!.recovery}:{}),
   });

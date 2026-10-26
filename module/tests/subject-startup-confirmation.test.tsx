@@ -11,7 +11,7 @@ import {useComposerConfirmation} from "../client/useComposerConfirmation";
 
 
 const nativeProgress: ContentProductionDto = {
-  mode:"single_article",enterpriseName:"合成主体",workflowVersion:"4.13.2-v16.8-app1",workflowStatus:"awaiting_blueprint_confirmation",
+  mode:"single_article",enterpriseName:"合成主体",workflowVersion:"4.13.2-v16.8-app1",sessionPhases:true,workflowStatus:"awaiting_blueprint_confirmation",
   currentStage:"awaiting_blueprint_confirmation",jobKind:"article",runnerRevision:12,pauseTitle:"确认写作方案",choices:[],productionStep:null,
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
@@ -336,4 +336,54 @@ it("同一聊天重启后清除旧失败任务，不阻塞新首轮确认且保�
     expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProductionAction");
     expect(view.task.mock.calls).toHaveLength(oldReads);
   }finally{await view.cleanup();}
+});
+
+
+it.each(["error","stopped","cancelled"])("启动前 %s 后明确重试原任务，沿用附件且不重建冻结上下文",async(status)=>{
+ const original={id:"original-user",role:"user" as const,content:"读取原材料完成 1.1–1.3",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file" as const,name:"原材料.docx"}]};
+ const view=await mount({taskId:"original-task",status,messages:[original],progress:{...nativeProgress,source:"awaiting_runner",workflowStatus:null,currentStage:null,jobKind:null,runnerRevision:null,confirmation:null,availableActions:[]}});
+ try{const retry=button(view.container,"重试启动原任务");expect(retry).toBeDefined();await act(async()=>{retry.click();retry.click();});expect(view.send).toHaveBeenCalledTimes(1);expect(view.send).toHaveBeenCalledWith(original.content,[],{});expect(view.client.upload).not.toHaveBeenCalled();expect(view.task).toHaveBeenCalledWith("original-task");}
+ finally{await view.cleanup();}
+});
+
+it("已创建 Workflow 后通过共有工作区恢复原执行，发送当前修订号",async()=>{
+ const view=await mount({taskId:"original-task",status:"stopped",progress:{...nativeProgress,confirmation:null,availableActions:["resume_current_execution"]}});
+ try{expect(button(view.container,"重试启动原任务")).toBeUndefined();await act(async()=>button(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
+ finally{await view.cleanup();}
+});
+
+
+it("共有工作区停止原任务，服务端确认后刷新记录",async()=>{
+ const view=await mount({taskId:"original-task",status:"running"});
+ try{vi.mocked(view.client.task).mockResolvedValue({id:"original-task",status:"stopped",contentProduction:{...nativeProgress,confirmation:null,availableActions:["resume_current_execution"]}});await act(async()=>{const stop=button(view.container,"停止当前执行");stop.click();stop.click();});expect(view.client.stop).toHaveBeenCalledTimes(1);expect(view.client.stop).toHaveBeenCalledWith("original-task");expect(view.refresh).toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();}
+ finally{await view.cleanup();}
+});
+
+it("按任务冻结能力接续 v16.8.4 资料包并保留原聊天",async()=>{
+  const view=await mount({taskId:"original-task",status:"completed",progress:{...nativeProgress,workflowVersion:"4.13.2-v16.8.4",sessionPhases:true,jobKind:"reference_pack",workflowStatus:"positioning_ready",confirmation:null,availableActions:[]}});
+  try{
+    expect(view.container.textContent).toContain("在本聊天继续品牌长文");
+    await act(async()=>button(view.container,"继续制作品牌长文").click());
+    expect(view.send).toHaveBeenCalledTimes(1);
+    expect(view.send).toHaveBeenCalledWith("继续 P0");
+    expect(view.client.save).not.toHaveBeenCalled();
+  }finally{await view.cleanup();}
+});
+it("冻结能力未启用时不因发行版本较新开放阶段接续",async()=>{
+  const view=await mount({taskId:"historical-task",status:"completed",progress:{...nativeProgress,workflowVersion:"4.13.2-v16.8.4",sessionPhases:false,jobKind:"reference_pack",workflowStatus:"positioning_ready",confirmation:null,availableActions:[]}});
+  try{expect(button(view.container,"继续制作品牌长文")).toBeUndefined();}
+  finally{await view.cleanup();}
+});
+
+it("确认页已生成但外层执行失败时，先显式恢复原任务再提交业务选择",async()=>{
+ const view=await mount({taskId:"original-task",status:"error",progress:{...nativeProgress,confirmation:"awaiting_p0_route",availableActions:["resume_current_execution"]}});
+ try{expect(button(view.container,"先制作品牌长文")).toBeUndefined();await act(async()=>button(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
+ finally{await view.cleanup();}
+});
+
+it("按真实内容哈希合并重复交付，保留同名修订稿",async()=>{
+ const file={fileName:"定位.md",mimeType:"text/markdown",sha256:"a".repeat(64)};
+ const messages:ContentConversation["messages"]=[{id:"one",role:"assistant",content:"第一次交付",timestamp:1,outputFiles:[{...file,fileUrl:"/artifact-one"}]},{id:"two",role:"assistant",content:"重复导出与修订",timestamp:2,outputFiles:[{...file,fileUrl:"/artifact-two"},{...file,fileUrl:"/artifact-three",sha256:"b".repeat(64)}]}];
+ const view=await mount({messages});
+ try{expect(view.container.textContent).toContain("交付文件（2）");}finally{await view.cleanup();}
 });

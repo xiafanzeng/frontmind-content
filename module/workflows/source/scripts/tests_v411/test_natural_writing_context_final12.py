@@ -122,6 +122,20 @@ class NaturalWritingContextTests(unittest.TestCase):
             self.assertEqual([x['role'] for x in legacy], ['文风参考', '文风参考'])
             self.assertEqual([x['text_sha256'] for x in legacy], [x['text_sha256'] for x in acquired])
 
+    def test_offline_models_preserve_acquired_reference_identity(self):
+        acquired = controller.ExampleStore(self.case.job).import_user_text(
+            '完整文风参考正文，不属于模型生成结果。', '本地完整参考')
+        self.case.state['flags'] = {'offline_fixture': True}
+        with patch.object(controller, 'load_state', return_value=self.case.state):
+            saved = controller.save_examples(self.case.job, [{
+                'artifact_id': acquired['artifact_id'], 'reference_role': '文风参考',
+                'markdown': '不能用内联正文覆盖已取得的原文',
+            }], 'question')
+        self.assertEqual(saved[0]['artifact_id'], acquired['artifact_id'])
+        self.assertEqual(saved[0]['text_sha256'], acquired['text_sha256'])
+        self.assertEqual(Path(saved[0]['path']).read_text().strip(), '完整文风参考正文，不属于模型生成结果。')
+        self.assertEqual(saved[0]['completeness'], 'complete')
+
     def test_offline_example_save_has_the_same_v12_role_projection(self):
         self.case.state['flags'] = {'offline_fixture': True}
         with patch.object(controller, 'load_state', return_value=self.case.state):

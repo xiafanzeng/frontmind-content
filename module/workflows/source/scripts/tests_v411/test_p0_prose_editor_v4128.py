@@ -273,6 +273,7 @@ class P0ProseEditorTests(unittest.TestCase):
 
     def test_packaging_includes_runtime_skill_manifest_and_manual_cases(self):
         files = release.release_file_set(ROOT)
+        self.assertFalse(any(p.startswith("customer_inputs/") for p in files))
         for relative in ('shared/p0_prose_editor.py', 'resources/p0_prose_editor/SKILL.md',
                          'resources/p0_prose_editor/manifest.json', 'resources/p0_prose_editor/ADAPTATION.md',
                          'acceptance_fixtures/p0_prose_editor_v4128/cases.json',

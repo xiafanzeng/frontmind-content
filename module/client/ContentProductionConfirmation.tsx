@@ -25,7 +25,7 @@ type Props = {
   referencePreview?: ReactNode;
 };
 const FILE_TYPES =
-  ".zip,.pdf,.docx,.doc,.txt,.md,.json,.csv,.xlsx,.png,.jpg,.jpeg,.webp";
+  ".zip,.pdf,.docx,.doc,.pptx,.txt,.md,.json,.csv,.xlsx,.png,.jpg,.jpeg,.webp";
 const PATTERNS = CONTENT_PRODUCTION_PATTERNS;
 
 export function createContentProductionConfirmation(

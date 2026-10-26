@@ -49,7 +49,7 @@ class ResponsesRuntimeTests(unittest.TestCase):
                             host_tools=tools or FakeTools(),transport=transport,offline=True)
     def test_all_routes_fixed_native_astra_high_and_pro_max(self):
         with patch.dict(os.environ,{'FRONTMIND_DEEPSEEK_MODEL':'deepseek-flash','FRONTMIND_ZHIPU_REASONING_EFFORT':'max','FRONTMIND_HOST_MODEL':'other'}):
-            self.assertEqual(len(m.HOST_ACTIONS - {"article_polish", "article_editorial_preparation"}),11);self.assertEqual(len(m.DEEPSEEK_ACTIONS - {"p0_repair", "article_repair"}),7)
+            self.assertEqual(len(m.HOST_ACTIONS - {"article_polish", "article_editorial_preparation", "question_recommendation_draft", "question_recommendation_review"}),11);self.assertEqual(len(m.DEEPSEEK_ACTIONS - {"p0_repair", "article_repair"}),7)
             for action in m.HOST_ACTIONS:
                 payload=m.build_payload(action,'full input')
                 self.assertEqual(payload['model'],'gpt-6-astra');self.assertEqual(payload['reasoning'],{'effort':'high'})

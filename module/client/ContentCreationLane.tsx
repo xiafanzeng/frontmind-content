@@ -51,13 +51,15 @@ export function contentCreationStageIndex(position:number,status?:string|null,ki
 
 function reviewStatus(message:MarkedMessage):string|null {
   if(message.contentWorkflowStatus&&CONTENT_PRODUCTION_RUNNER_STATUSES.includes(message.contentWorkflowStatus))return message.contentWorkflowStatus;
+  let latest:{status:string;revision:number}|undefined;
   for(const file of message.outputFiles??[]){
     const name=file.fileName.replace(/\\/gu,"/").split("/").at(-1)??file.fileName;
     for(const status of CONTENT_PRODUCTION_RUNNER_STATUSES){
-      if(new RegExp(`(?:^|[_-])${status}(?:[._-]r\\d+)\\.(?:md|html?)$`,"iu").test(name))return status;
+      const match=new RegExp(`(?:^|[_-])${status}(?:[._-]r(\\d+))\\.(?:md|html?)$`,"iu").exec(name);
+      if(match&&(!latest||Number(match[1])>latest.revision))latest={status,revision:Number(match[1])};
     }
   }
-  return null;
+  return latest?.status??null;
 }
 
 /** 使用工作流标记及原生确认稿文件名，绝不把正文关键词当成历史阶段。 */
@@ -119,6 +121,8 @@ export function contentCreationLaneModel(input:Pick<ContentCreationLaneProps,"pr
       :index===current?{stageIndex:index,latest:true}
       :messageId?{stageIndex:index,messageId}:null;
     const detail=index===current&&input.executing?contentLiveProgressLabel(progress)??"正在处理本轮提交，等待服务端最新阶段"
+      :index===current&&progress?.executionStatus==="cancelled"?"本轮已停止，已有进度保留"
+      :index===current&&progress?.executionStatus==="error"?"本轮执行失败，已有进度保留"
       :index===current&&missingPack?"等待本文件夹的资料包"
       :index===current&&needsQuestionData?"等待导入监控问答表与引用信源"
       :index===current?contentLiveProgressLabel(progress)??contentProductionPauseTitle(status,progress?.pauseTitle??null)??step.description:step.description;
@@ -145,7 +149,7 @@ export function ContentCreationLane(props:ContentCreationLaneProps){
       <span className="cp-creation-step-dot" aria-hidden="true">{step.state==="done"?"✓":index+1}</span>
       <div><span className="cp-creation-step-label">{step.title}</span><span className="cp-creation-step-detail">{step.detail}</span></div>
     </li>)}</ol>
-    <p className="cp-creation-route-note">{props.kind==="pack"?"此聊天负责资料与定位。确认资料包后，在文章书写聊天中继续后续阶段。":"企业资料与定位从当前文件夹的资料包带入；文章在本聊天继续推进。"}</p>
+    <p className="cp-creation-route-note">{props.progress?.sessionPhases?"确认资料包后，可在本聊天继续品牌长文、问题选题与文章交付。":props.kind==="pack"?"此聊天负责资料与定位。确认资料包后，在文章书写聊天中继续后续阶段。":"企业资料与定位从当前文件夹的资料包带入；文章在本聊天继续推进。"}</p>
   </aside>;
 }
 export default ContentCreationLane;

@@ -32,7 +32,7 @@ describe("content workflow failures", () => {
     const dto = contentProductionPublicDto(context, { contentProductionProgress: progress });
     expect(dto).toMatchObject({ workflowVersion: "4.11.0", workflowStatus: "running_positioning_market_research", runnerRevision: 7,
       executionFailure: { action: "positioning_market_research", code: "tool_call_source_mismatch", attemptId: "synthetic-attempt" },
-      progressPosition: 3, availableActions: [], confirmation: null });
+      progressPosition: 3, availableActions: ["resume_current_execution"], confirmation: null });
     expect(JSON.stringify(observed)).not.toContain("synthetic-secret");
     expect(JSON.stringify(dto)).not.toContain("Private provider");
   });

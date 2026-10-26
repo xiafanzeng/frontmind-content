@@ -1,3 +1,4 @@
+import { contentOutputIdentity } from "./host";
 import {useCallback,useEffect,useRef,useState,type CSSProperties} from "react";
 import {Check,ChevronDown,FileText,Loader2,Plus,RefreshCw,Sparkles,X} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
@@ -569,7 +570,7 @@ function ContentProductionInner({
       progress?.jobKind === "reference_pack_refresh");
   const handoffAvailable =
     finished && (packFinished || progress?.jobKind === "p0");
-  const sessionPhases = ["4.13.2-v16.8-app1","4.13.2-v16.8.3"].includes(progress?.workflowVersion??"");
+  const sessionPhases = progress?.sessionPhases===true;
   const convertedToPack =
     packFinished &&
     !["new_reference_pack", "refresh_reference_pack"].includes(activeMode);
@@ -653,7 +654,7 @@ function ContentProductionInner({
             !/frontmind_workflow_job_(?:snapshot|state)/i.test(file.fileName) &&
             !inputFileNames.has(withoutRevisionSuffix(file.fileName)),
         )
-        .map((file) => [file.fileUrl, file]),
+        .map((file) => [contentOutputIdentity(file), file]),
     ).values(),
   ];
   const packFiles = deliverables.filter((file) =>
@@ -822,7 +823,7 @@ function ContentProductionInner({
               <input
                 type="file"
                 multiple
-                accept=".zip,.pdf,.docx,.doc,.txt,.md,.json,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
+                accept=".zip,.pdf,.docx,.doc,.pptx,.txt,.md,.json,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
                 onChange={(event) => {
                   const selected = Array.from(event.target.files ?? []);
                   if (handoffFile) {

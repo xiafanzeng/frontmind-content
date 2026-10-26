@@ -5,6 +5,7 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkCjkFriendly from "remark-cjk-friendly/parseOnly";
 import rehypeHighlight from "rehype-highlight";
 import { cn, copyToClipboard } from "../lib/utils";
 import { toast } from "sonner";
@@ -427,7 +428,7 @@ function MarkdownRendererInner({
   return (
     <div className={cn("markdown-content", className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
         rehypePlugins={[rehypeHighlight]}
         components={rendererComponents}
       >

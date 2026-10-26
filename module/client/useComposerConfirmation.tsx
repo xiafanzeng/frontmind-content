@@ -23,6 +23,7 @@ export function contentConfirmationActionLabel(action:ContentProductionAction):s
     case "confirm_blueprint":return "确认文章写作方案";
     case "revise_current_step":return "按原输入修改当前阶段";
     case "repair_article_facts":return "按事实校验结果返工";
+    case "resume_current_execution":return "恢复当前执行";
   }
 }
 /** 复用聊天输入的发送承诺：确认成功才清草稿，返回修改则保留原文字与附件。 */

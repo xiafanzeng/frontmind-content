@@ -8,8 +8,9 @@
     "dev": "vite --host 127.0.0.1",
     "typecheck": "pnpm --dir module typecheck && tsc --noEmit -p tsconfig.json",
     "build:business": "pnpm -r --filter \"./vendor/**\" --if-present build && pnpm --dir module build",
-    "test": "pnpm build:business && pnpm --dir module --if-present test",
-    "build": "pnpm build:business && vite build"
+    "test": "pnpm build:business && pnpm --dir module --if-present test && pnpm test:standalone",
+    "build": "pnpm build:business && vite build",
+    "test:standalone": "vitest run standalone"
   },
   "dependencies": {
     "react": "19.2.1",

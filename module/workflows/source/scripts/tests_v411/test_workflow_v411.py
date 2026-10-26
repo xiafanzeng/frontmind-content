@@ -234,10 +234,12 @@ class WorkflowV411Tests(unittest.TestCase):
             ])
         run_cli(*command)
         # These v4.11 fixtures model pre-v16.4 jobs with answer-only inputs.
-        # New upload/selection requirements are covered by test_article_pool_v164.
+        # New intake and selected references are covered by test_article_pool_v164
+        # and test_selected_pattern_examples_v165; these jobs retain two fixture examples.
         legacy = state(job)
         legacy['metadata'].pop('article_pool_policy', None)
         legacy['metadata'].pop('question_positioning_handoff', None)
+        legacy['metadata'].pop('pattern_example_profile', None)
         CONTROLLER.atomic_json(job / 'job_state.json', legacy)
         return job
 
