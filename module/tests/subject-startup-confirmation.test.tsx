@@ -82,6 +82,38 @@ it("装配中断后仅在明确继续时复用原任务，不创建新流程或�
   }finally{await view.cleanup();}
 });
 
+it.each([['p0','p0_ready'],['article','completed']] as const)("%s 正文交付后仍可沿原任务提交修改与附件",async(jobKind,workflowStatus)=>{
+ const view=await mount({taskId:"original-task",status:"completed",generation:4,progress:{...nativeProgress,jobKind,workflowStatus,confirmation:null,availableActions:[]}});
+ try{
+  const file=new File(["本次正文修改依据"],"补充事实.txt",{type:"text/plain"});
+  await act(async()=>{expect(await view.home().onComposerSubmit!("修改正文，合并重复段落并更新交付文件",[file])).toBe(true);});
+  expect(view.send).toHaveBeenCalledTimes(1);
+  expect(view.send).toHaveBeenCalledWith("修改正文，合并重复段落并更新交付文件",[file],expect.objectContaining({contentWorkflowStatus:workflowStatus,contentWorkflowGeneration:4,contentWorkflowKind:jobKind}));
+  expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProduction");
+  expect(view.send.mock.calls[0][2]).not.toHaveProperty("contentProductionAction");
+  expect(view.client.dispatch).not.toHaveBeenCalled();
+  expect(view.container.textContent).not.toContain("当前没有待确认的写作步骤");
+ }finally{await view.cleanup();}
+});
+
+it("交付后修改未被服务器接受时保留输入，不将提交记为成功",async()=>{
+ const view=await mount({taskId:"original-task",status:"completed",progress:{...nativeProgress,jobKind:"p0",workflowStatus:"p0_ready",confirmation:null,availableActions:[]}});
+ try{
+  view.refresh.mockClear();
+  view.send.mockResolvedValueOnce(false);
+  await act(async()=>{expect(await view.home().onComposerSubmit!("修改正文",[])).toBe(false);});
+  expect(view.send).toHaveBeenCalledOnce();expect(view.refresh).not.toHaveBeenCalled();
+ }finally{await view.cleanup();}
+});
+
+it("阶段尚未读取时不把修改文字当作已交付稿件续写",async()=>{
+ const view=await mount({taskId:"original-task",status:"completed",progress:{...nativeProgress,workflowStatus:null,confirmation:null,availableActions:[]}});
+ try{
+  await act(async()=>{expect(await view.home().onComposerSubmit!("修改正文",[])).toBe(false);});
+  expect(view.send).not.toHaveBeenCalled();expect(view.container.textContent).toContain("当前没有待确认的写作步骤");
+ }finally{await view.cleanup();}
+});
+
 it("保存归档元数据期间不借用知识库锁禁用输入，避免重复点击",async()=>{
   const view=await mount();
   let release!:(state:ContentSubjectWorkspace)=>void;
