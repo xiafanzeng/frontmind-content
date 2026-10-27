@@ -338,7 +338,7 @@ def export_job(job_dir: Path, *, task_id: str, turn_id: str | None = None,
             summary["recoveryDiagnosticCode"] = max(previous, key=lambda item: item["startedAt"])["diagnosticCode"]
     cache = os.environ.get("FRONTMIND_PROCESS_SUMMARY_CACHE")
     summaries = cached_rows(cache, job_dir)
-    native = {r["id"]:r for r in summary_sources(job_dir, 0)} if summaries else {}
+    native = {r["id"]:r for r in summary_sources(job_dir, 0)}
     for attempt in attempts:
         accepted = []
         for row in summaries.values():
@@ -348,6 +348,8 @@ def export_job(job_dir: Path, *, task_id: str, turn_id: str | None = None,
             if row.get("summaryState") == "ready" and safe_summary(row.get("text")):
                 accepted.append({k:row[k] for k in ("id","kind","timestamp","sequence","text","revision") if k in row})
         attempt["modelSummaries"] = accepted
+        attempt["retractedSummaryIds"] = [source["id"] for source in native.values()
+            if source["attemptId"] == attempt["id"] and source["payload"].get("submissionAcknowledgementOnly")]
     attempts.sort(key=lambda row: (row["startedAt"], row["id"]))
     timeline.sort(key=lambda row: (row["timestamp"], row["runId"], row["rank"]))
     for rank, row in enumerate(timeline):
@@ -483,6 +485,8 @@ def conversation_projection(execution: dict) -> list[dict]:
                 item.update(text=model["text"], summaryOrigin="model", summaryRevision=model["revision"])
         thoughts = [{k:r[k] for k in ("id","timestamp","sequence","text") if k in r} | {"status":"recorded", "summaryOrigin":"model", "summaryRevision":r["revision"]} for r in model_rows.values() if r["kind"] == "thinking"]
         process = {"id": ident, "startedAt": attempt["startedAt"], "status": status, "thinking": thoughts, "tools": tools}
+        if attempt.get("retractedSummaryIds"):
+            process["retractedSummaryIds"] = attempt["retractedSummaryIds"]
         if attempt.get("finishedAt"):
             process["finishedAt"] = attempt["finishedAt"]
         if attempt.get("diagnosticCode"):

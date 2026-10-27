@@ -213,11 +213,21 @@ def sdk_sources(directory, attempt, since):
                     output.append({'type':'message','content':content})
         if finished is None or finished < since or not output:
             continue
+        acknowledgement_only = False
+        if len(output) == 1 and output[0]['type'] == 'message':
+            try:
+                acknowledgement = json.loads(text_blocks(output[0]['content']))
+            except ValueError:
+                acknowledgement = None
+            acknowledgement_only = (isinstance(acknowledgement, dict)
+                                    and set(acknowledgement) == {'submitted'}
+                                    and acknowledgement['submitted'] is True)
         request = load(path.with_name(path.name.replace('_response.json','_request.json')), {})
         sources.append(dict(id=attempt+'-thought-'+identity(path.name), attemptId=attempt, kind='thinking',
                             timestamp=millis(request.get('started_at')) or finished,
                             sequence=int(path.stem.split('_')[1])*1000, revision=SUMMARY_REVISION,
                             payload={'originalTask':plan.get('input', []), 'completedModelStep':output, 'stepFinished':True,
+                                     **({'submissionAcknowledgementOnly':True} if acknowledgement_only else {}),
                                      **({'toolRequestsOnly':True, 'hasReceipt':False} if all(item['type']=='function_call' for item in output) else {})}))
     for row in sdk_tool_records(directory):
         receipt = row['receipt']
@@ -360,6 +370,13 @@ def update_summaries(job,cache,since,client):
         if safe_summary(prior.get('text')):
             row['text']=prior['text']
         value['rows'][source['id']]=row;atomic(path,value)
+        if source['payload'].get('submissionAcknowledgementOnly'):
+            # Submission is a protocol acknowledgement. The separate tool
+            # request and receipt carry the actual editorial decision.
+            row.update(summaryState='unavailable')
+            row.pop('text',None)
+            atomic(path,value)
+            continue
         try:
             text=safe_summary(client(source))
             evidence=source['payload']

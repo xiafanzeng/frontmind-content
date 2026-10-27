@@ -182,6 +182,39 @@ class SdkProcessSummaryTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('sdk_summary_export',SCRIPTS/'export-managed-timeline.py');export=importlib.util.module_from_spec(spec);spec.loader.exec_module(export)
         return job,cache,attempt,export
 
+    def test_submission_acknowledgement_does_not_invent_an_editorial_decision(self):
+        job,cache,attempt,export=self.fixture()
+        response={'completed_at':'2026-10-04T01:00:05Z','output':[
+            {'type':'message','content':[{'type':'output_text','text':'{"submitted":true}'}]}]}
+        (attempt/'model_0002_response.json').write_text(json.dumps(response))
+        sources=summary.summary_sources(job,0)
+        acknowledgement=next(row for row in sources if row['sequence']==2000)
+        self.assertTrue(acknowledgement['payload']['submissionAcknowledgementOnly'])
+        stale={k:v for k,v in acknowledgement.items() if k!='payload'}
+        old_payload=dict(acknowledgement['payload']);old_payload.pop('submissionAcknowledgementOnly')
+        stale.update(summaryState='ready',text='文章已完成，无需进一步返工。',
+                     sourceHash=summary.identity(json.dumps(old_payload,sort_keys=True,ensure_ascii=False)))
+        summary.atomic(summary.cache_path(cache,job),{'version':summary.PROMPT_VERSION,'rows':{stale['id']:stale}})
+        with patch.dict(os.environ,{'FRONTMIND_PROCESS_SUMMARY_CACHE':str(cache)}):
+            public=export.conversation_projection(export.export_job(job,task_id='test'))
+        self.assertEqual(public[0]['retractedSummaryIds'],[stale['id']])
+        self.assertEqual(public[0]['thinking'],[])
+        self.assertEqual(len(public[0]['tools']),1)
+        client=Mock(return_value='材料读取失败，尚未形成审稿结论。')
+        updated=summary.update_summaries(job,cache,0,client)
+        self.assertEqual(client.call_count,2)
+        self.assertTrue(all(not call.args[0]['payload'].get('submissionAcknowledgementOnly') for call in client.call_args_list))
+        row=updated['rows'][acknowledgement['id']]
+        self.assertEqual(row['summaryState'],'unavailable')
+        self.assertNotIn('text',row)
+        self.assertEqual(len(updated['rows']),3)
+
+        response['output'][0]['content'][0]['text']='{"submitted":true,"needs_revision":true,"comments":["补足篇幅"]}'
+        (attempt/'model_0002_response.json').write_text(json.dumps(response))
+        source=next(row for row in summary.summary_sources(job,0) if row['sequence']==2000)
+        self.assertFalse(source['payload'].get('submissionAcknowledgementOnly'))
+        self.assertIn('needs_revision',source['payload']['completedModelStep'][0]['content'][0]['text'])
+
     def test_material_read_scope_distinguishes_full_body_prefix_and_empty_eof(self):
         job,cache,attempt,export=self.fixture()
         receipt_path=attempt/'tool_one.json'
