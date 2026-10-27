@@ -9,6 +9,9 @@ export function bindConversationProcesses(input:unknown,messages:ContentMessage[
   thinking:attempt.thinking.map(row=>({...row,attemptStartedAt:attempt.startedAt})),
   tools:attempt.tools.map(row=>({...row,attemptStartedAt:attempt.startedAt})),
  })),used=new Set<string>(),processes:ConversationProcess[]=[];
+ // Native evidence can retract one unsupported caption without erasing its turn.
+ const retracted=new Set(attempts.flatMap(a=>a.retractedSummaryIds??[]));
+ archived=readConversationProcesses(archived.map(p=>({...p,retractedSummaryIds:[...new Set([...(p.retractedSummaryIds??[]),...[...p.thinking,...p.tools].filter(r=>retracted.has(r.id)).map(r=>r.id)])]})));
  // Pre-upgrade UI users have durable IDs/timestamps but no dispatch ledger.
  // Associate only their chronological interval. Earlier native work stays
  // explicitly historical instead of being pulled into the latest UI message.
@@ -22,7 +25,7 @@ export function bindConversationProcesses(input:unknown,messages:ContentMessage[
   if(next&&frozen){
    // Late summary results may update the old turn, but never its business state
    // or ownership. The next turn cannot take those rows from its predecessor.
-   const fresh={...frozen,thinking:owned.flatMap(a=>a.thinking),tools:owned.flatMap(a=>a.tools)};
+   const fresh={...frozen,thinking:owned.flatMap(a=>a.thinking),tools:owned.flatMap(a=>a.tools),retractedSummaryIds:[...(frozen.retractedSummaryIds??[]),...owned.flatMap(a=>a.retractedSummaryIds??[])]};
    processes.push(mergeConversationProcesses([frozen],[fresh])[0]!);continue;
   }
   const current=index===turns.length-1;
@@ -30,6 +33,7 @@ export function bindConversationProcesses(input:unknown,messages:ContentMessage[
   const last=owned.findLast(a=>a.reason);
   processes.push({id:turn.id,userMessageId:turn.userMessageId,startedAt:turn.startedAt,status:state,
    ...(turn.finishedAt?{finishedAt:turn.finishedAt}:{}),
+   retractedSummaryIds:owned.flatMap(a=>a.retractedSummaryIds??[]),
    thinking:owned.flatMap(a=>a.thinking),
    tools:owned.flatMap(a=>a.tools),...(state==="failed"?{reason:last?.reason??"本轮执行失败。",nextStep:last?.nextStep??"检查后台诊断后显式恢复。"}:{}),
    ...(state==="cancelled"?{reason:"本次执行已取消。",nextStep:"已有产出已保留，可显式恢复当前执行。"}:{}),

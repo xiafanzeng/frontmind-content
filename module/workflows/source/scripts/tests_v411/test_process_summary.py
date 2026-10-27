@@ -195,6 +195,11 @@ class SdkProcessSummaryTests(unittest.TestCase):
         stale.update(summaryState='ready',text='文章已完成，无需进一步返工。',
                      sourceHash=summary.identity(json.dumps(old_payload,sort_keys=True,ensure_ascii=False)))
         summary.atomic(summary.cache_path(cache,job),{'version':summary.PROMPT_VERSION,'rows':{stale['id']:stale}})
+        with patch.dict(os.environ,{'FRONTMIND_PROCESS_SUMMARY_CACHE':str(cache)}):
+            public=export.conversation_projection(export.export_job(job,task_id='test'))
+        self.assertEqual(public[0]['retractedSummaryIds'],[stale['id']])
+        self.assertEqual(public[0]['thinking'],[])
+        self.assertEqual(len(public[0]['tools']),1)
         client=Mock(return_value='材料读取失败，尚未形成审稿结论。')
         updated=summary.update_summaries(job,cache,0,client)
         self.assertEqual(client.call_count,2)

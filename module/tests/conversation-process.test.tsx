@@ -111,6 +111,23 @@ it("late summaries remain in the archived user turn after the next turn starts",
  expect(result.find(p=>p.id==="turn-old")!.tools[0].text).toContain("温控材料");expect(result.find(p=>p.id==="turn-new")!.tools).toEqual([]);
 });
 
+it("retracts unsupported submission summaries from archived turns and stale replay",()=>{
+ const old={...fixture("completed"),id:"turn-old",userMessageId:"user-old"};
+ const native={...old,id:"attempt-old",startedAt:110,thinking:[],retractedSummaryIds:["thought-1"]};
+ const messages=[{id:"user-old",role:"user" as const,timestamp:100,content:"旧任务"},{id:"user-new",role:"user" as const,timestamp:300,content:"新任务"}];
+ const turns=[{id:"turn-old",userMessageId:"user-old",startedAt:100,baseline:[]},{id:"turn-new",userMessageId:"user-new",startedAt:300,baseline:["attempt-old"]}];
+ const result=bindConversationProcesses([native],messages,turns,"completed",[old]);
+ const corrected=result.find(p=>p.id===old.id)!;
+ expect(corrected.thinking.map(r=>r.id)).toEqual(["thought-2"]);
+ expect(corrected.tools).toEqual(old.tools.map(r=>({...r,attemptStartedAt:110})));
+ expect(corrected.status).toBe("completed");
+ const replay=readConversationProcesses(mergeConversationProcesses(result,[old]));
+ expect(replay.find(p=>p.id===old.id)!.thinking.map(r=>r.id)).toEqual(["thought-2"]);
+ expect(replay.find(p=>p.id==="turn-new")!.thinking).toEqual([]);
+ const historical=bindConversationProcesses([native],[],[],"completed",[{...old,id:"attempt-old"}]);
+ expect(historical[0].thinking.map(r=>r.id)).toEqual(["thought-2"]);
+});
+
 it("shows only a fixed activity hint before the step ends, then keeps its completed summary identity",async()=>{
  const pending={...fixture(),thinking:[],tools:[{id:"pending-tool",timestamp:110,text:"正在调用工具。",status:"running" as const}]};
  const view=await mount({...pending,tools:[]});
