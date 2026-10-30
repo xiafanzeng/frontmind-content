@@ -19,7 +19,8 @@ export interface ContentConversationApi {
  refreshConversations?():Promise<void>;
 }
 export type ContentTranscriptNavigation={conversationId:string;messageId?:string;latest?:boolean;sequence:number};
-export type ContentHomeProps={embedded?:boolean;operatorWorkspace?:boolean;knowledgeEditingBlocked?:boolean;hideSidebar?:boolean;hidePortalNavigation?:boolean;showKnowledgeBaseStarter?:boolean;showAccountMenu?:boolean;showSettings?:boolean;purpose:"content_production";contentProduction?:ContentProductionInput;standardWelcomeVariant?:"simple";conversationFooter?:ReactNode;transcriptNavigation?:ContentTranscriptNavigation;onReturnToLatest?():void;onComposerSubmit?(prompt:string,files:File[]):Promise<boolean|void>};
+export type ContentHomeProps={embedded?:boolean;operatorWorkspace?:boolean;knowledgeEditingBlocked?:boolean;hideComposer?:boolean;
+  hideSidebar?:boolean;hidePortalNavigation?:boolean;showKnowledgeBaseStarter?:boolean;showAccountMenu?:boolean;showSettings?:boolean;purpose:"content_production";contentProduction?:ContentProductionInput;standardWelcomeVariant?:"simple";conversationFooter?:ReactNode;transcriptNavigation?:ContentTranscriptNavigation;onReturnToLatest?():void;onComposerSubmit?(prompt:string,files:File[]):Promise<boolean|void>};
 export type ContentToolbarProps={tasks:ContentConversation[];currentId?:string;onNew():void;onSelect(id:string):void;onDelete(id:string):void;disabled:boolean;presentation:"panel";labels:{newAction:string;history:string;noun:string}};
 export interface ContentWorkspaceHost {
  connections?:{publishedKnowledge?:boolean};
