@@ -35,6 +35,12 @@ export function useComposerConfirmation(key:string|null,progress:ContentProducti
   function cancel(){const item=request.current;if(!item||item.submitting)return;request.current=null;setPending(null);item.resolve(false);}
   useEffect(()=>{const item=request.current;if(item&&item.key!==key&&!item.submitting){request.current=null;setPending(null);item.resolve(false);}},[key]);
   useEffect(()=>()=>{request.current?.resolve(false);request.current=null;},[]);
+  function stageAction(action:ContentProductionAction,prompt:string,files:File[]=[]){
+    if(!key||!progress||request.current)return Promise.resolve(false);
+    if(action.revision!==progress.runnerRevision||!progress.availableActions.includes(action.kind)){onNotice("当前阶段已变化，请刷新后重新选择操作。");return Promise.resolve(false);}
+    onNotice("");
+    return new Promise<boolean>(resolve=>{const item={key,prompt,files:[...files],action,resolve,submitting:false};request.current=item;setPending(item);});
+  }
   function stage(prompt:string,files:File[]){
     if(!key||!progress||request.current)return Promise.resolve(false);
     const parsed=parseContentConfirmationInput(progress,prompt,files.length);
@@ -53,5 +59,5 @@ export function useComposerConfirmation(key:string|null,progress:ContentProducti
     }catch(error){onNotice(error instanceof Error?error.message:"提交失败，原输入与附件已保留，请重试。");}
     finally{item.submitting=false;setSubmitting(false);if(request.current===item&&item.key!==current.current){request.current=null;setPending(null);item.resolve(false);}}
   }
-  return {pending,submitting,stage,confirm,cancel,hint:progress?contentConfirmationInputHint(progress):""};
+  return {pending,submitting,stage,stageAction,confirm,cancel,hint:progress?contentConfirmationInputHint(progress):""};
 }

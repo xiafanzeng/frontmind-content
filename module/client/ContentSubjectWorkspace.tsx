@@ -1,13 +1,15 @@
 import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
-import {Archive,ArchiveRestore,ChevronDown,Folder,FolderOpen,Pin,Plus,Search,X} from "lucide-react";
+import {ChevronDown,Folder,FolderOpen,Pin,Plus,Search,X,Trash2} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
 import {contentOutputIdentity,useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
 import type {ContentBusinessClient} from "./runtime";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput} from "../contracts/content-production";
 import {receivedContentIntake} from "../contracts/content-intake-receipt";
-import {emptySubjectWorkspace,createSubjectFolder,bindSubjectChat,boundSubjectPack,latestSubjectPack,switchSubjectPack,updateSubjectChatMetadata,type ContentSubjectWorkspace as SubjectState} from "../contracts/content-subject-workspace";
+import {emptySubjectWorkspace,createSubjectFolder,bindSubjectChat,boundSubjectPack,latestSubjectPack,switchSubjectPack,updateSubjectChatMetadata,deleteSubjectFolder,type ContentSubjectWorkspace as SubjectState} from "../contracts/content-subject-workspace";
 import {ContentCreationLane,contentCreationTranscriptAnchors} from "./ContentCreationLane";
 import {useComposerConfirmation,contentConfirmationActionLabel} from "./useComposerConfirmation";
+import ContentTaskActionDeck from "./ContentTaskActionDeck";
+import {mapContentTaskOperations} from "./content-task-operations";
 import ContentProductionFailureNotice from "./ContentProductionFailureNotice";
 import "./content-subject-workspace.css";
 
@@ -25,13 +27,13 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const [task,setTask]=useState<TaskResponse|null>(null),[taskError,setTaskError]=useState("");
  const [navigation,setNavigation]=useState<ContentTranscriptNavigation>();
  const [inspected,setInspected]=useState<number|null>(null);
- const [modal,setModal]=useState<"folder"|"chat"|null>(null),[name,setName]=useState(""),[chatTitle,setChatTitle]=useState(""),[chatKind,setChatKind]=useState<"pack"|"article"|"">("");
+ const [modal,setModal]=useState<"folder"|"chat"|null>(null),[pendingDelete,setPendingDelete]=useState<{kind:"conversation"|"folder";id:string;name:string}|null>(null),[name,setName]=useState(""),[chatTitle,setChatTitle]=useState(""),[chatKind,setChatKind]=useState<"pack"|"article"|"">("");
  const [assignConversation,setAssignConversation]=useState<string|null>(null);
  const pendingCreate=useRef<{id:string;title:string;folderId:string;kind:"pack"|"article"}|null>(null);
  const sourceNavigation=useRef<{conversationId:string;stageIndex:number}|null>(null);
  const navigationRef=useRef<HTMLElement|null>(null);
  const [formFolder,setFormFolder]=useState(""),[preview,setPreview]=useState<string|null>(null);
- const [showArchived,setShowArchived]=useState<Record<string,boolean>>({}),[showAll,setShowAll]=useState<Record<string,boolean>>({}),[folderSearch,setFolderSearch]=useState("");
+ const [showAll,setShowAll]=useState<Record<string,boolean>>({}),[folderSearch,setFolderSearch]=useState("");
  const [localChoices,setLocalChoices]=useState<Record<string,{style?:"A"|"B";requirements?:string}>>({});
  const current=api.activeConversation;
  const currentRef=useRef(current?.id);currentRef.current=current?.id;
@@ -168,6 +170,40 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   }
   if(patch.archived!==undefined)setNotice(patch.archived?"聊天已归档，可在当前主体的已归档列表中恢复。":"聊天已恢复。");
  });}
+ async function deleteConversation(conversation:ContentConversation){
+  if(subjects.bindings[conversation.id])return;
+  setPendingDelete({kind:"conversation",id:conversation.id,name:conversation.title});
+ }
+ async function confirmDeleteConversation(){
+  if(!pendingDelete||pendingDelete.kind!=="conversation")return;
+  const target=pendingDelete;setPendingDelete(null);
+  try{
+   if(!api.deleteConversation)throw new Error("当前宿主不支持删除聊天。");
+   api.deleteConversation(target.id);
+   await api.refreshConversations?.();
+   if(currentRef.current===target.id){
+    const folderIdToUse=stateRef.current.bindings[target.id]?.folderId??folder?.id;
+    const next=api.state.conversations.find(row=>row.id!==target.id&&stateRef.current.bindings[row.id]?.folderId===folderIdToUse&&!stateRef.current.bindings[row.id]?.archived);
+    api.setActive(next?.id??"");
+   }
+   setNotice("聊天已删除。");
+  }catch(error){setNotice(error instanceof Error?error.message:"删除聊天失败。");}
+ }
+ async function deleteFolder(folderIdToDelete:string,nameToDelete:string){
+  const target=subjects.folders.find(item=>item.id===folderIdToDelete);
+  const hasBindings=Object.values(subjects.bindings).some(binding=>binding.folderId===folderIdToDelete);
+  if(!target||target.versions.length||hasBindings){setNotice(target?.versions.length?"含已确认资料包版本，不能删除。":"仍有绑定聊天，不能删除。");return;}
+  setPendingDelete({kind:"folder",id:folderIdToDelete,name:nameToDelete});
+ }
+ async function confirmDeleteFolder(){
+  if(!pendingDelete||pendingDelete.kind!=="folder")return;
+  const target=pendingDelete;setPendingDelete(null);
+  try{
+   await changeSubjects(value=>deleteSubjectFolder(value,target.id));
+   if(folderId===target.id){const next=stateRef.current.folders.find(item=>item.id!==target.id);setFolderId(next?.id??"");api.setActive("");}
+   setNotice("文件夹已删除。");
+  }catch(error){setNotice(error instanceof Error?error.message:"删除文件夹失败。");}
+ }
  const setChoice=(patch:{style?:"A"|"B";requirements?:string})=>setLocalChoices(previous=>({...previous,[choiceKey]:{...previous[choiceKey],...patch}}));
  async function stage(prompt:string,files:File[]){
   if(intakeReceived){setNotice("服务器已收件，生成尚未启动，请勿重复提交当前聊天。");return false;}
@@ -196,6 +232,13 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   }
   return confirmation.stage(text,files);
  }
+ async function stageAction(action:import("../contracts/content-production").ContentProductionAction,prompt:string,files:File[]=[]){
+  if(!current||busy||turnFailed||intakeReceived){setNotice("当前任务暂不可操作，请刷新状态后重试。");return false;}
+  const attachmentError=files.map(file=>client.validateAttachment?.(file)).find(Boolean);if(attachmentError){setNotice(attachmentError);return false;}
+  if(!current.taskId){return stage(prompt,files);}
+  setInspected(null);setNavigation(previous=>({conversationId:current.id,latest:true,sequence:(previous?.sequence??0)+1}));
+  return confirmation.stageAction(action,prompt,files);
+ }
  function action(label:string,prompt:string){return <button key={label} type="button" className="cp-subject-action" disabled={busy||Boolean(confirmation.pending)} onClick={()=>report(()=>stage(prompt,[]))}>{label}</button>;}
  function actions():ReactNode {
   if(turnFailed||intakeReceived||busy)return null;
@@ -217,26 +260,23 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  async function continueWriting(){if(!handoff)return;try{await sendMessage(progress?.workflowStatus==="positioning_ready"?"继续 P0":"继续问题文章");await refreshAfterSend();}catch(error){setNotice(error instanceof Error?error.message:"接续失败。");}}
  const footer=<div className="cp-subject-turn" hidden={inspected!==null}>
   {historical&&<p className="cp-subject-question">原聊天、附件与任务已保留。{current?.taskId?"后续操作继续使用原任务。":"历史记录可直接查看。"}</p>}
-  {!historical&&!intakeReceived&&current&&(!current.taskId||!current.messages.length)&&<p className="cp-subject-question">{binding?.kind==="pack"?"可直接输入主体简介、产品或服务介绍，也可从底部上传资料。":"已自动引用同主体资料包。请从底部输入本篇题目、目标或表达要求。"}</p>}
+  {!historical&&!intakeReceived&&current&&(!current.taskId||!current.messages.length)&&<p className="cp-subject-question">{binding?.kind==="pack"?"请从下方操作卡片选择资料处理方式。":"已自动引用同主体资料包，请从下方操作卡片选择当前步骤。"}</p>}
   {intakeReceived&&<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>}
   {!intakeReceived&&client.attachmentHint&&(startupReview??progress)?.availableActions.some(kind=>kind==="provide_reference_pack_inputs"||kind==="provide_question_research_inputs")&&<p className="cp-subject-question">{client.attachmentHint}</p>}
   {!busy&&!confirmation.pending&&progress?.pauseTitle&&<div className="cp-subject-question"><span>当前需要确认</span><strong>{progress.pauseTitle}</strong></div>}
-  <div className="cp-subject-actions" hidden={Boolean(confirmation.pending)}>{actions()}</div>
+  <ContentTaskActionDeck cards={mapContentTaskOperations(progress,{busy,failed:turnFailed,pendingConfirmation:Boolean(confirmation.pending),taskId:current?.taskId,startupConfig:Boolean(!current?.taskId&&startupConfig&&!intakeReceived),retryStartup:!progress?.confirmation?retryStartup?.content:undefined,resumeExecution,resumableAssembly:!progress?.confirmation&&resumableAssembly,handoff:!progress?.confirmation&&handoff})} busy={busy||Boolean(confirmation.pending)} onSelect={(card,files=[],instructions)=>{if(card.id==="retry-startup"||card.id==="resume-execution"){void recoverExecution();return;}if(card.id==="handoff"){void continueWriting();return;}if(card.action)void stageAction(card.action,card.prompt,files);else if(card.id==="revise-current-step"&&progress?.runnerRevision!=null&&instructions?.trim())void stageAction({kind:"revise_current_step",revision:progress.runnerRevision,instructions:instructions.trim()},`修改：${instructions.trim()}`);else void stage(card.prompt,files);}} />
   {api.activeTask===undefined&&current?.taskId&&["running","pending"].includes(observedTask?.status??current.status)&&<button className="cp-live-stop" type="button" disabled={stopping} onClick={()=>void stopExecution()}>{stopping?"正在请求停止…":"停止当前执行"}</button>}
-  {!busy&&(retryStartup||resumeExecution)&&<button className="cp-live-retry" type="button" disabled={recovering} onClick={()=>void recoverExecution()}>{recovering?"正在恢复…":resumeExecution?"恢复当前执行":"重试启动原任务"}</button>}
-  {resumableAssembly&&<div className="cp-subject-actions"><span>资料包装配尚未完成，原研究与确认记录已保留。</span>{action("继续未完成步骤","继续当前任务尚未完成的资料包装配，不重新生成研究或定位。")}</div>}
-  {handoff&&!busy&&<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" onClick={()=>report(continueWriting)}>{progress?.workflowStatus==="positioning_ready"?"继续制作品牌长文":"继续问题与监控数据"}</button></div>}
   {confirmation.pending&&<section className="cp-subject-confirmation" aria-label="输入确认卡片"><strong>{startupReview?"核对本次输入":contentConfirmationActionLabel(confirmation.pending.action)}</strong>{startupReview&&<span>仅核对输入，生成尚未启动。</span>}<p>{confirmation.pending.prompt}</p>{confirmation.pending.files.map((file,i)=><span key={i}>{file.name}</span>)}<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" disabled={confirmation.submitting} onClick={()=>report(confirmation.confirm)}>{confirmation.submitting?"正在提交…":"确认提交"}</button><button type="button" className="cp-subject-action" disabled={confirmation.submitting} onClick={confirmation.cancel}>返回修改</button></div></section>}
  </div>;
- const row=(conversation:ContentConversation)=>{const metadata=subjects.bindings[conversation.id];return <div key={conversation.id} className="cp-subject-chat" data-current={current?.id===conversation.id}><button type="button" className="cp-subject-chat-name" aria-current={current?.id===conversation.id?"page":undefined} title={conversation.title} onClick={()=>navigate(conversation.id)}>{conversation.title}</button><div className="cp-subject-tools" style={metadata?undefined:{display:"none"}}>{metadata?.archived?<button type="button" disabled={saving} aria-label={`恢复聊天：${conversation.title}`} onClick={()=>setMetadata(conversation.id,{archived:false})}><ArchiveRestore size={14}/></button>:<><button type="button" disabled={saving} aria-label={`${metadata?.pinned?"取消置顶":"置顶聊天"}：${conversation.title}`} aria-pressed={Boolean(metadata?.pinned)} onClick={()=>setMetadata(conversation.id,{pinned:!metadata?.pinned})}><Pin size={14}/></button><button type="button" disabled={saving} aria-label={`归档聊天：${conversation.title}`} onClick={()=>setMetadata(conversation.id,{archived:true})}><Archive size={14}/></button></>}</div></div>;};
+ const row=(conversation:ContentConversation)=>{const metadata=subjects.bindings[conversation.id];return <div key={conversation.id} className="cp-subject-chat" data-current={current?.id===conversation.id}><button type="button" className="cp-subject-chat-name" aria-current={current?.id===conversation.id?"page":undefined} title={conversation.title} onClick={()=>navigate(conversation.id)}>{conversation.title}</button><div className="cp-subject-tools">{metadata&&<button type="button" disabled={saving} aria-label={`${metadata.pinned?"取消置顶":"置顶聊天"}：${conversation.title}`} aria-pressed={Boolean(metadata.pinned)} onClick={()=>setMetadata(conversation.id,{pinned:!metadata.pinned})}><Pin size={14}/></button>}<button type="button" disabled={saving||Boolean(metadata)} title={metadata?"绑定了主体流程的聊天暂不支持删除":"删除历史聊天"} aria-label={`删除聊天：${conversation.title}`} onClick={()=>void deleteConversation(conversation)}><Trash2 size={14}/></button></div></div>;};
  const updateAvailable=pack&&latest&&pack.id!==latest.id;
  const outputs=current?.messages.filter(item=>item.role==="assistant").flatMap(item=>item.outputFiles??[])??[];
  const previewPack=subjects.folders.flatMap(item=>item.versions).find(item=>item.id===preview);
  const normalizedFolderSearch=folderSearch.trim().toLocaleLowerCase();
  const filteredFolders=subjects.folders.map(item=>{
   const all=api.state.conversations.filter(value=>subjects.bindings[value.id]?.folderId===item.id);
-  const live=all.filter(value=>!subjects.bindings[value.id].archived).sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned)));
-  const archived=all.filter(value=>subjects.bindings[value.id].archived);
+  const live=all.sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned)));
+  const archived:ContentConversation[]=[];
   const folderMatches=!normalizedFolderSearch||item.name.toLocaleLowerCase().includes(normalizedFolderSearch);
   const matchingLive=folderMatches?live:live.filter(value=>value.title.toLocaleLowerCase().includes(normalizedFolderSearch));
   const matchingArchived=folderMatches?archived:archived.filter(value=>value.title.toLocaleLowerCase().includes(normalizedFolderSearch));
@@ -257,14 +297,14 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
       <button type="button" className="cp-subject-folder-name" aria-expanded={expanded} onClick={()=>{const different=folder?.id!==item.id;const operation=()=>{setFolderId(item.id);if(different)api.setActive(live[0]?.id??"");report(()=>changeSubjects(value=>({...value,revision:value.revision+1,folders:value.folders.map(f=>f.id===item.id?{...f,expanded:different?true:!expanded}:f)})));};if(different)host.requestWorkspaceNavigation(operation);else operation();}}>
        {showChildren?<FolderOpen size={16}/>:<Folder size={16}/>}<span>{item.name}</span>
       </button>
-      <button type="button" aria-label={`在${item.name}中新建聊天`} title="在当前主体中新建聊天" onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button>
+      <button type="button" aria-label={`在${item.name}中新建聊天`} title="在当前主体中新建聊天" onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button><button type="button" aria-label={`删除文件夹：${item.name}`} title={item.versions.length?"含资料包版本，不能删除":Object.values(subjects.bindings).some(binding=>binding.folderId===item.id)?"仍有绑定聊天，不能删除":"删除空文件夹"} disabled={saving||item.versions.length>0||Object.values(subjects.bindings).some(binding=>binding.folderId===item.id)} onClick={()=>void deleteFolder(item.id,item.name)}><Trash2 size={14}/></button>
      </div>
      {showChildren&&<>
       {visible.map(row)}
       {!normalizedFolderSearch&&!live.length&&<p className="cp-subject-nav-empty">暂无聊天</p>}
       {normalizedFolderSearch&&folderMatches&&!matchingLive.length&&<p className="cp-subject-nav-empty">暂无匹配聊天</p>}
       {!normalizedFolderSearch&&live.length>5&&<button type="button" className="cp-subject-more" onClick={()=>setShowAll(value=>({...value,[item.id]:!value[item.id]}))}>{showAll[item.id]?"收起显示":"展开显示"}</button>}
-      {archived.length>0&&<><button type="button" className="cp-subject-more" onClick={()=>setShowArchived(value=>({...value,[item.id]:!value[item.id]}))}>{showArchived[item.id]?"收起归档":"已归档"}（{normalizedFolderSearch?matchingArchived.length:archived.length}）</button>{showArchived[item.id]&&(normalizedFolderSearch?matchingArchived:archived).map(row)}</>}
+      
      </>}
     </section>;
    })}
