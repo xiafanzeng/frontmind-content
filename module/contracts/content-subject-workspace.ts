@@ -265,5 +265,3 @@ export function deleteSubjectFolder(state: ContentSubjectWorkspace, folderId: st
   return next;
 }
 
-/** 删除无版本且无聊天绑定的空主体文件夹。 */
-export 

@@ -63,7 +63,7 @@ it("已绑定任务的旧首轮回执不再显示重试或误建第二个任务"
   const {client}=clientFor({...pendingConversation(),taskId:"mock-task",status:"awaiting_input"});
   const view=await mount(client,"existing-task-pending-receipt");
   try{
-    expect(view.container.querySelector(".cp-task-card-failed")).toBeNull();
+    expect(view.container.querySelector(".cp-live-retry")).toBeNull();
     await act(async()=>view.container.querySelector<HTMLButtonElement>('[data-testid="direct-send"]')!.click());
     expect(client.dispatch).toHaveBeenCalledTimes(1);
     expect(client.dispatch).toHaveBeenCalledWith(expect.objectContaining({conversationId:"conversation-1",prompt:"合成收件材料"}),"mock-task");
@@ -79,7 +79,7 @@ it("普通客户端在刷新和重挂载后保留已收件状态，且发送入�
     expect(view.container.textContent).toContain("服务器已收件，生成尚未启动");
     expect(view.container.textContent).not.toContain("本次提交尚未确认");
     expect(view.container.textContent).not.toContain("重试本次提交");
-    expect(view.container.querySelector(".cp-task-card-failed")).toBeNull();
+    expect(view.container.querySelector(".cp-live-retry")).toBeNull();
   };
   try {
     assertReceived();
@@ -99,7 +99,7 @@ it.each(["missing", "mismatched"] as const)("%s 收件回执不吞掉普通待�
   const { client, unexpected } = clientFor(conversation);
   const view = await mount(client, `pending-retry-${marker}`);
   try {
-    const retry = view.container.querySelector<HTMLButtonElement>(".cp-task-card-failed");
+    const retry = view.container.querySelector<HTMLButtonElement>(".cp-live-retry");
     expect(retry?.textContent).toBe("重试本次提交");
     expect(view.container.textContent).toContain("本次提交尚未确认");
     await act(async () => retry!.click());

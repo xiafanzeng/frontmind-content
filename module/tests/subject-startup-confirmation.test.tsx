@@ -37,6 +37,7 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
+function deckCard(container:HTMLElement,text:string){return [...container.querySelectorAll<HTMLButtonElement>(".cp-task-card-trigger")].find(item=>item.textContent?.includes(text))!;}
 
 it("主体文件夹内嵌在工作区第二列，搜索只过滤当前目录且不依赖全局侧栏 portal",async()=>{
  const view=await mount();
@@ -368,13 +369,13 @@ it("同一聊天重启后清除旧失败任务，不阻塞新首轮确认且保�
 it.each(["error","stopped","cancelled"])("启动前 %s 后明确重试原任务，沿用附件且不重建冻结上下文",async(status)=>{
  const original={id:"original-user",role:"user" as const,content:"读取原材料完成 1.1–1.3",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file" as const,name:"原材料.docx"}]};
  const view=await mount({taskId:"original-task",status,messages:[original],progress:{...nativeProgress,source:"awaiting_runner",workflowStatus:null,currentStage:null,jobKind:null,runnerRevision:null,confirmation:null,availableActions:[]}});
- try{const retry=button(view.container,"重试启动原任务");expect(retry).toBeDefined();await act(async()=>{retry.click();retry.click();});expect(view.send).toHaveBeenCalledTimes(1);expect(view.send).toHaveBeenCalledWith(original.content,[],{});expect(view.client.upload).not.toHaveBeenCalled();expect(view.task).toHaveBeenCalledWith("original-task");}
+ try{const retry=deckCard(view.container,"重试启动原任务");expect(retry).toBeDefined();await act(async()=>{retry.click();retry.click();});expect(view.send).toHaveBeenCalledTimes(1);expect(view.send).toHaveBeenCalledWith(original.content,[],{});expect(view.client.upload).not.toHaveBeenCalled();expect(view.task).toHaveBeenCalledWith("original-task");}
  finally{await view.cleanup();}
 });
 
 it("已创建 Workflow 后通过共有工作区恢复原执行，发送当前修订号",async()=>{
  const view=await mount({taskId:"original-task",status:"stopped",progress:{...nativeProgress,confirmation:null,availableActions:["resume_current_execution"]}});
- try{expect(button(view.container,"重试启动原任务")).toBeUndefined();await act(async()=>button(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
+ try{expect(deckCard(view.container,"重试启动原任务")).toBeUndefined();await act(async()=>deckCard(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
  finally{await view.cleanup();}
 });
 
@@ -389,7 +390,7 @@ it("按任务冻结能力接续 v16.8.4 资料包并保留原聊天",async()=>{
   const view=await mount({taskId:"original-task",status:"completed",progress:{...nativeProgress,workflowVersion:"4.13.2-v16.8.4",sessionPhases:true,jobKind:"reference_pack",workflowStatus:"positioning_ready",confirmation:null,availableActions:[]}});
   try{
     expect(view.container.textContent).toContain("在本聊天继续品牌长文");
-    await act(async()=>button(view.container,"继续制作品牌长文").click());
+    await act(async()=>deckCard(view.container,"继续制作品牌长文").click());
     expect(view.send).toHaveBeenCalledTimes(1);
     expect(view.send).toHaveBeenCalledWith("继续 P0");
     expect(view.client.save).not.toHaveBeenCalled();
@@ -397,13 +398,13 @@ it("按任务冻结能力接续 v16.8.4 资料包并保留原聊天",async()=>{
 });
 it("冻结能力未启用时不因发行版本较新开放阶段接续",async()=>{
   const view=await mount({taskId:"historical-task",status:"completed",progress:{...nativeProgress,workflowVersion:"4.13.2-v16.8.4",sessionPhases:false,jobKind:"reference_pack",workflowStatus:"positioning_ready",confirmation:null,availableActions:[]}});
-  try{expect(button(view.container,"继续制作品牌长文")).toBeUndefined();}
+  try{expect(deckCard(view.container,"继续制作品牌长文")).toBeUndefined();}
   finally{await view.cleanup();}
 });
 
 it("确认页已生成但外层执行失败时，先显式恢复原任务再提交业务选择",async()=>{
  const view=await mount({taskId:"original-task",status:"error",progress:{...nativeProgress,confirmation:"awaiting_p0_route",availableActions:["resume_current_execution"]}});
- try{expect(button(view.container,"先制作品牌长文")).toBeUndefined();await act(async()=>button(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
+ try{expect(button(view.container,"先制作品牌长文")).toBeUndefined();await act(async()=>deckCard(view.container,"恢复当前执行").click());expect(view.send).toHaveBeenCalledWith("恢复当前执行",[],{contentProductionAction:{kind:"resume_current_execution",revision:12}});}
  finally{await view.cleanup();}
 });
 
