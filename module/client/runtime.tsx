@@ -147,7 +147,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
 // A fresh wrapper remounts the shared message and replays its entrance animation.
 const ContentMessageActions = ({children}:{children:ReactNode}) => <>{children}</>;
 const contentMessageRuntime: BusinessMessageRuntime = {MessageActions:ContentMessageActions};
-function ContentDialogue({knowledgeEditingBlocked,conversationFooter,transcriptNavigation,onReturnToLatest,onComposerSubmit}:ContentHomeProps) {
+function ContentDialogue({knowledgeEditingBlocked,hideComposer=false,conversationFooter,transcriptNavigation,onReturnToLatest,onComposerSubmit}:ContentHomeProps) {
  const runtime=useRuntime();
  const intakeReceipt=receivedContentIntake(runtime.activeConversation);
  const composerRuntime=useMemo(()=>({...contentComposerRuntime,useSendMessage(){const base=contentComposerRuntime.useSendMessage();return {...base,sendMessage:async(text: string,files?:File[],options?:Parameters<typeof base.sendMessage>[2])=>onComposerSubmit?Boolean(await onComposerSubmit(text,files??[])):base.sendMessage(text,files??[],options)};}}),[onComposerSubmit]);
@@ -165,7 +165,7 @@ function ContentDialogue({knowledgeEditingBlocked,conversationFooter,transcriptN
    {message.generalChatDispatch&&(!runtime.activeConversation?.taskId||message.generalChatDispatch.localTaskId===runtime.activeConversation.taskId)&&(intakeReceipt||runtime.intakeOnly?<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>:<button className="cp-live-retry" onClick={()=>void runtime.sendMessage(message.content).catch(()=>{})}>重试本次提交</button>)}
   </article>)}</div>{execution&&execution.timeline.length>0&&<GeneralExecutionActivity items={execution.timeline.filter(entry=>entry.kind!=="message")} thinkingDisplay="inline" />}</div>{showLatest&&<button className="workbench-return-latest" onClick={()=>{returnToLatest();onReturnToLatest?.();}}>回到最新</button>}{conversationFooter}
   {!runtime.intakeOnly&&<ExecutionFeedback conversation={runtime.activeConversation??undefined} submitting={runtime.submittingIds.has(runtime.activeConversation?.id??"")} stopping={runtime.stoppingId===runtime.activeConversation?.taskId} observation={runtime.observation}/>}
-  <BusinessChatInput runtime={composerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />
+  {!hideComposer&&<BusinessChatInput runtime={composerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />}
   {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" disabled={runtime.stoppingId===runtime.activeConversation?.taskId} onClick={()=>void runtime.stop().catch(()=>{})}>{runtime.stoppingId===runtime.activeConversation?.taskId?"正在请求停止…":"停止当前执行"}</button>}
  </div>;
 }
