@@ -6,7 +6,7 @@ import {ModuleWorkspace,type ContentBusinessClient} from "../client/runtime";
 import type {ContentConversation} from "../client/host";
 import type {ContentProductionDto} from "../contracts/content-production";
 
-it("真实统一输入框：本地预览不写入，返回修改保留文字，确认成功才发送并清空",async()=>{
+it("卡片工作台：统一输入框已隐藏，卡片选择经确认承诺提交且不产生额外请求",async()=>{
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT=true;
   const workspace="composer-confirmation-test";
   localStorage.setItem(`frontmind-content-active:${workspace}`,"conversation");
@@ -31,18 +31,18 @@ it("真实统一输入框：本地预览不写入，返回修改保留文字，�
   const button=(text:string)=>[...el.querySelectorAll<HTMLButtonElement>("button")].find(item=>item.textContent===text)!;
   try{
     await act(async()=>root.render(<ModuleWorkspace context={{module:"content",workspace:{id:workspace,ownerUserId:0},marketEdition:"cn",capabilities:["content"]}} client={client}/>));
-    const input=el.querySelector<HTMLTextAreaElement>("textarea")!;
-    expect(input).not.toBeNull();expect(el.querySelectorAll("textarea")).toHaveLength(1);
-    await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"新建品牌文章");input.dispatchEvent(new Event("input",{bubbles:true}));});
-    await act(async()=>el.querySelector<HTMLButtonElement>('[aria-label="发送消息"]')!.click());
-    expect(el.querySelector('[aria-label="输入确认卡片"] > p')?.textContent).toBe("新建品牌文章");
+    expect(el.querySelector("textarea")).toBeNull();
+    expect(el.querySelector(".agent-composer-controls")).toBeNull();
+    const deckCard=(text:string)=>[...el.querySelectorAll<HTMLButtonElement>(".cp-task-card-trigger")].find(item=>item.textContent?.includes(text))!;
+    await act(async()=>deckCard("新建品牌长文").click());
+    expect(el.querySelector('[aria-label="输入确认卡片"]')).not.toBeNull();
     expect(dispatch).not.toHaveBeenCalled();expect(save).not.toHaveBeenCalled();expect(forbidden).not.toHaveBeenCalled();
     await act(async()=>button("返回修改").click());
-    expect(input.value).toBe("新建品牌文章");
-    await act(async()=>el.querySelector<HTMLButtonElement>('[aria-label="发送消息"]')!.click());
+    expect(el.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
+    await act(async()=>deckCard("新建品牌长文").click());
     await act(async()=>button("确认提交").click());
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({prompt:"新建品牌文章",contentProductionAction:{kind:"choose_p0_route",revision:4,route:"create"}}),"task");
-    expect(input.value).toBe("");expect(forbidden).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({contentProductionAction:{kind:"choose_p0_route",revision:4,route:"create"}}),"task");
+    expect(forbidden).not.toHaveBeenCalled();
   }finally{await act(async()=>root.unmount());el.remove();localStorage.removeItem(`frontmind-content-active:${workspace}`);}
 });
