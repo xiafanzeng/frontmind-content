@@ -114,18 +114,12 @@ it("阶段尚未读取时不把修改文字当作已交付稿件续写",async()=
  }finally{await view.cleanup();}
 });
 
-it("保存归档元数据期间不借用知识库锁禁用输入，避免重复点击",async()=>{
+it("归档入口已移除，历史聊天行提供真实删除入口",async()=>{
   const view=await mount();
-  let release!:(state:ContentSubjectWorkspace)=>void;
-  let pending!:ContentSubjectWorkspace;
-  vi.mocked(view.client.saveSubjectWorkspace!).mockImplementationOnce(value=>{pending=value;return new Promise(resolve=>{release=resolve;});});
   try{
-    const archive=view.container.querySelector<HTMLButtonElement>('[aria-label="归档聊天：合成聊天"]')!;
-    await act(async()=>archive.click());
-    expect(archive.disabled).toBe(true);
-    expect(view.home().knowledgeEditingBlocked).toBe(false);
-    await act(async()=>release(pending));
-    expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();
+    expect(view.container.querySelector('[aria-label="归档聊天：合成聊天"]')).toBeNull();
+    expect(view.container.querySelector('[aria-label="删除聊天：合成聊天"]')).not.toBeNull();
+    expect(view.container.textContent).not.toContain("已归档（");
   }finally{await view.cleanup();}
 });
 
@@ -276,7 +270,7 @@ it.each(["running","completed"])("主体工作区：外层 %s 不掩盖实际失
     expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("市场研究执行失败");
     expect(view.container.querySelector('[role="alert"]')?.textContent).toContain("tool_call_source_mismatch");
     expect(view.container.querySelector('[aria-label="输入确认卡片"]')).toBeNull();
-    expect([...view.container.querySelectorAll(".cp-subject-actions button")]).toHaveLength(0);
+    expect(view.container.querySelector(".cp-task-deck")).not.toBeNull();
     let accepted:boolean|void;
     await act(async()=>{accepted=await view.home().onComposerSubmit!("确认写作方案",[]);});
     expect(accepted!).toBe(false);
