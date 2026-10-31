@@ -133,7 +133,12 @@ describe("主体资料包引用与版本", () => {
   it("活绑定仍拒绝删除；省略会话集合时保持全保守口径", () => {
     const state = initial();
     expect(() => deleteSubjectFolder(state, "rennan", new Set(["pack"]))).toThrow("仍有绑定聊天");
-    expect(() => deleteSubjectFolder(state, "rennan", new Set())).toThrow("包含已确认资料包版本");
+    // initial() 无版本且 pack 视为死绑定：空集合下允许删除并清除绑定
+    const deadOnly = deleteSubjectFolder(state, "rennan", new Set());
+    expect(deadOnly.folders).toHaveLength(0);
+    expect(deadOnly.bindings).toEqual({});
+    // 带版本的文件夹在任意口径下仍被拒绝
+    expect(() => deleteSubjectFolder(publish(initial()), "rennan", new Set())).toThrow("包含已确认资料包版本");
     const empty = createSubjectFolder(emptySubjectWorkspace(), "空主体", "empty");
     const bound = bindSubjectChat(empty, { conversationId: "legacy", folderId: "empty", kind: "pack" });
     expect(() => deleteSubjectFolder(bound, "empty")).toThrow("仍有绑定聊天");
