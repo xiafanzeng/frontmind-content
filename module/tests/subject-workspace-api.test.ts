@@ -2,7 +2,7 @@ import express from "express";
 import { once } from "node:events";
 import { request as httpRequest } from "node:http";
 import { describe, expect, it } from "vitest";
-import {
+import {deleteSubjectFolder,
   bindSubjectChat, createSubjectFolder, emptySubjectWorkspace, publishSubjectPack,
   switchSubjectPack, updateSubjectChatMetadata, type ContentSubjectWorkspace,
 } from "../contracts/content-subject-workspace";
@@ -158,5 +158,40 @@ describe("主体HTTP端口契约（内存仅用于单元测试，不代表正式
       const unavailable = await send(`${url}/conversations`);
       expect(unavailable.status).toBe(503); expect(JSON.stringify(unavailable.value)).not.toContain("secret");
     } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+  });
+});
+
+
+describe("空文件夹删除与死绑定自愈的服务端校验", () => {
+  it("零版本零绑定的空文件夹允许删除", async () => {
+    const two = createSubjectFolder(createSubjectFolder(emptySubjectWorkspace(), "样例", "sample"), "待删", "gone");
+    const next = deleteSubjectFolder(two, "gone");
+    expect(await validateSubjectWorkspaceUpdate(two, next, authority([]))).toEqual(next);
+  });
+
+  it("含资料包版本的文件夹删除仍被拒绝", async () => {
+    const state = published();
+    // 绕过客户端守卫直接提交删除快照（同时清掉指向它的绑定以免结构校验先行拒绝）：
+    // 带版本的文件夹必须被服务端以 PACK_FACTS_SERVER_OWNED 拒绝
+    const raw = { ...state, revision: state.revision + 1, folders: state.folders.filter(folder => folder.id !== "sample"), bindings: {} };
+    await expect(validateSubjectWorkspaceUpdate(state, raw, authority(["pack", "article"])))
+      .rejects.toMatchObject({ code: "CONTENT_SUBJECT_PACK_FACTS_SERVER_OWNED" });
+  });
+
+  it("保留指向已删除文件夹绑定的快照先被结构校验拒绝", async () => {
+    const state = bindSubjectChat(folder(), { conversationId: "chat", folderId: "sample", kind: "pack" });
+    const raw = { ...state, revision: state.revision + 1, folders: state.folders.filter(folder => folder.id !== "sample") };
+    // schema 保证绑定不指向不存在的文件夹：该请求在结构校验即失败（ZodError → 400 结构无效）
+    await expect(validateSubjectWorkspaceUpdate(state, raw, authority(["chat"]))).rejects.toThrow();
+  });
+
+  it("死绑定随文件夹删除自愈清除，活绑定删除仍被拒绝", async () => {
+    const withDead = bindSubjectChat(folder(), { conversationId: "ghost", folderId: "sample", kind: "pack" });
+    const next = deleteSubjectFolder(withDead, "sample", new Set([]));
+    await expect(validateSubjectWorkspaceUpdate(withDead, next, authority([]))).resolves.toEqual(next);
+    const withAlive = bindSubjectChat(folder(), { conversationId: "chat", folderId: "sample", kind: "pack" });
+    const dropBinding = { ...withAlive, revision: withAlive.revision + 1, bindings: {} };
+    await expect(validateSubjectWorkspaceUpdate(withAlive, dropBinding, authority(["chat"])))
+      .rejects.toMatchObject({ code: "CONTENT_SUBJECT_BINDING_IMMUTABLE" });
   });
 });

@@ -89,7 +89,16 @@ export async function validateSubjectWorkspaceUpdate(
   const nextFolders = new Map(requested.folders.map(folder => [folder.id, folder]));
   for (const folder of previous.folders) {
     const next = nextFolders.get(folder.id);
-    if (!next || canonical(next.versions) !== canonical(folder.versions)) {
+    if (!next) {
+      // 零版本的文件夹允许从快照移除；快照 schema 保证任何绑定都不会指向不存在的文件夹，
+      // 因此"仍被绑定引用"的组合会先被结构校验拒绝，无需在此单独拦截。
+      // 残留的死绑定（会话已不存在）由下方绑定校验按会话死活放行自愈清除。
+      if (folder.versions.length) {
+        return fail("CONTENT_SUBJECT_PACK_FACTS_SERVER_OWNED", 403, "已确认资料包版本由服务器维护，不能通过页面改写或删除。");
+      }
+      continue;
+    }
+    if (canonical(next.versions) !== canonical(folder.versions)) {
       return fail("CONTENT_SUBJECT_PACK_FACTS_SERVER_OWNED", 403, "已确认资料包版本由服务器维护，不能通过页面改写或删除。");
     }
   }
@@ -111,7 +120,11 @@ export async function validateSubjectWorkspaceUpdate(
   }
   for (const id of Object.keys(previous.bindings)) {
     if (!Object.hasOwn(requested.bindings, id)) {
-      return fail("CONTENT_SUBJECT_BINDING_IMMUTABLE", 409, "聊天归属不能通过主体快照删除，请使用聊天归档。");
+      // 会话已不存在的死绑定允许随快照清除（自愈）；活绑定的删除仍只走会话删除接口。
+      const conversation = await authority.conversation(id);
+      if (conversation && conversation.id === id) {
+        return fail("CONTENT_SUBJECT_BINDING_IMMUTABLE", 409, "聊天归属不能通过主体快照删除，请使用聊天归档。");
+      }
     }
   }
   for (const [id, binding] of Object.entries(requested.bindings)) {

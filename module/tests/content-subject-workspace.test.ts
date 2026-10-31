@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
+import {deleteSubjectFolder,
   acknowledgeSubjectChatRestart, bindSubjectChat, boundSubjectPack, createSubjectFolder,
   emptySubjectWorkspace, latestSubjectPack, parseSubjectWorkspace, publishSubjectPack,
   subjectPackUpdateAvailable, switchSubjectPack, updateSubjectChatMetadata,
@@ -109,6 +109,31 @@ describe("主体资料包引用与版本", () => {
     expect(next.folders).toEqual(state.folders);
     expect(updateSubjectChatMetadata(next, "article", { pinned: true })).toBe(next);
     expect(state.bindings.article.pinned).toBeUndefined();
+  });
+
+  it("空文件夹删除：活绑定阻止、死绑定随删除清除", () => {
+    // 独立空文件夹 + 仅一条死绑定（ghost 不在活会话集合中）
+    const withDead = bindSubjectChat(initial(), { conversationId: "ghost", folderId: "rennan", kind: "article" });
+    const conversations = new Set(["pack", "nonexistent-anchor"]);
+    // 让 pack 绑定也视为死（不在集合中），文件夹只剩死绑定
+    const deadOnly = new Set(["whatever"]);
+    const deleted = deleteSubjectFolder(withDead, "rennan", deadOnly);
+    expect(deleted.folders.find(folder => folder.id === "rennan")).toBeUndefined();
+    expect(deleted.bindings.ghost).toBeUndefined();
+    expect(deleted.bindings.pack).toBeUndefined();
+    expect(deleted.revision).toBe(withDead.revision + 1);
+  });
+
+  it("空文件夹删除：不传会话集合时保持保守口径", () => {
+    const withBinding = bindSubjectChat(initial(), { conversationId: "pack", folderId: "rennan", kind: "pack" });
+    expect(() => deleteSubjectFolder(withBinding, "rennan")).toThrow("该文件夹仍有绑定聊天");
+  });
+
+  it("活绑定与资料包版本仍然阻止文件夹删除", () => {
+    const state = publish(initial());
+    expect(() => deleteSubjectFolder(state, "rennan", new Set(["pack"]))).toThrow("已确认资料包版本");
+    const bound = bindSubjectChat(initial(), { conversationId: "chat", folderId: "rennan", kind: "pack" });
+    expect(() => deleteSubjectFolder(bound, "rennan", new Set(["pack", "chat"]))).toThrow("该文件夹仍有绑定聊天");
   });
 
   it("解析拒绝错误版本、重复标识、串主体引用和不属于主体的来源聊天", () => {

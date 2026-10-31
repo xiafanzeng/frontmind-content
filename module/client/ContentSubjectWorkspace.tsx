@@ -193,15 +193,16 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  }
  async function deleteFolder(folderIdToDelete:string,nameToDelete:string){
   const target=subjects.folders.find(item=>item.id===folderIdToDelete);
-  const hasBindings=Object.values(subjects.bindings).some(binding=>binding.folderId===folderIdToDelete);
-  if(!target||target.versions.length||hasBindings){setNotice(target?.versions.length?"含已确认资料包版本，不能删除。":"仍有绑定聊天，不能删除。");return;}
+  const liveConversationIds=new Set(api.state.conversations.map(conversation=>conversation.id));
+  const hasLiveBindings=Object.entries(subjects.bindings).some(([conversationId,binding])=>binding.folderId===folderIdToDelete&&liveConversationIds.has(conversationId));
+  if(!target||target.versions.length||hasLiveBindings){setNotice(target?.versions.length?"含已确认资料包版本，不能删除。":"仍有绑定聊天，不能删除。");return;}
   setPendingDelete({kind:"folder",id:folderIdToDelete,name:nameToDelete});
  }
  async function confirmDeleteFolder(){
   if(!pendingDelete||pendingDelete.kind!=="folder")return;
   const target=pendingDelete;setPendingDelete(null);
   try{
-   await changeSubjects(value=>deleteSubjectFolder(value,target.id));
+   await changeSubjects(value=>deleteSubjectFolder(value,target.id,new Set(api.state.conversations.map(conversation=>conversation.id))));
    if(folderId===target.id){const next=stateRef.current.folders.find(item=>item.id!==target.id);setFolderId(next?.id??"");api.setActive("");}
    setNotice("文件夹已删除。");
   }catch(error){setNotice(error instanceof Error?error.message:"删除文件夹失败。");}
@@ -275,6 +276,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const outputs=current?.messages.filter(item=>item.role==="assistant").flatMap(item=>item.outputFiles??[])??[];
  const previewPack=subjects.folders.flatMap(item=>item.versions).find(item=>item.id===preview);
  const normalizedFolderSearch=folderSearch.trim().toLocaleLowerCase();
+ const liveConversationIds=new Set(api.state.conversations.map(conversation=>conversation.id));
  const filteredFolders=subjects.folders.map(item=>{
   const all=api.state.conversations.filter(value=>subjects.bindings[value.id]?.folderId===item.id);
   const live=all.sort((a,b)=>Number(Boolean(subjects.bindings[b.id].pinned))-Number(Boolean(subjects.bindings[a.id].pinned)));
@@ -299,7 +301,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
       <button type="button" className="cp-subject-folder-name" aria-expanded={expanded} onClick={()=>{const different=folder?.id!==item.id;const operation=()=>{setFolderId(item.id);if(different)api.setActive(live[0]?.id??"");report(()=>changeSubjects(value=>({...value,revision:value.revision+1,folders:value.folders.map(f=>f.id===item.id?{...f,expanded:different?true:!expanded}:f)})));};if(different)host.requestWorkspaceNavigation(operation);else operation();}}>
        {showChildren?<FolderOpen size={16}/>:<Folder size={16}/>}<span>{item.name}</span>
       </button>
-      <button type="button" aria-label={`在${item.name}中新建聊天`} title="在当前主体中新建聊天" onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button><button type="button" aria-label={`删除文件夹：${item.name}`} title={item.versions.length?"含资料包版本，不能删除":Object.values(subjects.bindings).some(binding=>binding.folderId===item.id)?"仍有绑定聊天，不能删除":"删除空文件夹"} disabled={saving||item.versions.length>0||Object.values(subjects.bindings).some(binding=>binding.folderId===item.id)} onClick={()=>void deleteFolder(item.id,item.name)}><Trash2 size={14}/></button>
+      <button type="button" aria-label={`在${item.name}中新建聊天`} title="在当前主体中新建聊天" onClick={()=>openChat(item.id)} disabled={busy}><Plus size={15}/></button><button type="button" aria-label={`删除文件夹：${item.name}`} title={item.versions.length?"含资料包版本，不能删除":Object.entries(subjects.bindings).some(([conversationId,binding])=>binding.folderId===item.id&&liveConversationIds.has(conversationId))?"仍有绑定聊天，不能删除":"删除空文件夹"} disabled={saving||item.versions.length>0||Object.entries(subjects.bindings).some(([conversationId,binding])=>binding.folderId===item.id&&liveConversationIds.has(conversationId))} onClick={()=>void deleteFolder(item.id,item.name)}><Trash2 size={14}/></button>
      </div>
      {showChildren&&<>
       {visible.map(row)}
