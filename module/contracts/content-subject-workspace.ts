@@ -254,12 +254,23 @@ export function updateSubjectChatMetadata(state: ContentSubjectWorkspace, conver
   return next;
 }
 
-/** Only empty folders without versions or chat bindings may be removed locally. */
-export function deleteSubjectFolder(state: ContentSubjectWorkspace, folderId: string): ContentSubjectWorkspace {
+/** Only empty folders without live chat bindings may be removed locally. */
+export function deleteSubjectFolder(
+  state: ContentSubjectWorkspace,
+  folderId: string,
+  existingConversationIds?: ReadonlySet<string>,
+): ContentSubjectWorkspace {
   const next = parseSubjectWorkspace(state);
   const folder = requireFolder(next, folderId);
   if (folder.versions.length) throw new ContentSubjectWorkspaceError("folder_has_versions", "该文件夹包含已确认资料包版本，暂不支持删除");
-  if (Object.values(next.bindings).some(binding => binding.folderId === folderId)) throw new ContentSubjectWorkspaceError("folder_has_bindings", "该文件夹仍有绑定聊天，暂不支持删除");
+  const isLive = (conversationId: string) => existingConversationIds === undefined || existingConversationIds.has(conversationId);
+  if (Object.entries(next.bindings).some(([conversationId, binding]) => binding.folderId === folderId && isLive(conversationId))) {
+    throw new ContentSubjectWorkspaceError("folder_has_bindings", "该文件夹仍有绑定聊天，暂不支持删除");
+  }
+  if (existingConversationIds !== undefined) {
+    next.bindings = Object.fromEntries(Object.entries(next.bindings).filter(([conversationId, binding]) =>
+      binding.folderId !== folderId || existingConversationIds.has(conversationId)));
+  }
   next.folders = next.folders.filter(item => item.id !== folderId);
   next.revision += 1;
   return next;

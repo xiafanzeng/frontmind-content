@@ -87,7 +87,29 @@ describe("正式主体接口的业务写入校验", () => {
     const retyped = structuredClone(bound); retyped.revision++; retyped.bindings.pack.kind = "article";
     await expect(validateSubjectWorkspaceUpdate(bound, retyped, authority(["pack"]))).rejects.toMatchObject({ code: "CONTENT_SUBJECT_BINDING_IMMUTABLE" });
   });
-});
+
+  it("允许删除零版本空文件夹，但仍保护含版本文件夹和悬挂绑定", async () => {
+    const state = folder();
+    const removed = { ...state, revision: state.revision + 1, folders: [] };
+    expect(await validateSubjectWorkspaceUpdate(state, removed, authority([]))).toEqual(removed);
+
+    const withVersion = published();
+    // 保留版本事实时，删除文件夹必须由服务端拒绝；raw 形态避免先触发来源绑定 schema。
+    const rawVersionRemoval = { ...withVersion, revision: withVersion.revision + 1, folders: [], bindings: {} };
+    await expect(validateSubjectWorkspaceUpdate(withVersion, rawVersionRemoval, authority([])))
+      .rejects.toMatchObject({ code: "CONTENT_SUBJECT_PACK_FACTS_SERVER_OWNED", status: 403 });
+    const dangling = { ...state, revision: state.revision + 1, folders: [], bindings: { ghost: { folderId: "sample", kind: "pack" as const, packVersionId: null, generation: 0 } } };
+    await expect(validateSubjectWorkspaceUpdate(state, dangling, authority([]))).rejects.toThrow();
+  });
+
+  it("允许随更新清除死绑定，但活绑定仍返回 409", async () => {
+    const state = bindSubjectChat(folder(), { conversationId: "gone", folderId: "sample", kind: "pack" });
+    const removed = { ...state, revision: state.revision + 1, bindings: {} };
+    expect(await validateSubjectWorkspaceUpdate(state, removed, authority([]))).toEqual(removed);
+    await expect(validateSubjectWorkspaceUpdate(state, removed, authority(["gone"])))
+      .rejects.toMatchObject({ code: "CONTENT_SUBJECT_BINDING_IMMUTABLE", status: 409 });
+  });
+ });
 
 async function send(url: string, method = "GET", body?: unknown) {
   return new Promise<{ status: number; value: any; cache: string | undefined }>((resolve, reject) => {

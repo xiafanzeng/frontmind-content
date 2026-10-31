@@ -16,7 +16,7 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean;otherConversation?:boolean;emptyFolder?:boolean;deleteError?:Error} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean;otherConversation?:boolean;emptyFolder?:boolean;deadFolderBinding?:boolean;folderDeleteError?:Error;deleteError?:Error} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
   let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],contentIntakeReceipt:options.contentIntakeReceipt,createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
@@ -24,6 +24,7 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
   if(options.unbound)delete subjects.bindings.chat;
   if(options.emptyWorkspace){subjects.folders=[];subjects.bindings={};}
   if(options.emptyFolder){subjects.bindings={};subjects.folders[0].versions=[];}
+  if(options.deadFolderBinding){subjects.bindings.ghost={folderId:"subject",kind:"pack",packVersionId:null,generation:0};}
   if(options.missingPack){subjects.folders[0].versions=[];subjects.bindings.chat.packVersionId=null;}
   const send=vi.fn(async()=>true);
   const task=vi.fn(async(id:string)=>({id,status:options.status??"awaiting_input",purpose:"content_production" as const,contentProduction:options.progress??nativeProgress}));
@@ -32,7 +33,7 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
   const setActive=vi.fn();
   const otherConversation:ContentConversation={id:"other",title:"同文件夹下一聊天",purpose:"content_production",status:"idle",messages:[],createdAt:2,updatedAt:2};
   const conversations=options.otherConversation?[conversation,otherConversation]:[conversation];
-  const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>value),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
+  const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>{if(options.folderDeleteError)throw options.folderDeleteError;return value;}),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
   let home!:ContentHomeProps;
   const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
@@ -477,13 +478,29 @@ it("删除当前选中聊天后回退到同文件夹下一聊天",async()=>{
 });
 
 
-it("空文件夹仍需二次确认后才删除，保留原有资料库删除路径",async()=>{
- const view=await mount({emptyFolder:true});
+it("仅含死绑定的空文件夹可点垃圾桶，确认后清除死绑定并删除",async()=>{
+ const view=await mount({emptyFolder:true,deadFolderBinding:true});
  try{
-  await act(async()=>{(view.container.querySelector('[aria-label="删除文件夹：合成主体"]') as HTMLButtonElement).click();});
+  const remove=view.container.querySelector<HTMLButtonElement>('[aria-label="删除文件夹：合成主体"]')!;
+  expect(remove.disabled).toBe(false);
+  await act(async()=>remove.click());
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain("确认删除文件夹");
   await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.client.saveSubjectWorkspace).toHaveBeenCalled();
+  const saved=view.client.saveSubjectWorkspace.mock.calls[0][0] as ContentSubjectWorkspace;
+  expect(saved.folders.some(folder=>folder.id==="subject")).toBe(false);
+  expect(saved.bindings).toEqual({});
   expect(view.container.textContent).toContain("文件夹已删除");
+ }finally{await view.cleanup();}
+});
+
+it("文件夹删除被服务端拒绝时透出原错误且保留文件夹",async()=>{
+ const view=await mount({emptyFolder:true,folderDeleteError:new Error("服务器仍检测到受保护的资料包版本")});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除文件夹：合成主体"]') as HTMLButtonElement).click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.container.textContent).toContain("服务器仍检测到受保护的资料包版本");
+  expect(view.container.querySelector('[aria-label="删除文件夹：合成主体"]')).not.toBeNull();
+  expect(view.container.textContent).not.toContain("文件夹已删除");
  }finally{await view.cleanup();}
 });
