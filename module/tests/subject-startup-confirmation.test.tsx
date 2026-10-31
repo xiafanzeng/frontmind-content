@@ -16,24 +16,29 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean;otherConversation?:boolean;emptyFolder?:boolean;deleteError?:Error} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
   let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],contentIntakeReceipt:options.contentIntakeReceipt,createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
   const subjects:ContentSubjectWorkspace={schemaVersion:1,revision:0,folders:[{id:"subject",name:"合成主体",versions:kind==="article"||options.latest?[{id:"pack-v1",folderId:"subject",version:1,sourceConversationId:"source",file:{fileUrl:"/local-pack.zip",fileName:"资料包.zip",mimeType:"application/zip"},createdAt:"2026-10-23T00:00:00.000Z",includesP0:true}]:[]}],bindings:{chat:{folderId:"subject",kind,packVersionId:kind==="article"?"pack-v1":null,generation:options.generation??0},source:{folderId:"subject",kind:"pack",packVersionId:null,generation:0},other:{folderId:"subject",kind:"pack",packVersionId:null,generation:0}}};
   if(options.unbound)delete subjects.bindings.chat;
   if(options.emptyWorkspace){subjects.folders=[];subjects.bindings={};}
+  if(options.emptyFolder){subjects.bindings={};subjects.folders[0].versions=[];}
   if(options.missingPack){subjects.folders[0].versions=[];subjects.bindings.chat.packVersionId=null;}
   const send=vi.fn(async()=>true);
   const task=vi.fn(async(id:string)=>({id,status:options.status??"awaiting_input",purpose:"content_production" as const,contentProduction:options.progress??nativeProgress}));
   const refresh=vi.fn(async()=>{});
+  const deleteConversation=vi.fn(async()=>{if(options.deleteError)throw options.deleteError;});
+  const setActive=vi.fn();
+  const otherConversation:ContentConversation={id:"other",title:"同文件夹下一聊天",purpose:"content_production",status:"idle",messages:[],createdAt:2,updatedAt:2};
+  const conversations=options.otherConversation?[conversation,otherConversation]:[conversation];
   const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>value),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
   let home!:ContentHomeProps;
-  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations:[conversation]},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive(){},deleteConversation(){},refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
+  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   const render=async()=>{await act(async()=>root.render(<ContentWorkspaceHostProvider value={host}><Workspace client={client}/></ContentWorkspaceHostProvider>));};
   await render();
-  return {container,client,send,task,refresh,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
+  return {container,client,send,task,refresh,deleteConversation,setActive,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
@@ -413,4 +418,72 @@ it("按真实内容哈希合并重复交付，保留同名修订稿",async()=>{
  const messages:ContentConversation["messages"]=[{id:"one",role:"assistant",content:"第一次交付",timestamp:1,outputFiles:[{...file,fileUrl:"/artifact-one"}]},{id:"two",role:"assistant",content:"重复导出与修订",timestamp:2,outputFiles:[{...file,fileUrl:"/artifact-two"},{...file,fileUrl:"/artifact-three",sha256:"b".repeat(64)}]}];
  const view=await mount({messages});
  try{expect(view.container.textContent).toContain("交付文件（2）");}finally{await view.cleanup();}
+});
+
+
+it("绑定聊天点击删除会显示包含聊天名的二次确认",async()=>{
+ const view=await mount();
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("确认删除聊天");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
+  expect(view.deleteConversation).not.toHaveBeenCalled();
+ }finally{await view.cleanup();}
+});
+
+it("绑定聊天确认删除成功后刷新会话和主体资料库并显示成功提示",async()=>{
+ const view=await mount({otherConversation:true});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.deleteConversation).toHaveBeenCalledWith("chat");
+  expect(view.refresh).toHaveBeenCalled();
+  expect(view.client.readSubjectWorkspace).toHaveBeenCalledTimes(2);
+  expect(view.setActive).toHaveBeenCalledWith("other");
+  expect(view.container.textContent).toContain("聊天已删除");
+ }finally{await view.cleanup();}
+});
+
+it("删除遇到服务端 409 时透出原始原因且不显示成功提示，聊天仍可重试",async()=>{
+ const view=await mount({deleteError:new Error("该聊天是已确认资料包版本的来源，不能删除。")});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.container.textContent).toContain("该聊天是已确认资料包版本的来源，不能删除。");
+  expect(view.container.textContent).not.toContain("聊天已删除");
+  expect(view.container.querySelector('[aria-label="删除聊天：合成聊天"]')).not.toBeNull();
+  expect(view.deleteConversation).toHaveBeenCalledTimes(1);
+ }finally{await view.cleanup();}
+});
+
+it("未绑定历史聊天仍显示二次确认并走删除调用",async()=>{
+ const view=await mount({unbound:true,emptyWorkspace:true});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.deleteConversation).toHaveBeenCalledWith("chat");
+  expect(view.container.textContent).toContain("聊天已删除");
+ }finally{await view.cleanup();}
+});
+
+it("删除当前选中聊天后回退到同文件夹下一聊天",async()=>{
+ const view=await mount({otherConversation:true});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.setActive).toHaveBeenCalledWith("other");
+ }finally{await view.cleanup();}
+});
+
+
+it("空文件夹仍需二次确认后才删除，保留原有资料库删除路径",async()=>{
+ const view=await mount({emptyFolder:true});
+ try{
+  await act(async()=>{(view.container.querySelector('[aria-label="删除文件夹：合成主体"]') as HTMLButtonElement).click();});
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("确认删除文件夹");
+  await act(async()=>{button(document.body,"确认删除").click();});
+  expect(view.client.saveSubjectWorkspace).toHaveBeenCalled();
+  expect(view.container.textContent).toContain("文件夹已删除");
+ }finally{await view.cleanup();}
 });
