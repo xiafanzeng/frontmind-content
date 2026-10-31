@@ -425,8 +425,8 @@ it("绑定聊天点击删除会显示包含聊天名的二次确认",async()=>{
  const view=await mount();
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
-  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain("确认删除聊天");
-  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("确认删除聊天");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
   expect(view.deleteConversation).not.toHaveBeenCalled();
  }finally{await view.cleanup();}
 });
@@ -435,7 +435,7 @@ it("绑定聊天确认删除成功后刷新会话和主体资料库并显示成�
  const view=await mount({otherConversation:true});
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
-  await act(async()=>{button(view.container,"确认删除").click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.deleteConversation).toHaveBeenCalledWith("chat");
   expect(view.refresh).toHaveBeenCalled();
   expect(view.client.readSubjectWorkspace).toHaveBeenCalledTimes(2);
@@ -448,7 +448,7 @@ it("删除遇到服务端 409 时透出原始原因且不显示成功提示，�
  const view=await mount({deleteError:new Error("该聊天是已确认资料包版本的来源，不能删除。")});
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
-  await act(async()=>{button(view.container,"确认删除").click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.container.textContent).toContain("该聊天是已确认资料包版本的来源，不能删除。");
   expect(view.container.textContent).not.toContain("聊天已删除");
   expect(view.container.querySelector('[aria-label="删除聊天：合成聊天"]')).not.toBeNull();
@@ -460,8 +460,8 @@ it("未绑定历史聊天仍显示二次确认并走删除调用",async()=>{
  const view=await mount({unbound:true,emptyWorkspace:true});
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
-  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
-  await act(async()=>{button(view.container,"确认删除").click();});
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("合成聊天");
+  await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.deleteConversation).toHaveBeenCalledWith("chat");
   expect(view.container.textContent).toContain("聊天已删除");
  }finally{await view.cleanup();}
@@ -471,7 +471,7 @@ it("删除当前选中聊天后回退到同文件夹下一聊天",async()=>{
  const view=await mount({otherConversation:true});
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除聊天：合成聊天"]') as HTMLButtonElement).click();});
-  await act(async()=>{button(view.container,"确认删除").click();});
+  await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.setActive).toHaveBeenCalledWith("other");
  }finally{await view.cleanup();}
 });
@@ -481,8 +481,8 @@ it("空文件夹仍需二次确认后才删除，保留原有资料库删除路�
  const view=await mount({emptyFolder:true});
  try{
   await act(async()=>{(view.container.querySelector('[aria-label="删除文件夹：合成主体"]') as HTMLButtonElement).click();});
-  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain("确认删除文件夹");
-  await act(async()=>{button(view.container,"确认删除").click();});
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("确认删除文件夹");
+  await act(async()=>{button(document.body,"确认删除").click();});
   expect(view.client.saveSubjectWorkspace).toHaveBeenCalled();
   expect(view.container.textContent).toContain("文件夹已删除");
  }finally{await view.cleanup();}

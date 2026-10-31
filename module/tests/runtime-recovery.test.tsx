@@ -7,7 +7,7 @@ import type { ContentConversation } from "../client/host";
 
 vi.mock("../client/ContentSubjectWorkspace", () => ({ default: () => {
   const state = useContentWorkspaceHost().useConversation();
-  return <div data-active={state.activeConversation?.id ?? ""}>{String(state.hydrated)}<button type="button" onClick={()=>{void (state.deleteConversation as unknown as (id:string)=>Promise<void>)("saved-task").catch(()=>{});}}>删除测试聊天</button></div>;
+  return <><div data-active={state.activeConversation?.id ?? ""}>{String(state.hydrated)}</div><button type="button" onClick={()=>{void (state.deleteConversation as unknown as (id:string)=>Promise<void>)("saved-task").catch(()=>{});}}>删除测试聊天</button></>;
 } }));
 import { ModuleWorkspace, type ContentBusinessClient } from "../client/runtime";
 
