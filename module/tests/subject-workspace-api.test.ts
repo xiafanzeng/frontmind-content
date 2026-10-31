@@ -42,8 +42,43 @@ describe("正式主体接口的业务写入校验", () => {
 
   it("拒绝跨项目或不同业务会话，客户端purpose不能作为归属证明", async () => {
     const state = folder(), next = bindSubjectChat(state, { conversationId: "foreign", folderId: "sample", kind: "pack" });
-    await expect(validateSubjectWorkspaceUpdate(state, next, authority([]))).rejects.toMatchObject({ status: 403, code: "CONTENT_SUBJECT_CONVERSATION_NOT_OWNED" });
-    await expect(validateSubjectWorkspaceUpdate(state, next, { conversation: async id => ({ id, purpose: "enterprise_qa" }) })).rejects.toMatchObject({ status: 403 });
+    await expect(validateSubjectWorkspaceUpdate(state, next, { conversation: async id => ({ id, purpose: "enterprise_qa" }) })).rejects.toMatchObject({ status: 403, code: "CONTENT_SUBJECT_CONVERSATION_NOT_OWNED" });
+    await expect(validateSubjectWorkspaceUpdate(state, next, { conversation: async id => ({ id: `${id}-different`, purpose: "content_production" }) })).rejects.toMatchObject({ status: 403, code: "CONTENT_SUBJECT_CONVERSATION_NOT_OWNED" });
+  });
+
+  it("全部不可解析的绑定会在保存前剔除，而不是返回所有权 403", async () => {
+    const state = bindSubjectChat(folder(), { conversationId: "gone", folderId: "sample", kind: "pack" });
+    const requested = { ...state, revision: state.revision + 1 };
+    const saved = await validateSubjectWorkspaceUpdate(state, requested, authority([]));
+    expect(saved.bindings).toEqual({});
+    expect(saved.revision).toBe(state.revision + 1);
+  });
+
+  it("部分死绑定只剔除死项，保留活绑定、文件夹与版本原样，并在重试时幂等", async () => {
+    let state = bindSubjectChat(published(), { conversationId: "gone", folderId: "sample", kind: "pack" });
+    state = bindSubjectChat(state, { conversationId: "live-article", folderId: "sample", kind: "article" });
+    const requested = structuredClone(state);
+    requested.revision = state.revision + 1;
+    const saved = await validateSubjectWorkspaceUpdate(state, requested, authority(["pack", "article", "live-article"]));
+    expect(saved.bindings).toEqual({ pack: requested.bindings.pack, article: requested.bindings.article, "live-article": requested.bindings["live-article"] });
+    expect(saved.folders).toEqual(state.folders);
+    expect(saved.revision).toBe(state.revision + 1);
+    const retry = await validateSubjectWorkspaceUpdate(saved, requested, authority(["pack", "article", "live-article"]));
+    expect(retry).toEqual(saved);
+    expect(retry.revision).toBe(saved.revision);
+  });
+
+  it("死来源绑定与空文件夹可在同一次保存中自愈清理，历史版本保留", async () => {
+    const withHistory = createSubjectFolder(published(), "待删除空文件夹", "empty-folder");
+    const requested = structuredClone(withHistory);
+    requested.revision = withHistory.revision + 1;
+    requested.folders = requested.folders.filter(item => item.id !== "empty-folder");
+    delete requested.bindings.pack;
+    const saved = await validateSubjectWorkspaceUpdate(withHistory, requested, authority(["article"]));
+    expect(saved.bindings).not.toHaveProperty("pack");
+    expect(saved.folders).toHaveLength(1);
+    expect(saved.folders[0].versions).toEqual(withHistory.folders.find(item => item.id === "sample")!.versions);
+    expect(saved.revision).toBe(withHistory.revision + 1);
   });
 
   it("丢失响应后的相同快照重试幂等，过期快照冲突不会覆盖", async () => {

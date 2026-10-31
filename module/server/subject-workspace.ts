@@ -78,8 +78,24 @@ export async function validateSubjectWorkspaceUpdate(
   authority: ContentSubjectWorkspaceAuthority,
 ): Promise<ContentSubjectWorkspace> {
   const previous = parseBoundedWorkspace(current);
-  const requested = parseBoundedWorkspace(input);
-  // 丢失响应后重试完全相同的快照可以复用保存结果，不能再增加修订号。
+  let requested = parseBoundedWorkspace(input);
+  // 先按服务端真实会话状态清理死绑定，再做幂等比较和后续所有校验。
+  const conversations = new Map<string, SubjectConversationAuthority>();
+  const keptBindings: ContentSubjectWorkspace["bindings"] = {};
+  for (const [id, binding] of Object.entries(requested.bindings)) {
+    if (id.length > 128) return fail("CONTENT_SUBJECT_CONVERSATION_INVALID", 400, "聊天标识无效。");
+    const conversation = await authority.conversation(id);
+    if (!conversation) continue;
+    if (conversation.id !== id || conversation.purpose !== "content_production") {
+      return fail("CONTENT_SUBJECT_CONVERSATION_NOT_OWNED", 403, "聊天不属于当前企业项目的内容制作流程。");
+    }
+    conversations.set(id, conversation);
+    Object.defineProperty(keptBindings, id, { value: binding, enumerable: true, configurable: true, writable: true });
+  }
+  if (Object.keys(keptBindings).length !== Object.keys(requested.bindings).length) {
+    requested = parseBoundedWorkspace({ ...requested, bindings: keptBindings });
+  }
+  // 丢失响应后重试完全相同的快照（包括已剔除的死绑定）可以复用保存结果。
   if (canonical(requested) === canonical(previous)) return previous;
   if (requested.revision !== previous.revision + 1) {
     return fail("CONTENT_SUBJECT_REVISION_CONFLICT", 409, "主体资料库已在其他窗口更新，请刷新后重试。");
@@ -99,16 +115,7 @@ export async function validateSubjectWorkspaceUpdate(
     }
   }
 
-  // 所有会话均由宿主在当前账号/企业项目内读取，不以界面提交的 purpose 作为证明。
-  const conversations = new Map<string, SubjectConversationAuthority>();
-  for (const id of Object.keys(requested.bindings)) {
-    if (id.length > 128) return fail("CONTENT_SUBJECT_CONVERSATION_INVALID", 400, "聊天标识无效。");
-    const conversation = await authority.conversation(id);
-    if (!conversation || conversation.id !== id || conversation.purpose !== "content_production") {
-      return fail("CONTENT_SUBJECT_CONVERSATION_NOT_OWNED", 403, "聊天不属于当前企业项目的内容制作流程。");
-    }
-    conversations.set(id, conversation);
-  }
+  // 活绑定已在前置分类阶段完成服务端所有权校验；死绑定已从 requested 中剔除。
   for (const id of Object.keys(previous.bindings)) {
     if (!Object.hasOwn(requested.bindings, id)) {
       // 已不存在的会话留下的绑定属于可自愈的死数据；活会话归属仍由宿主保护。

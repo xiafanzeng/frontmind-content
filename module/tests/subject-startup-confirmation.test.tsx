@@ -16,7 +16,7 @@ const nativeProgress: ContentProductionDto = {
   confirmation:"awaiting_blueprint_confirmation",progressPosition:18,completedConfirmations:[],availableActions:["confirm_blueprint"],knowledgeBase:null,source:"runner_job_state",
 };
 
-async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean;otherConversation?:boolean;emptyFolder?:boolean;deadFolderBinding?:boolean;folderDeleteError?:Error;deleteError?:Error} = {}) {
+async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boolean;progress?:ContentProductionDto;status?:string;messages?:ContentConversation["messages"];contentIntakeReceipt?:ContentConversation["contentIntakeReceipt"];latest?:boolean;sourceConversation?:boolean;generation?:number;unbound?:boolean;emptyWorkspace?:boolean;missingPack?:boolean;otherConversation?:boolean;emptyFolder?:boolean;deadFolderBinding?:boolean;folderDeleteError?:Error;deleteError?:Error} = {}) {
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT = true;
   let conversation:ContentConversation={id:"chat",title:"合成聊天",purpose:"content_production",status:options.status??(options.taskId?"awaiting_input":"idle"),taskId:options.taskId,messages:options.messages??[],contentIntakeReceipt:options.contentIntakeReceipt,createdAt:1,updatedAt:1};
   const kind=options.kind??"pack";
@@ -32,7 +32,8 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
   const deleteConversation=vi.fn(async()=>{if(options.deleteError)throw options.deleteError;});
   const setActive=vi.fn();
   const otherConversation:ContentConversation={id:"other",title:"同文件夹下一聊天",purpose:"content_production",status:"idle",messages:[],createdAt:2,updatedAt:2};
-  const conversations=options.otherConversation?[conversation,otherConversation]:[conversation];
+  const sourceConversation:ContentConversation={id:"source",title:"资料包来源聊天",purpose:"content_production",status:"idle",messages:[],createdAt:3,updatedAt:3};
+  const conversations=[conversation,...(options.otherConversation?[otherConversation]:[]),...(options.sourceConversation?[sourceConversation]:[])];
   const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>{if(options.folderDeleteError)throw options.folderDeleteError;return value;}),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
   let home!:ContentHomeProps;
   const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
@@ -503,4 +504,14 @@ it("文件夹删除被服务端拒绝时透出原错误且保留文件夹",async
   expect(view.container.querySelector('[aria-label="删除文件夹：合成主体"]')).not.toBeNull();
   expect(view.container.textContent).not.toContain("文件夹已删除");
  }finally{await view.cleanup();}
+});
+
+
+it("资料包来源聊天不存在时禁用跳转，来源仍存在时保持可用",async()=>{
+ const missing=await mount({latest:true});
+ try{await act(async()=>button(missing.container,"查看").click());const sourceButton=[...document.body.querySelectorAll<HTMLButtonElement>("button")].find(item=>item.textContent==="查看来源聊天");expect(sourceButton).toBeTruthy();expect(sourceButton!.disabled).toBe(true);}
+ finally{await missing.cleanup();}
+ const present=await mount({latest:true,sourceConversation:true});
+ try{await act(async()=>button(present.container,"查看").click());const sourceButton=[...document.body.querySelectorAll<HTMLButtonElement>("button")].find(item=>item.textContent==="查看来源聊天");expect(sourceButton).toBeTruthy();expect(sourceButton!.disabled).toBe(false);}
+ finally{await present.cleanup();}
 });
