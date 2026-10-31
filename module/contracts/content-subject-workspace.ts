@@ -65,7 +65,8 @@ export const ContentSubjectWorkspaceSchema = z.object({
     }
   }
   for (const version of versions.values()) {
-    if (state.bindings[version.sourceConversationId]?.folderId !== version.folderId) {
+    const source = state.bindings[version.sourceConversationId];
+    if (source && source.folderId !== version.folderId) {
       context.addIssue({ code: "custom", path: ["bindings", version.sourceConversationId], message: "资料包来源聊天必须属于同一主体" });
     }
   }

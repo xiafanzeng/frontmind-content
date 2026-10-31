@@ -116,7 +116,11 @@ describe("主体资料包引用与版本", () => {
     expect(() => parseSubjectWorkspace({ ...state, schemaVersion: 2 })).toThrow();
     expect(() => parseSubjectWorkspace({ ...state, folders: [...state.folders, ...state.folders] })).toThrow();
     expect(() => parseSubjectWorkspace({ ...state, bindings: { ...state.bindings, bad: { folderId: "rennan", kind: "article", packVersionId: "missing", generation: 0 } } })).toThrow();
-    expect(() => parseSubjectWorkspace({ ...state, bindings: {} })).toThrow();
+    expect(parseSubjectWorkspace({ ...state, bindings: {} }).folders[0].versions).toEqual(state.folders[0].versions);
+    const otherFolder = createSubjectFolder(state, "其他主体", "other");
+    const crossFolder = structuredClone(otherFolder);
+    crossFolder.bindings.pack.folderId = "other";
+    expect(() => parseSubjectWorkspace(crossFolder)).toThrow("资料包来源聊天必须属于同一主体");
     expect(() => createSubjectFolder(state, "  ", "empty")).toThrow();
     expect(() => createSubjectFolder(state, "重名标识", "rennan")).toThrow("主体标识已存在");
     expect(() => switchSubjectPack(state, { conversationId: "pack", versionId: "missing", hasTask: false })).toThrow("找不到该资料包版本");
