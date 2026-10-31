@@ -7,7 +7,7 @@ import type { ContentConversation } from "../client/host";
 
 vi.mock("../client/ContentSubjectWorkspace", () => ({ default: () => {
   const state = useContentWorkspaceHost().useConversation();
-  return <div data-active={state.activeConversation?.id ?? ""}>{String(state.hydrated)}</div>;
+  return <div data-active={state.activeConversation?.id ?? ""}>{String(state.hydrated)}<button type="button" onClick={()=>{void (state.deleteConversation as unknown as (id:string)=>Promise<void>)("saved-task").catch(()=>{});}}>删除测试聊天</button></div>;
 } }));
 import { ModuleWorkspace, type ContentBusinessClient } from "../client/runtime";
 
@@ -115,4 +115,51 @@ it("ignores an old retry response after the workspace is unmounted", async () =>
   expect(container.textContent).toBe("");
   expect(unexpectedWrite).not.toHaveBeenCalled();
   container.remove();
+});
+
+
+it("awaits server deletion before changing the selected conversation", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let finish!: () => void;
+  const pending = new Promise<void>(resolve => { finish = resolve; });
+  const rows: ContentConversation[] = [{ id: "saved-task", title: "待删除聊天", purpose: "content_production", status: "completed", createdAt: 1, updatedAt: 1, messages: [] }];
+  const client: ContentBusinessClient = {
+    list: vi.fn(async () => rows), readSubjectWorkspace: vi.fn(async () => ({schemaVersion:1 as const,revision:0,folders:[],bindings:{}})),
+    saveSubjectWorkspace: vi.fn(async value => value), save: vi.fn(async value => value),
+    remove: vi.fn(() => pending), upload: vi.fn(async () => ({fileId:"unused",filename:"unused"})),
+    dispatch: vi.fn(async () => { throw new Error("Unexpected dispatch"); }), task: vi.fn(async () => { throw new Error("Unexpected task"); }), stop: vi.fn(async () => {}),
+  };
+  localStorage.setItem("frontmind-content-active:delete-await","saved-task");
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ModuleWorkspace client={client} context={{module:"content",workspace:{id:"delete-await",ownerUserId:1},marketEdition:"test",capabilities:[]}} />));
+    const button = container.querySelector<HTMLButtonElement>("button")!;
+    await act(async () => { button.click(); await Promise.resolve(); });
+    expect(client.remove).toHaveBeenCalledWith("saved-task");
+    expect(container.querySelector("[data-active]")?.getAttribute("data-active")).toBe("saved-task");
+    await act(async () => finish());
+    expect(container.querySelector("[data-active]")?.getAttribute("data-active")).toBe("");
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+it("keeps the conversation selected and surfaces the server message when deletion is protected", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const rows: ContentConversation[] = [{ id: "saved-task", title: "受保护聊天", purpose: "content_production", status: "completed", createdAt: 1, updatedAt: 1, messages: [] }];
+  const client: ContentBusinessClient = {
+    list: vi.fn(async () => rows), readSubjectWorkspace: vi.fn(async () => ({schemaVersion:1 as const,revision:0,folders:[],bindings:{}})),
+    saveSubjectWorkspace: vi.fn(async value => value), save: vi.fn(async value => value),
+    remove: vi.fn(async () => { throw new Error("该聊天是已确认资料包版本的来源，不能删除。"); }),
+    upload: vi.fn(async () => ({fileId:"unused",filename:"unused"})),
+    dispatch: vi.fn(async () => { throw new Error("Unexpected dispatch"); }), task: vi.fn(async () => { throw new Error("Unexpected task"); }), stop: vi.fn(async () => {}),
+  };
+  localStorage.setItem("frontmind-content-active:delete-protected","saved-task");
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ModuleWorkspace client={client} context={{module:"content",workspace:{id:"delete-protected",ownerUserId:1},marketEdition:"test",capabilities:[]}} />));
+    await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
+    expect(container.querySelector("[data-active]")?.getAttribute("data-active")).toBe("saved-task");
+    expect(container.textContent).toContain("该聊天是已确认资料包版本的来源，不能删除。");
+  } finally { await act(async () => root.unmount()); container.remove(); }
 });
