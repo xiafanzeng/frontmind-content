@@ -89,7 +89,7 @@ export async function validateSubjectWorkspaceUpdate(
   const nextFolders = new Map(requested.folders.map(folder => [folder.id, folder]));
   for (const folder of previous.folders) {
     const next = nextFolders.get(folder.id);
-    if (!next || canonical(next.versions) !== canonical(folder.versions)) {
+    if ((!next && folder.versions.length > 0) || (next && canonical(next.versions) !== canonical(folder.versions))) {
       return fail("CONTENT_SUBJECT_PACK_FACTS_SERVER_OWNED", 403, "已确认资料包版本由服务器维护，不能通过页面改写或删除。");
     }
   }
@@ -111,7 +111,10 @@ export async function validateSubjectWorkspaceUpdate(
   }
   for (const id of Object.keys(previous.bindings)) {
     if (!Object.hasOwn(requested.bindings, id)) {
-      return fail("CONTENT_SUBJECT_BINDING_IMMUTABLE", 409, "聊天归属不能通过主体快照删除，请使用聊天归档。");
+      // 已不存在的会话留下的绑定属于可自愈的死数据；活会话归属仍由宿主保护。
+      if (await authority.conversation(id)) {
+        return fail("CONTENT_SUBJECT_BINDING_IMMUTABLE", 409, "聊天归属不能通过主体快照删除，请使用聊天归档。");
+      }
     }
   }
   for (const [id, binding] of Object.entries(requested.bindings)) {
