@@ -2,7 +2,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import MarkdownRenderer from "../../../packages/module-ui/src/components/MarkdownRenderer";
+import MarkdownRenderer from "../../vendor/module-ui/src/components/MarkdownRenderer";
 
 function render(content: string) {
   const el = document.createElement("div");
