@@ -7,7 +7,7 @@ import type { ContentWorkflowBinding, FrozenContentTaskContext } from "../contra
 /** Only explicitly reviewed releases may receive the native provider transport. */
 export function isNativeContentWorkflowVersion(version: string): boolean {
   return (version === release.version && release.runtime === "native_content_v1") ||
-    ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1"].includes(version);
+    ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1", "4.13.2-v16.8.6"].includes(version);
 }
 
 export function supportsStructuredContentArticle(version: string): boolean {
