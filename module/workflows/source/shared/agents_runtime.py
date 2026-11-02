@@ -36,7 +36,7 @@ CONTRACT = "frontmind-agents-runtime/4.13.4-local.4"
 # plan and fingerprint; never create another paid attempt merely for this patch.
 REQUEST_CONTRACT = "frontmind-agents-runtime/4.13.0-1"
 READONLY_REPLAY_TOOLS = frozenset({"list_materials", "read_material", "search_materials", "web_read", "web_search"})
-DEFAULT_MODEL = "gpt-5.6-sol"  # User-directed host since 2026-09-21 evening; claude-sonnet-5 gateway pool dropped every large request that night (524/404/conn-kill).
+DEFAULT_MODEL = "gpt-6.1-sol"
 # Optional config/xty.json "completion_transport": "stream_merged" makes the
 # gateway HTTP call streamed and merges chunks back into one completion here,
 # because the gateway's proxy kills any NON-streamed response at ~120s while
@@ -809,8 +809,8 @@ def run_agents_action(package_root: Path, job_root: Path, action: str, prompt: s
                       *, host_tools=None, sdk_override=None, offline: bool=False) -> dict:
     """Run one host action; transport-class failures fail over to the backup host.
 
-    The backup (config/xty.json backup_model, e.g. glm-5.3 with
-    backup_reasoning_effort max) runs the SAME prompt, tools and guards on the
+    The backup (config/xty.json backup_model, gpt-5.6-sol with
+    backup_reasoning_effort high) runs the SAME prompt, tools and guards on the
     same gateway; every attempt records its own model identity and the pair is
     linked (fallback_for / failed_over_to_backup) for audit. Content-contract,
     tool-protocol and budget errors never switch models: those are explicit
