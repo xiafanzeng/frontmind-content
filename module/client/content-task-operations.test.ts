@@ -1,5 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {mapContentTaskOperations} from "./content-task-operations";
+import {parseContentConfirmationInput} from "./content-confirmation-input";
 import type {ContentProductionDto} from "../contracts/content-production";
 
 const progress=(patch:Partial<ContentProductionDto>={}):ContentProductionDto=>({
@@ -7,6 +8,16 @@ const progress=(patch:Partial<ContentProductionDto>={}):ContentProductionDto=>({
 } as ContentProductionDto);
 
 describe("mapContentTaskOperations",()=>{
+ it.each([
+  null,
+  progress({runnerRevision:0,availableActions:[]}),
+  progress({availableActions:["provide_reference_pack_inputs"]}),
+ ])("submits startup upload as materials for card context %#",currentProgress=>{
+  const card=mapContentTaskOperations(currentProgress,{startupConfig:true}).find(item=>item.id==="start-production");
+  expect(card).toBeDefined();
+  const startupReview=progress({runnerRevision:0,availableActions:["provide_reference_pack_inputs"]});
+  expect(parseContentConfirmationInput(startupReview,card!.prompt,1).action).toEqual({kind:"provide_reference_pack_inputs",revision:0});
+ });
  it("maps available actions to revision-bound cards",()=>{const cards=mapContentTaskOperations(progress());expect(cards[0].action).toEqual({kind:"confirm_core_positioning",revision:3});});
  it("prioritizes running state over selectable actions",()=>{const cards=mapContentTaskOperations(progress({executionStatus:"running",workflowStatus:"running_core_positioning_synthesis"}));expect(cards[0].status).toBe("running");});
  it("builds a parameter card for revise_current_step",()=>{const cards=mapContentTaskOperations(progress({confirmation:"awaiting_blueprint_confirmation",availableActions:["revise_current_step"]}));expect(cards[0]).toMatchObject({id:"revise-current-step",kind:"input",params:{inputPlaceholder:"请描述希望修改的内容"}});});
