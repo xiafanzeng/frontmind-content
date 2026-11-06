@@ -1,7 +1,8 @@
 import express from "express";
 import { once } from "node:events";
 import { request as httpRequest } from "node:http";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import {createContentConversationRouter} from "../server/conversations";
 import {
   bindSubjectChat, createSubjectFolder, emptySubjectWorkspace, publishSubjectPack,
   switchSubjectPack, updateSubjectChatMetadata, type ContentSubjectWorkspace,
@@ -155,6 +156,25 @@ async function send(url: string, method = "GET", body?: unknown) {
     request.on("error", reject); request.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
+
+it("创建与保存聊天按ID读取，保留执行历史且仍拒绝其他用途，不扫描整个项目",async()=>{
+ const existing={id:"selected",purpose:"content_production",messages:[],processes:[{id:"history",userMessageId:"message",attempt:1,status:"completed",events:[]}]};
+ const read=vi.fn(async(_request:unknown,id:string)=>id===existing.id?existing:undefined);
+ const list=vi.fn(async()=>{throw new Error("must not scan unrelated histories");});
+ const save=vi.fn(async(_request:unknown,value:any)=>value);
+ const app=express();app.use(express.json());app.use(createContentConversationRouter({read,list,save,delete:async()=>({success:true})}));
+ const server=app.listen(0,"127.0.0.1");await once(server,"listening");
+ const url=`http://127.0.0.1:${(server.address() as {port:number}).port}/conversations`;
+ try{
+  expect(await send(`${url}/selected`,"PUT",{...existing,processes:[]})).toMatchObject({status:200});
+  expect(save.mock.calls[0][1].processes).toEqual(existing.processes);
+  expect(await send(`${url}/new`,"PUT",{id:"new",purpose:"content_production",messages:[]})).toMatchObject({status:200});
+  expect(await send(`${url}/missing`,"DELETE")).toMatchObject({status:404});
+  read.mockResolvedValueOnce({...existing,purpose:"enterprise_qa"});
+  expect(await send(`${url}/selected`,"PUT",existing)).toMatchObject({status:403});
+  expect(save).toHaveBeenCalledTimes(2);expect(list).not.toHaveBeenCalled();
+ }finally{await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));}
+});
 
 describe("主体HTTP端口契约（内存仅用于单元测试，不代表正式持久化验收）", () => {
   it("修改在store事务回调中校验，刷新读取已保存值；没有存储时明确失败", async () => {

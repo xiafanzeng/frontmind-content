@@ -34,17 +34,53 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
   const otherConversation:ContentConversation={id:"other",title:"同文件夹下一聊天",purpose:"content_production",status:"idle",messages:[],createdAt:2,updatedAt:2};
   const sourceConversation:ContentConversation={id:"source",title:"资料包来源聊天",purpose:"content_production",status:"idle",messages:[],createdAt:3,updatedAt:3};
   const conversations=[conversation,...(options.otherConversation?[otherConversation]:[]),...(options.sourceConversation?[sourceConversation]:[])];
+  const saveConversation=vi.fn(async(value:ContentConversation)=>{conversations.push(value);});
   const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>{if(options.folderDeleteError)throw options.folderDeleteError;return value;}),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
   let home!:ContentHomeProps;
-  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
+  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",saveConversation,setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   const render=async()=>{await act(async()=>root.render(<ContentWorkspaceHostProvider value={host}><Workspace client={client}/></ContentWorkspaceHostProvider>));};
   await render();
-  return {container,client,send,task,refresh,deleteConversation,setActive,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
+  return {container,client,send,task,refresh,deleteConversation,saveConversation,setActive,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
 function deckCard(container:HTMLElement,text:string){return [...container.querySelectorAll<HTMLButtonElement>(".cp-task-card-trigger")].find(item=>item.textContent?.includes(text))!;}
+
+it("新建聊天在保存会话期间立即显示忙碌，连续点击只创建一次",async()=>{
+ const view=await mount();let finish!:()=>void;
+ view.saveConversation.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ try{
+  await act(async()=>view.container.querySelector<HTMLButtonElement>('[aria-label="在合成主体中新建聊天"]')!.click());
+  await act(async()=>document.querySelector<HTMLInputElement>('input[type="radio"][name="subject-chat-kind"]')!.click());
+  await act(async()=>{const create=button(document.body,"创建聊天");create.click();create.click();});
+  expect(view.saveConversation).toHaveBeenCalledTimes(1);
+  expect(button(document.body,"正在创建…").disabled).toBe(true);
+  expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();
+  await act(async()=>finish());
+  expect(view.client.saveSubjectWorkspace).toHaveBeenCalledTimes(1);
+  expect(view.setActive).toHaveBeenCalledWith(view.saveConversation.mock.calls[0][0].id);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+ }finally{finish?.();await view.cleanup();}
+});
+
+it("文件夹保存结果超时后重试沿用同一个标识，避免重复创建",async()=>{
+ const view=await mount();
+ vi.mocked(view.client.saveSubjectWorkspace!).mockRejectedValueOnce(new Error("请求超时；提交结果可能已被服务器接收。"));
+ try{
+  await act(async()=>view.container.querySelector<HTMLButtonElement>('[aria-label="新建主体文件夹"]')!.click());
+  const input=document.querySelector<HTMLInputElement>('input[placeholder="例如：示例品牌"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"新主体");input.dispatchEvent(new Event("input",{bubbles:true}));});
+  await act(async()=>button(document.body,"创建文件夹").click());
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("请求超时");
+  await act(async()=>button(document.body,"创建文件夹").click());
+  const calls=vi.mocked(view.client.saveSubjectWorkspace!).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[0][0].folders.find(row=>row.name==="新主体")?.id).toBe(calls[1][0].folders.find(row=>row.name==="新主体")?.id);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("新建聊天");
+  expect(view.saveConversation).not.toHaveBeenCalled();
+ }finally{await view.cleanup();}
+});
 
 it("主体文件夹内嵌在工作区第二列，搜索只过滤当前目录且不依赖全局侧栏 portal",async()=>{
  const view=await mount();
