@@ -36,7 +36,7 @@ export interface ContentBusinessClient {
 async function json<T>(url:string,init:RequestInit={}):Promise<T>{
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),init.body instanceof Blob?600000:20000);
  const abort=()=>controller.abort();init.signal?.addEventListener("abort",abort,{once:true});if(init.signal?.aborted)controller.abort();
- try{const response=await fetch(url,{credentials:"same-origin",...init,signal:controller.signal});const value=await response.json();if(!response.ok)throw new Error(value.error?.message??value.error??value.message??`HTTP ${response.status}`);return value;}
+ try{const response=await fetch(url,{credentials:"same-origin",...init,signal:controller.signal});const value=await response.json();if(!response.ok)throw Object.assign(new Error(value.error?.message??value.error??value.message??`HTTP ${response.status}`),{code:value.error?.code,dispatchSettled:value.error?.dispatchSettled===true});return value;}
  catch(error){if(controller.signal.aborted)throw new Error("请求超时或已取消，请检查连接后重试；提交结果可能已被服务器接收。");throw error;}
  finally{clearTimeout(timer);init.signal?.removeEventListener("abort",abort);}
 }
@@ -107,6 +107,7 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
   const id=current.current;const conversation=items.current.find(row=>row.id===id);if(!conversation)throw new Error("请先选择内容任务");if(locks.current.has(conversation.id))return false;
   if(receivedContentIntake(conversation)){setNotice("服务器已收件，生成尚未启动。请勿重复提交本轮材料。");return false;}
   locks.current.add(conversation.id);listVersion.current++;setNotice("");setSubmittingIds(previous=>new Set([...previous,conversation.id]));
+  let dispatchingId:string|undefined;
   try{
    if(client.submitIntake){
     if(conversation.taskId)throw new Error("本轮仅验证收件，不能提交已有执行任务。");
@@ -132,13 +133,23 @@ function RuntimeProvider({client,children,workspaceId}:{client:ContentBusinessCl
     message={id:clientRequestId,role:"user",content:prompt,timestamp:Date.now(),...(options.contentWorkflowStatus?{contentWorkflowStatus:options.contentWorkflowStatus}:{}),...(options.contentWorkflowGeneration!==undefined?{contentWorkflowGeneration:options.contentWorkflowGeneration}:{}),...(options.contentWorkflowKind?{contentWorkflowKind:options.contentWorkflowKind}:{}),...(typeof options.contentWorkflowPosition==="number"&&Number.isInteger(options.contentWorkflowPosition)&&options.contentWorkflowPosition>=0&&options.contentWorkflowPosition<=20?{contentWorkflowPosition:options.contentWorkflowPosition}:{}),attachments:uploaded.map(item=>({id:item.fileId,type:"file",name:item.filename,fileId:item.fileId})),generalChatDispatch:dispatch};
     const pending={...conversation,messages:[...conversation.messages,message],updatedAt:Date.now()};update(pending);await client.save(pending);
    }
+   dispatchingId=message.id;
    const dispatch=message.generalChatDispatch!;const existingTask=typeof dispatch.localTaskId==="string"?dispatch.localTaskId:undefined;
    const result=await client.dispatch({conversationId:conversation.id,clientRequestId:dispatch.clientRequestId,prompt:dispatch.providerPrompt,localAssetIds:dispatch.localAssetIds,...(!existingTask?{modelProfile:dispatch.modelProfile,purpose:"content_production",contentProduction:dispatch.contentProduction}:dispatch.contentProductionAction?{contentProductionAction:dispatch.contentProductionAction}:{})},existingTask);
    if(result.purpose&&result.purpose!=="content_production")throw new Error("返回的任务不属于内容制作");
    const latest=items.current.find(row=>row.id===conversation.id)??conversation;
    const accepted={...latest,taskId:result.id,previousResponseId:result.id,executionKind:"general_chat_v2" as const,status:result.status,updatedAt:Date.now(),messages:latest.messages.map(item=>item.id===message!.id?(({generalChatDispatch:_,...rest})=>rest)(item):item)};
-   setActiveTask(result);update(await client.save(accepted));return true;
-  }catch(error){setNotice(error instanceof Error?error.message:String(error));throw error;}finally{listVersion.current++;locks.current.delete(conversation.id);setSubmittingIds(previous=>{const next=new Set(previous);next.delete(conversation.id);return next;});}
+   dispatchingId=undefined;setActiveTask(result);update(await client.save(accepted));return true;
+  }catch(error){
+   const rejection=error as {code?:string;dispatchSettled?:boolean};
+   // 服务端已明确拒绝时结算这一条待发请求，否则重试会继续重放过期修订；结果未知的请求保留原身份。
+   if(dispatchingId&&rejection.dispatchSettled===true){
+    const latest=items.current.find(row=>row.id===conversation.id)??conversation;
+    const settled={...latest,updatedAt:Date.now(),messages:latest.messages.map(item=>item.id===dispatchingId?(({generalChatDispatch:_,...rest})=>rest)(item):item)};
+    update(settled);await client.save(settled).catch(()=>{});
+   }
+   setNotice(rejection.code==="CONTENT_PRODUCTION_CONFIRMATION_CONFLICT"?"当前制作阶段已更新，请核对最新内容后重新提交。":error instanceof Error?error.message:String(error));throw error;
+  }finally{listVersion.current++;locks.current.delete(conversation.id);setSubmittingIds(previous=>{const next=new Set(previous);next.delete(conversation.id);return next;});}
  },[client,update]);
  const value:Runtime={activeTask,taskReadError,intakeOnly:Boolean(client.submitIntake),localAsset:id=>client.localAsset?.(id)??null,workspaceId,submittingIds,stoppingId,observation,state:{conversations},activeConversation,hydrated,notice,refresh,sendMessage,async saveConversation(value){update(await client.save(value));},refreshConversations:refresh,createConversation({title}){const id=crypto.randomUUID();update({id,title,purpose:"content_production",status:"idle",messages:[],createdAt:Date.now(),updatedAt:Date.now()});setActiveId(id);return id;},setActive:setActiveId,async deleteConversation(id){setNotice("");try{await client.remove(id);listVersion.current++;setConversations(previous=>{const next=previous.filter(row=>row.id!==id);items.current=next;return next;});if(current.current===id)setActiveId(null);}catch(error){setNotice(error instanceof Error&&error.message?error.message:String(error));throw error;}},async stop(){const id=items.current.find(row=>row.id===current.current)?.taskId;if(!id||stoppingId)return;setStoppingId(id);setNotice("");try{await client.stop(id);let result=await client.task(id);for(let check=0;check<40&&["running","pending"].includes(result.status);check++){await new Promise(resolve=>setTimeout(resolve,250));result=await client.task(id);}if(["running","pending"].includes(result.status))throw new Error("STOP_NOT_CONFIRMED");setActiveTask(result);await refresh();}catch{setNotice("停止请求未确认，请重试停止；当前不能确认执行已停止。");throw new Error("STOP_NOT_CONFIRMED");}finally{setStoppingId(null);}}};
  return <RuntimeContext.Provider value={value}>{!hydrated&&initialLoadError&&<div className="cp-notice" role="alert"><p>任务列表加载失败：{initialLoadError}</p><button type="button" className="cp-live-retry" disabled={initialLoadPending} onClick={retryInitialLoad}>{initialLoadPending?"正在重试…":"重试加载任务"}</button></div>}{notice&&<p className="cp-notice" role="alert">{notice}</p>}{children}</RuntimeContext.Provider>;
@@ -166,7 +177,8 @@ function ContentDialogue({knowledgeEditingBlocked,hideComposer=false,conversatio
   </article>)}</div>{execution&&execution.timeline.length>0&&<GeneralExecutionActivity items={execution.timeline.filter(entry=>entry.kind!=="message")} thinkingDisplay="inline" />}</div>{showLatest&&<button className="workbench-return-latest" onClick={()=>{returnToLatest();onReturnToLatest?.();}}>回到最新</button>}{conversationFooter}
   {!runtime.intakeOnly&&<ExecutionFeedback conversation={runtime.activeConversation??undefined} submitting={runtime.submittingIds.has(runtime.activeConversation?.id??"")} stopping={runtime.stoppingId===runtime.activeConversation?.taskId} observation={runtime.observation}/>}
   {!hideComposer&&<BusinessChatInput runtime={composerRuntime} purpose="content_production" operatorWorkspace knowledgeEditingBlocked={Boolean(knowledgeEditingBlocked)} />}
-  {["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" disabled={runtime.stoppingId===runtime.activeConversation?.taskId} onClick={()=>void runtime.stop().catch(()=>{})}>{runtime.stoppingId===runtime.activeConversation?.taskId?"正在请求停止…":"停止当前执行"}</button>}
+  {/* 隐藏输入框时由业务暂停点面板提供停止入口，避免出现两个停止按钮。 */}
+  {!hideComposer&&["running","pending"].includes(runtime.activeConversation?.status??"")&&<button className="cp-live-stop" type="button" disabled={runtime.stoppingId===runtime.activeConversation?.taskId} onClick={()=>void runtime.stop().catch(()=>{})}>{runtime.stoppingId===runtime.activeConversation?.taskId?"正在请求停止…":"停止当前执行"}</button>}
  </div>;
 }
 const pendingDrafts = new Set<() => boolean>();
