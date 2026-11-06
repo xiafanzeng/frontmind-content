@@ -26,8 +26,12 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  const [submissionStartedAt,setSubmissionStartedAt]=useState<number|null>(null);
  useEffect(()=>{setSubmissionStartedAt(submitting?Date.now():null);},[submitting,conversation?.id]);
  const intakeReceipt=receivedContentIntake(conversation);
- const failure=observation?.taskId===conversation?.taskId?observation?.executionFailure:null;
- const active=!intakeReceipt&&!failure&&(!!submitting||!!stopping||["running","pending"].includes(conversation?.status??""));
+ const observed=observation?.taskId===conversation?.taskId?observation:undefined;
+ const factRepair=observed?.contentProduction?.availableActions?.includes("repair_article_facts")===true;
+ const failure=factRepair?null:observed?.executionFailure;
+ // 任务轮询先于聊天列表更新；已到确认点时不再按列表显示执行中。
+ const listRunning=["running","pending"].includes(conversation?.status??"")&&!observed?.awaitingConfirmation;
+ const active=!intakeReceipt&&!failure&&(!!submitting||!!stopping||listRunning);
  useEffect(()=>{if(!active)return;setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[active,conversation?.id]);
  if(!conversation||intakeReceipt)return null;
  // 旧对话的列表状态可能已回到 idle；执行时间线仍保留已确认的终态。
@@ -43,12 +47,13 @@ export default function ExecutionFeedback({conversation,submitting,stopping,obse
  const liveLabel=contentLiveProgressLabel(progress);
  const unacknowledged=conversation.messages.some(m=>m.generalChatDispatch&&(!conversation.taskId||m.generalChatDispatch.localTaskId===conversation.taskId));
  let text="";
- if(failure)text=`${failure.action==="positioning_market_research"?"市场研究执行失败":"本轮执行失败"}，已提交资料和执行记录已保留。`;
+ if(factRepair)text="正文事实校验未通过，请按上方提示返工。";
+ else if(failure)text=`${failure.action==="positioning_market_research"?"市场研究执行失败":"本轮执行失败"}，已提交资料和执行记录已保留。`;
  else if(stopping)text="正在请求停止，等待服务器确认。";
  else if(submitting)text="正在上传资料并提交任务，请稍候。";
  else if(pollFailed)text="状态更新暂时失败，正在重试；当前无法确认服务器进度。";
- else if(conversation.status==="pending")text="任务已接收，正在等待执行。";
- else if(conversation.status==="running")text=liveLabel?`${liveLabel}。`:["positioning_ready","p0_ready","completed"].includes(progress?.workflowStatus??"")?"正在处理本次接续，等待服务端返回最新阶段。":"任务正在执行，等待服务端返回最新阶段。";
+ else if(listRunning&&conversation.status==="pending")text="任务已接收，正在等待执行。";
+ else if(listRunning&&conversation.status==="running")text=liveLabel?`${liveLabel}。`:["positioning_ready","p0_ready","completed"].includes(progress?.workflowStatus??"")?"正在处理本次接续，等待服务端返回最新阶段。":"任务正在执行，等待服务端返回最新阶段。";
  else if(status==="error")text="本轮执行失败，已提交资料和执行记录已保留。";
  else if(status==="cancelled")text="本轮已停止，已提交资料和执行记录保留。";
  else if(unacknowledged)text="本次提交尚未确认，请使用“重试本次提交”核对提交结果。";

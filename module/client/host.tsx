@@ -15,6 +15,8 @@ export interface ContentConversationApi {
  state:{conversations:ContentConversation[]};activeConversation:ContentConversation|null;hydrated:boolean;
  createConversation(options:{title:string;reuseEmpty:false;purpose:"content_production"}):string;
  setActive(id:string):void;deleteConversation(id:string):void;
+ /** 正式运行时的停止入口，与任务轮询共用同一状态。 */
+ stop?():Promise<void>;
  saveConversation?(value:ContentConversation):Promise<void>;
  refreshConversations?():Promise<void>;
 }
