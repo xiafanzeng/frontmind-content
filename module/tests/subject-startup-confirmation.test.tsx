@@ -34,17 +34,53 @@ async function mount(options: {kind?:"pack"|"article";taskId?:string;intake?:boo
   const otherConversation:ContentConversation={id:"other",title:"同文件夹下一聊天",purpose:"content_production",status:"idle",messages:[],createdAt:2,updatedAt:2};
   const sourceConversation:ContentConversation={id:"source",title:"资料包来源聊天",purpose:"content_production",status:"idle",messages:[],createdAt:3,updatedAt:3};
   const conversations=[conversation,...(options.otherConversation?[otherConversation]:[]),...(options.sourceConversation?[sourceConversation]:[])];
+  const saveConversation=vi.fn(async(value:ContentConversation)=>{conversations.push(value);});
   const client:ContentBusinessClient={list:vi.fn(async()=>[conversation]),save:vi.fn(async(value)=>value),remove:vi.fn(async()=>{}),upload:vi.fn(async()=>({fileId:"unused",filename:"unused"})),dispatch:vi.fn(async()=>{throw new Error("测试不能启动任务");}),task,stop:vi.fn(async()=>{}),readSubjectWorkspace:vi.fn(async()=>structuredClone(subjects)),saveSubjectWorkspace:vi.fn(async value=>{if(options.folderDeleteError)throw options.folderDeleteError;return value;}),...(options.intake?{submitIntake:vi.fn(async()=>{throw new Error("提交由宿主运行时负责");})}:{})};
   let home!:ContentHomeProps;
-  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
+  const host:ContentWorkspaceHost={connections:{publishedKnowledge:false},ConversationPurposeProvider:({children})=><>{children}</>,useConversation:()=>({state:{conversations},activeConversation:conversation,hydrated:true,createConversation:()=>"",saveConversation,setActive,deleteConversation,refreshConversations:refresh}),useSendMessage:()=>({sendMessage:send}),retrieveTask:task,captureWorkspaceRestOperation:(signal=new AbortController().signal)=>({signal,assertActive:()=>signal.throwIfAborted(),fetch}),useWorkspaceDraftGuard(){},requestWorkspaceNavigation:operation=>operation(),Home:props=>{home=props;return <div>{props.conversationFooter}</div>;},FilePreview:()=>null,WorkbenchTaskToolbar:()=>null,BusinessWorkspaceInspector:()=>null,AgentWorkbenchShell:({main,auxiliary})=><>{main}{auxiliary}</>};
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   const render=async()=>{await act(async()=>root.render(<ContentWorkspaceHostProvider value={host}><Workspace client={client}/></ContentWorkspaceHostProvider>));};
   await render();
-  return {container,client,send,task,refresh,deleteConversation,setActive,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
+  return {container,client,send,task,refresh,deleteConversation,saveConversation,setActive,home:()=>home,update:async(changes:Partial<ContentConversation>)=>{conversation={...conversation,...changes};await render();},cleanup:async()=>{await act(async()=>root.unmount());container.remove();}};
 }
 
 function button(container:HTMLElement,text:string){return [...container.querySelectorAll("button")].find(item=>item.textContent===text)!;}
 function deckCard(container:HTMLElement,text:string){return [...container.querySelectorAll<HTMLButtonElement>(".cp-task-card-trigger")].find(item=>item.textContent?.includes(text))!;}
+
+it("新建聊天在保存会话期间立即显示忙碌，连续点击只创建一次",async()=>{
+ const view=await mount();let finish!:()=>void;
+ view.saveConversation.mockImplementationOnce(()=>new Promise<void>(resolve=>{finish=resolve;}));
+ try{
+  await act(async()=>view.container.querySelector<HTMLButtonElement>('[aria-label="在合成主体中新建聊天"]')!.click());
+  await act(async()=>document.querySelector<HTMLInputElement>('input[type="radio"][name="subject-chat-kind"]')!.click());
+  await act(async()=>{const create=button(document.body,"创建聊天");create.click();create.click();});
+  expect(view.saveConversation).toHaveBeenCalledTimes(1);
+  expect(button(document.body,"正在创建…").disabled).toBe(true);
+  expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();
+  await act(async()=>finish());
+  expect(view.client.saveSubjectWorkspace).toHaveBeenCalledTimes(1);
+  expect(view.setActive).toHaveBeenCalledWith(view.saveConversation.mock.calls[0][0].id);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+ }finally{finish?.();await view.cleanup();}
+});
+
+it("文件夹保存结果超时后重试沿用同一个标识，避免重复创建",async()=>{
+ const view=await mount();
+ vi.mocked(view.client.saveSubjectWorkspace!).mockRejectedValueOnce(new Error("请求超时；提交结果可能已被服务器接收。"));
+ try{
+  await act(async()=>view.container.querySelector<HTMLButtonElement>('[aria-label="新建主体文件夹"]')!.click());
+  const input=document.querySelector<HTMLInputElement>('input[placeholder="例如：示例品牌"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value")!.set!.call(input,"新主体");input.dispatchEvent(new Event("input",{bubbles:true}));});
+  await act(async()=>button(document.body,"创建文件夹").click());
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("请求超时");
+  await act(async()=>button(document.body,"创建文件夹").click());
+  const calls=vi.mocked(view.client.saveSubjectWorkspace!).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[0][0].folders.find(row=>row.name==="新主体")?.id).toBe(calls[1][0].folders.find(row=>row.name==="新主体")?.id);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("新建聊天");
+  expect(view.saveConversation).not.toHaveBeenCalled();
+ }finally{await view.cleanup();}
+});
 
 it("主体文件夹内嵌在工作区第二列，搜索只过滤当前目录且不依赖全局侧栏 portal",async()=>{
  const view=await mount();
@@ -138,7 +174,7 @@ it("历史项目无需归属和新资料包即可打开，原消息、附件、�
   try{
     expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("历史项目");expect(view.container.textContent).toContain("原任务与附件");
     expect(view.container.textContent).not.toContain("请先明确所属主体");expect(view.container.textContent).not.toContain("当前文件夹尚无已确认资料包");
-    expect(view.home().knowledgeEditingBlocked).toBe(false);expect(view.container.textContent).toContain("交付文件（1）");
+    expect(view.home().knowledgeEditingBlocked).toBe(false);expect(view.container.textContent).toContain("交付文件1 份");
     expect(view.task).toHaveBeenCalledWith("original-task",expect.anything());
     expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();expect(view.client.save).not.toHaveBeenCalled();expect(view.client.upload).not.toHaveBeenCalled();expect(view.client.dispatch).not.toHaveBeenCalled();expect(view.send).not.toHaveBeenCalled();
     expect(history).toEqual(original);
@@ -173,7 +209,7 @@ it("没有任务的历史记录也直接显示，打开时不补建任务",async
 
 it("旧聊天归入主体后保留原内容，不因尚未登记版本而重新被遮挡",async()=>{
   const view=await mount({kind:"article",missingPack:true,messages:[{id:"existing",role:"assistant",content:"原有文章",timestamp:1,outputFiles:[{fileUrl:"/existing.md",fileName:"原文章.md",mimeType:"text/markdown"}]}]});
-  try{expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("交付文件（1）");expect(view.container.textContent).not.toContain("请先完成资料包，再继续这篇文章");expect(view.home().knowledgeEditingBlocked).toBe(true);expect(view.client.save).not.toHaveBeenCalled();expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();}
+  try{expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("交付文件1 份");expect(view.container.textContent).not.toContain("请先完成资料包，再继续这篇文章");expect(view.home().knowledgeEditingBlocked).toBe(true);expect(view.client.save).not.toHaveBeenCalled();expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();}
   finally{await view.cleanup();}
 });
 
@@ -188,7 +224,7 @@ it("首轮企业材料先核对，确认后才提交配置；不伪造原生状�
     expect(view.container.textContent).not.toContain("服务器已收件");
     await act(async()=>button(view.container,"确认提交").click());
     expect(await result).toBe(true);
-    expect(view.send).toHaveBeenCalledWith("本公司提供便携式设备。",[file],{contentProduction:{mode:"new_reference_pack",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:null}},contentWorkflowGeneration:0});
+    expect(view.send).toHaveBeenCalledWith("本公司提供便携式设备。",[file],{contentProduction:{mode:"new_reference_pack",workflowVersion:"16.25.1",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:null}},contentWorkflowGeneration:0});
     expect(view.task).not.toHaveBeenCalled();
   }finally{await view.cleanup();}
 });
@@ -201,7 +237,7 @@ it("首轮返回修改保留原提交承诺，不调用宿主发送",async()=>{
 
 it("首轮文章完整题目也先建卡，确认时保留原单篇配置",async()=>{
   const view=await mount({kind:"article"});
-  try{let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("如何选择便携式健康终端？",[]);});expect(view.send).not.toHaveBeenCalled();expect(button(view.container,"确认提交")).toBeDefined();await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"single_article",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:"pack-v1"}},contentWorkflowGeneration:0});}
+  try{let result!:Promise<boolean|void>;await act(async()=>{result=view.home().onComposerSubmit!("如何选择便携式健康终端？",[]);});expect(view.send).not.toHaveBeenCalled();expect(button(view.container,"确认提交")).toBeDefined();await act(async()=>button(view.container,"确认提交").click());expect(await result).toBe(true);expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"single_article",workflowVersion:"16.25.1",question:"如何选择便携式健康终端？",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:0,packVersionId:"pack-v1"}},contentWorkflowGeneration:0});}
   finally{await view.cleanup();}
 });
 
@@ -338,14 +374,14 @@ it("确认提交中阶段失效且请求失败，清除旧确认卡，不把重�
 });
 
 
-it("资料包更新首轮携带最新已确认版本和当前代际，不从浏览器传文件地址",async()=>{
+it("资料包新版本首轮携带当前版本基线和代际，不从浏览器传文件地址",async()=>{
   const view=await mount({latest:true,generation:2});
   try{
     let result!:Promise<boolean|void>;
     await act(async()=>{result=view.home().onComposerSubmit!("更新企业产品材料",[]);});
     await act(async()=>button(view.container,"确认提交").click());
     expect(await result).toBe(true);
-    expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"refresh_reference_pack",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:2,packVersionId:"pack-v1"}},contentWorkflowGeneration:2});
+    expect(view.send.mock.calls[0][2]).toEqual({contentProduction:{mode:"new_reference_pack",workflowVersion:"16.25.1",enterpriseName:"合成主体",knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:"subject",generation:2,packVersionId:"pack-v1"}},contentWorkflowGeneration:2});
     expect(view.client.dispatch).not.toHaveBeenCalled();
   }finally{await view.cleanup();}
 });
@@ -363,7 +399,7 @@ it("同一聊天重启后清除旧失败任务，不阻塞新首轮确认且保�
     let result!:Promise<boolean|void>;
     await act(async()=>{result=view.home().onComposerSubmit!("切换后重新确认本篇题目",[]);});
     expect(view.container.querySelector('[aria-label="输入确认卡片"]')?.textContent).toContain("核对本次输入");
-    expect(view.container.textContent).toContain("交付文件（1）");
+    expect(view.container.textContent).toContain("交付文件1 份");
     await act(async()=>button(view.container,"确认提交").click());
     expect(await result).toBe(true);
     expect(view.send.mock.calls[0][2]).toMatchObject({contentProduction:{mode:"single_article",subjectContext:{folderId:"subject",generation:0,packVersionId:"pack-v1"}}});
@@ -419,7 +455,7 @@ it("按真实内容哈希合并重复交付，保留同名修订稿",async()=>{
  const file={fileName:"定位.md",mimeType:"text/markdown",sha256:"a".repeat(64)};
  const messages:ContentConversation["messages"]=[{id:"one",role:"assistant",content:"第一次交付",timestamp:1,outputFiles:[{...file,fileUrl:"/artifact-one"}]},{id:"two",role:"assistant",content:"重复导出与修订",timestamp:2,outputFiles:[{...file,fileUrl:"/artifact-two"},{...file,fileUrl:"/artifact-three",sha256:"b".repeat(64)}]}];
  const view=await mount({messages});
- try{expect(view.container.textContent).toContain("交付文件（2）");}finally{await view.cleanup();}
+ try{expect(view.container.textContent).toContain("交付文件2 份");}finally{await view.cleanup();}
 });
 
 

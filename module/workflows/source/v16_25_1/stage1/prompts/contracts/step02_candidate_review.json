@@ -1,0 +1,20 @@
+{
+  "candidate_analysis_sha256": "当前candidate_analysis.json文件sha256",
+  "review_origin": "separate_context/same_host_second_pass",
+  "verdicts": [
+    {
+      "candidate_id": "逐项覆盖所有候选",
+      "checks": [
+        {
+          "dimension_id": "关键产品维度",
+          "verdict": "supported/insufficient/conflicting",
+          "source": "被复核的原来源",
+          "quote": "被复核的原引文，未知可留空",
+          "reason": "原句是否证明具体产品本质，还是仅同场景/别的型号/AI陈述"
+        }
+      ]
+    }
+  ],
+  "overall_pass": true,
+  "notes": "待核线索可保持未知；复核不替代外站取证或法定资质核验"
+}

@@ -6,6 +6,22 @@ const progress = (availableActions: ContentProductionAction["kind"][], choices: 
 const parse = (actions: ContentProductionAction["kind"][], text: string, files = 0, choices: string[] = []) => parseContentConfirmationInput(progress(actions, choices), text, files);
 
 describe("底部统一输入的本地确认提取", () => {
+  it("新版确认保留显式顺序与原话，缺少类型或 P02 主体不推进", () => {
+    expect(parse(["choose_positioning"],"定位：c2").action).toMatchObject({kind:"choose_positioning",revision:17,categoryId:"c2",note:"定位：c2"});
+    expect(parse(["confirm_advantages"],"优势顺序：adv3、adv1").action).toMatchObject({advantageIds:["adv3","adv1"]});
+    const text="问题类型：行业排名；文章模式：P02；主体：c003、c001；指定信源：抖音";
+    expect(parse(["choose_writing"],text).action).toMatchObject({kind:"choose_writing",category:"行业排名",pattern:"P02",subjects:["c003","c001"],requiredMedia:["抖音"],note:text});
+    for(const incomplete of ["文章模式：P01","问题类型：行业排名","问题类型：行业排名；文章模式：P02","问题类型：行业排名；文章模式：P05","问题类型：行业排名；文章模式：P01；文章模式：P02","问题类型：行业排名；文章模式：P01；不要开始"])
+      expect(parse(["choose_writing"],incomplete).action).toBeNull();
+  });
+  it("新版资料操作不吞否定、互斥回答或缺少全文附件的选择", () => {
+    expect(parse(["set_question_answers"],"本次暂无回答").action).toMatchObject({noAnswers:true});
+    expect(parse(["set_question_answers"],"本次暂无回答",1).action).toBeNull();
+    expect(parse(["set_question_answers"],"请不要上传",1).action).toBeNull();
+    expect(parse(["provide_question_sources"],"请不要上传",1).action).toBeNull();
+    expect(parse(["provide_reference_fulltext"],"参考全文：3",1).action).toMatchObject({kind:"provide_reference_fulltext",rank:3});
+    expect(parse(["provide_reference_fulltext"],"参考全文：3").action).toBeNull();
+  });
   it.each([
     ["确认比较对象", "confirm_competitors"], ["我确认当前比较对象。", "confirm_competitors"],
     ["确认核心定位", "confirm_core_positioning"], ["确认问题定位", "confirm_question_positioning"],

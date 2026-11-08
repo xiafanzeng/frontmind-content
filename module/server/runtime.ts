@@ -1,3 +1,4 @@
+import { twoStageSystemContext, twoStageTurnContext } from "./two-stage-runtime";
 import { CONTENT_PRODUCTION_LANGUAGE_CONTEXT } from "../contracts/content-production-public";
 import type { FrozenContentTaskContext, SystemAttachment } from "../contracts/task-context";
 import { CONTENT_WORKFLOW_FILENAME, workflowForTask, originalContentWorkflowArchive, isNativeContentWorkflowVersion, hasContentWorkflowCapability } from "./workflow-catalog";
@@ -43,7 +44,7 @@ export function contentProductionSystemAttachments(
 
 export function contentWorkflowRuntimeFor(context: FrozenContentTaskContext) {
   const binding = workflowForTask(context);
-  return binding.runtime ?? (isNativeContentWorkflowVersion(binding.version)
+  return binding.runtime ?? (binding.version === "16.25.1" ? "native_content_v2" as const : isNativeContentWorkflowVersion(binding.version)
     ? "native_content_v1" as const
     : undefined);
 }
@@ -54,6 +55,7 @@ export function contentProductionSystemContext(
   if (context.purpose !== "content_production" || !context.contentProduction)
     throw new Error("CONTENT_PRODUCTION_CONTEXT_INVALID");
   const workflow = workflowForTask(context);
+  if (contentWorkflowRuntimeFor(context) === "native_content_v2") return twoStageSystemContext(context);
   const native = contentWorkflowRuntimeFor(context) === "native_content_v1";
   const currentEditorial = hasContentWorkflowCapability(workflow, "editorial_v16_8");
   const sessionPhases = hasContentWorkflowCapability(workflow, "session_phases");
@@ -111,7 +113,7 @@ export function contentProductionClientOptions(context:FrozenContentTaskContext,
   systemContext:contentProductionSystemContext(context),
   systemAttachments:contentProductionSystemAttachments(context),
   recoverableStatusArtifact:isContentWorkflowStateFilename,
-  turnContext:[CONTENT_PRODUCTION_LANGUAGE_CONTEXT,action
+  turnContext:contentWorkflowRuntimeFor(context) === "native_content_v2" ? twoStageTurnContext(action) : [CONTENT_PRODUCTION_LANGUAGE_CONTEXT,action
    ? `The customer submitted this contentProductionAction for the current Runner revision: ${JSON.stringify(action)}. Apply only this original business action with its attached user material; preserve the original user text above.`
    : null, action?.kind === "resume_current_execution"
    ? `${contentWorkflowRuntimeFor(context) === "native_content_v1" ? "Reuse the intact original Job restored by the host in this Session; report a concrete transport error if it is absent" : "Restore the same original Job snapshot"}, then read its actual status with status --job-dir DIR --json. If the original Job is already at a native user pause or completed phase, preserve that state and re-export its current review, deliveries and status without invoking a business action or model. Otherwise run its native continue --job-dir DIR --revision ${action.revision} --retry-current-action. Resume the existing provider session and saved checkpoint. Do not create another Job, replay confirmed choices, edit job_state.json, or mark an interrupted operation as successful.`

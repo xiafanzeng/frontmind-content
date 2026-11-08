@@ -11,6 +11,15 @@ export type ContentConfirmationInputResult = { action: ContentProductionAction |
 export function contentConfirmationInputHint(progress: ConfirmationInputProgress): string {
   const has = (kind: ContentProductionAction["kind"]) => progress.availableActions.includes(kind);
   const examples: string[] = [];
+  if(has("choose_positioning"))examples.push("定位：c1，或点选定位卡片");
+  if(has("confirm_advantages"))examples.push("优势顺序：adv2、adv1，或明确“本次暂无优势”");
+  if(has("revise_advantages"))examples.push("修改优势：具体增删或补充要求");
+  if(has("set_question_answers"))examples.push("上传本题完整回答，或明确“本次暂无回答”");
+  if(has("provide_question_sources"))examples.push("上传本题逐条信源");
+  if(has("choose_writing"))examples.push("问题类型：行业排名；文章模式：P02；主体：c003、c001");
+  if(has("confirm_article_task"))examples.push("确认本篇任务");
+  if(has("confirm_writing_brief"))examples.push("确认本篇约稿");
+  if(has("provide_reference_fulltext"))examples.push("参考全文：3（同时附完整原文）");
   if (has("choose_question")) examples.push("直接输入问题序号或完整问题，也可写“选择问题：具体问题”");
   if (has("update_competitor_selection")) examples.push("竞品：A 作为比较对象，B 只作举例");
   if (has("confirm_competitors")) examples.push("确认比较对象");
@@ -51,6 +60,39 @@ export function parseContentConfirmationInput(
     return { action: parsed.data, hint: "已从本次输入提取选择，请核对卡片后确认。" };
   };
   const simple = (kind: ContentProductionAction["kind"]) => accept({ kind, revision });
+
+  const ids=(value:string)=>value.split(/[、,，\s]+/u).filter(Boolean);
+  const positioning=/^定位\s*[:：]\s*(\S+)$/u.exec(command);
+  if(has("choose_positioning")&&positioning)return accept({kind:"choose_positioning",revision,categoryId:positioning[1],note:original});
+  const advantages=/^(?:确认)?优势顺序\s*[:：]\s*(.+)$/u.exec(command);
+  if(has("confirm_advantages")&&advantages)return accept({kind:"confirm_advantages",revision,advantageIds:ids(advantages[1]),note:original});
+  if(has("confirm_advantages")&&/^本次暂无(?:单独)?优势$/u.test(command))return accept({kind:"confirm_advantages",revision,advantageIds:[],none:true,note:original});
+  const reviseAdvantages=/^(?:修改|补充)优势\s*[:：]\s*([\s\S]+)$/u.exec(original);
+  if(has("revise_advantages")&&reviseAdvantages)return accept({kind:"revise_advantages",revision,instructions:reviseAdvantages[1].trim()});
+  if(has("set_question_answers")){
+    if(/^本次暂无回答$/u.test(command)&&filesCount>0)return fail("暂无回答与上传回答不能同时提交。");
+    if(/^本次暂无回答$/u.test(command))return accept({kind:"set_question_answers",revision,noAnswers:true,note:original});
+    if(filesCount>0&&!/^(?:请)?(?:不要|暂不|取消|停止)/u.test(command))return accept({kind:"set_question_answers",revision,noAnswers:false,note:original||"用户上传本题完整回答"});
+  }
+  if(has("provide_question_sources")&&filesCount>0&&!/^(?:请)?(?:不要|暂不|取消|停止)/u.test(command))return simple("provide_question_sources");
+  if(has("confirm_article_task")&&/^确认本篇(?:写作)?任务$/u.test(command))return accept({kind:"confirm_article_task",revision,note:original});
+  if(has("confirm_writing_brief")&&/^确认本篇(?:简要)?约稿$/u.test(command))return accept({kind:"confirm_writing_brief",revision,note:original});
+  const fulltext=/^参考全文\s*[:：]\s*([1-9]\d{0,2})$/u.exec(command);
+  if(has("provide_reference_fulltext")&&fulltext&&filesCount===1)return accept({kind:"provide_reference_fulltext",revision,rank:Number(fulltext[1])});
+  if(has("choose_writing")){
+    const fields=new Map<string,string>();
+    for(const part of command.split(/[；;]/u)){
+      const field=/^\s*(问题类型|文章模式|主体|指定信源)\s*[:：]\s*(.+?)\s*$/u.exec(part);
+      if(!field||fields.has(field[1]))return fail("选择不能重复或包含额外控制命令。");
+      fields.set(field[1],field[2]);
+    }
+    const category=fields.get("问题类型"),pattern=fields.get("文章模式");
+    const subjects=ids(fields.get("主体")??"");
+    const requiredMedia=ids(fields.get("指定信源")??"");
+    if(!category||!/^(行业排名|美誉舆情|产品场景)$/u.test(category)||!pattern||!/^P0[12346]$/u.test(pattern))return fail("请明确选择新版问题类型与文章模式。");
+    if(category&&pattern&&(pattern!=="P02"||subjects.length))return accept({kind:"choose_writing",revision,category,pattern,subjects,requiredMedia,note:original});
+    return fail("请分别明确问题类型、文章模式；P02 还需选择同类主体。新版不支持 P05。");
+  }
 
   // 显式修改优先，避免将“不要确认，请修改”等任意句子误识别为确认。
   const revisionInput = /^修改(?:表述)?\s*[:：]\s*([\s\S]+)$/u.exec(original);

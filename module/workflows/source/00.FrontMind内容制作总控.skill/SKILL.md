@@ -1,7 +1,13 @@
 ---
 name: frontmind-content-workflow-v4-11
-description: FrontMind Content Workflow 入口；以 Reference Pack 4.1 执行差异化定位、P0 与单问题内容生产。v16.8使用自然全文编辑、P02双维自动选两家及不同阅读入口的P0—P06五加五标题，保留本题文章池、定位传递与历史冻结任务恢复。
+description: FrontMind 工作流路由；网站新任务以 v16.25.1 两阶段、三项资料包和 Kimi/Gemini HTTP 执行，原 v4.11 与 v16.8 记录只用于历史冻结任务恢复。
 ---
+
+## v16.25.1 应用路由
+
+网站新任务只执行 `scripts/frontmind_v16251.py`，阅读 `v16_25_1/stage1/README.md` 与 `v16_25_1/stage2/START_HERE.md`。Kimi Hosted 分析/文风核对，XTY Gemini 写作/拟题；三项资料包交接，第二阶段无需 P0，不使用 P05，不套五加五标题或旧 SDK/DeepSeek 链。以下内容仅供原冻结 v16.8 及更早任务恢复，不覆盖新版业务合同。
+
+
 
 资料包创建会把逐文件接收结果保存到 `inputs/material_intake_report.json`。如有附件被拒收，任务报告文件名与原因，并停止进入研究阶段。接收成功后，Agent 仍须提取并读取原件；图片中的文字另行识别。 OCR 回执给出正文编号与字符数，Agent 读取该正文后逐图归纳；同页背景图和主要图片分别判断。
 

@@ -7,6 +7,7 @@ import type {GeneralExecutionDto} from "@frontmind/module-contracts/execution";
 export interface ContentConversationSnapshot {id:string;purpose?:string;taskId?:string;messages:unknown[];[key:string]:unknown}
 export interface ContentConversationStore {
  list(request:Request):Promise<ContentConversationSnapshot[]>;
+ read?(request:Request,id:string):Promise<ContentConversationSnapshot|undefined>;
  save(request:Request,snapshot:ContentConversationSnapshot):Promise<ContentConversationSnapshot>;
  delete(request:Request,id:string):Promise<unknown>;
 }
@@ -40,17 +41,18 @@ export function publicContentConversation(snapshot:ContentConversationSnapshot):
 
 export function createContentConversationRouter(store:ContentConversationStore):Router {
  const router=Router();
+ const read=(request:Request,id:string)=>store.read?store.read(request,id):store.list(request).then(rows=>rows.find(item=>item.id===id));
  router.get("/conversations",async(req,res)=>{try{res.json((await store.list(req)).filter(item=>item.purpose==="content_production").map(publicContentConversation));}catch(error){sendConversationFailure(res,error);}});
  router.put("/conversations/:id",async(req,res)=>{try{
   const snapshot=req.body as ContentConversationSnapshot;
   if(!snapshot||snapshot.id!==req.params.id||!Array.isArray(snapshot.messages))return void res.status(400).json({error:"CONTENT_CONVERSATION_INVALID"});
-  const existing=(await store.list(req)).find(item=>item.id===snapshot.id);
+  const existing=await read(req,snapshot.id);
   assertContentSnapshot(snapshot,existing);
   const {processes:__,...business}=snapshot;
   res.json(publicContentConversation(await store.save(req,{...business,processes:existing?.processes??[]})));
  }catch(error){sendConversationFailure(res,error);}});
  router.delete("/conversations/:id",async(req,res)=>{try{
-  const existing=(await store.list(req)).find(item=>item.id===req.params.id);
+  const existing=await read(req,req.params.id);
   if(!existing)return void res.status(404).json({error:"CONTENT_CONVERSATION_NOT_FOUND"});
   assertContentSnapshot(existing,existing);
   res.json(await store.delete(req,existing.id));

@@ -31,7 +31,7 @@ it("freezes module-owned execution capabilities with the exact archive and retai
   writeFileSync(join(root, binding.filename), bytes);
   writeFileSync(join(root, "manifest.json"), JSON.stringify({ formatVersion: 1, current: binding }));
   const frozen = freezeContentWorkflow();
-  expect(frozen).toEqual({ ...binding, runtime: "native_content_v1", capabilities: release.capabilities });
+  expect(frozen).toEqual({ ...binding, runtime: release.runtime, capabilities: release.capabilities });
   vi.stubEnv("FRONTMIND_CONTENT_WORKFLOW_DIR", next);
   rmSync(root, { recursive: true });
   expect(originalContentWorkflowArchive(frozen)).toEqual(bytes);

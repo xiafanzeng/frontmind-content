@@ -1,0 +1,37 @@
+.cp-two-stage {
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--subject-line, #e7e9ee);
+  border-radius: 10px;
+  background: #fcfcfd;
+  color: #252a34;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.cp-two-stage > strong { display: block; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+.cp-two-stage .cp-confirmation-fields { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.cp-two-stage label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.cp-two-stage .cp-field { flex-direction: column; align-items: stretch; gap: 6px; margin: 0; cursor: default; }
+.cp-two-stage input[type="radio"], .cp-two-stage input[type="checkbox"] { flex: none; margin-top: 4px; accent-color: var(--subject-gold, #916900); }
+.cp-two-stage .cp-field :is(input, select, textarea), .cp-two-stage > fieldset > label > textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--subject-line, #e7e9ee);
+  border-radius: 7px;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+.cp-two-stage textarea { min-height: 64px; resize: vertical; }
+.cp-two-stage input[type="file"] { max-width: 100%; font-size: 12px; }
+.cp-two-stage input[type="file"]::file-selector-button { margin-right: 8px; border: 1px solid #dce0e7; border-radius: 5px; padding: 3px 8px; background: #f5f6f8; color: #252a34; }
+.cp-two-stage :is(.cp-primary, .cp-secondary) { align-self: flex-start; min-height: 36px; padding: 7px 12px; border: 1px solid #dce0e7; border-radius: 7px; font: inherit; cursor: pointer; }
+.cp-two-stage .cp-primary { background: var(--subject-gold, #916900); border-color: var(--subject-gold, #916900); color: white; }
+.cp-two-stage .cp-secondary { background: white; color: #252a34; }
+.cp-two-stage :is(button, input, select, textarea):focus-visible { outline: 2px solid #c9aa51; outline-offset: 2px; }
+.cp-two-stage :is(button, input, select, textarea):disabled { opacity: .55; cursor: not-allowed; }
+.cp-two-stage small { color: var(--subject-muted, #69717d); font-size: 12px; }
+.cp-two-stage p { margin: 0; }

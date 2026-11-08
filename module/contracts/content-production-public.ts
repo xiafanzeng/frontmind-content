@@ -17,6 +17,14 @@ const patternNames: Record<string, string> = Object.fromEntries([
 ]);
 
 export const CONTENT_PRODUCTION_PAUSE_TITLES: Record<string, string> = {
+  awaiting_positioning_selection:"选择企业定位",
+  awaiting_advantages_confirmation:"确认优势与顺序",
+  awaiting_question_answers:"关联回答或明确暂无",
+  awaiting_question_sources:"关联本题逐条信源",
+  awaiting_writing_selection:"选择问题类型与文章模式",
+  awaiting_article_task_confirmation:"确认本篇写作任务",
+  awaiting_writing_brief_confirmation:"确认本篇简要约稿",
+  awaiting_reference_fulltext:"补充参考文章全文",
   awaiting_reference_pack_route: "选择品牌资料包",
   awaiting_reference_pack_input: "补充品牌资料",
   awaiting_question_selection: "选择本次优化问题",

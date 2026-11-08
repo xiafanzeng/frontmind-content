@@ -1,7 +1,9 @@
+import ContentDeliverables from "./ContentDeliverables";
+import {TwoStageStart,TwoStageConfirmation} from "./TwoStageConfirmation";
 import {useCallback,useEffect,useRef,useState,type ReactNode} from "react";
 import {ChevronDown,Folder,FolderOpen,Pin,Plus,Search,X,Trash2} from "lucide-react";
 import {Dialog,DialogContent,DialogDescription,DialogTitle} from "@frontmind/module-ui/components/ui/dialog";
-import {contentOutputIdentity,useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
+import {useContentWorkspaceHost,type ContentConversation,type ContentTranscriptNavigation,type TaskResponse} from "./host";
 import type {ContentBusinessClient} from "./runtime";
 import {contentProductionStagePosition,type ContentProductionDto,type ContentProductionInput} from "../contracts/content-production";
 import {receivedContentIntake} from "../contracts/content-intake-receipt";
@@ -30,11 +32,14 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const [modal,setModal]=useState<"folder"|"chat"|null>(null),[pendingDelete,setPendingDelete]=useState<{kind:"conversation"|"folder";id:string;name:string}|null>(null),[name,setName]=useState(""),[chatTitle,setChatTitle]=useState(""),[chatKind,setChatKind]=useState<"pack"|"article"|"">("");
  const [assignConversation,setAssignConversation]=useState<string|null>(null);
  const pendingCreate=useRef<{id:string;title:string;folderId:string;kind:"pack"|"article"}|null>(null);
+ const pendingFolder=useRef<{id:string;name:string}|null>(null),createLock=useRef(false);
+ const [creating,setCreating]=useState(false);
  const sourceNavigation=useRef<{conversationId:string;stageIndex:number}|null>(null);
  const navigationRef=useRef<HTMLElement|null>(null);
  const [formFolder,setFormFolder]=useState(""),[preview,setPreview]=useState<string|null>(null);
  const [showAll,setShowAll]=useState<Record<string,boolean>>({}),[folderSearch,setFolderSearch]=useState("");
  const [localChoices,setLocalChoices]=useState<Record<string,{style?:"A"|"B";requirements?:string}>>({});
+ const [startupMode,setStartupMode]=useState<"new_reference_pack"|"import_reference_pack"|"p0"|"single_article">("new_reference_pack");
  const current=api.activeConversation;
  const liveConversationIds=new Set(api.state.conversations.map(conversation=>conversation.id));
  const currentRef=useRef(current?.id);currentRef.current=current?.id;
@@ -55,7 +60,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  // 正常入口沿用服务端回执；显式验收客户端保留旧版本回填的兼容显示。
  const intakeReceived=Boolean(receivedContentIntake(current))||Boolean(client.submitIntake&&current&&!current.taskId&&current.messages.some(message=>message.role==="user"));
  const turnFailed=Boolean(progress?.executionFailure)||Boolean(observedTask&&observedTask.id===current?.taskId&&["error","failed","cancelled"].includes(observedTask.status));
- const busy=saving||Boolean(api.submittingIds?.has(current?.id??""))||["running","pending"].includes(current?.status??"")||["running","pending"].includes(observedTask?.status??"");
+ const busy=saving||creating||Boolean(api.submittingIds?.has(current?.id??""))||["running","pending"].includes(current?.status??"")||["running","pending"].includes(observedTask?.status??"");
  const stopLock=useRef(false);const [stopping,setStopping]=useState(false);
  async function stopExecution(){
   const id=current?.taskId;if(!id||stopLock.current)return;
@@ -80,12 +85,13 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  const choiceKey=`${current?.id}:${progress?.runnerRevision??"idle"}`;
  const choices=localChoices[choiceKey]??{};
  // 尚无任务时只核对本次输入，不把本地修订号 0 投影成原生 Runner 停点。
- const startupConfig:ContentProductionInput|null=loaded&&current&&!current.taskId&&!intakeReceived&&binding?{mode:binding.kind==="pack"?(latest?"refresh_reference_pack":"new_reference_pack"):pack?.includesP0?"single_article":"p0",enterpriseName:folder?.name??current.title,knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:binding.folderId,generation:binding.generation??0,packVersionId:binding.kind==="pack"?(latest?.id??null):binding.packVersionId}}:null;
+ const selectedStartupMode=binding?.kind==="pack"?(startupMode==="import_reference_pack"?"import_reference_pack":"new_reference_pack"):(startupMode==="p0"?"p0":"single_article");
+ const startupConfig:ContentProductionInput|null=loaded&&current&&!current.taskId&&!intakeReceived&&binding?{mode:selectedStartupMode,workflowVersion:"16.25.1",enterpriseName:folder?.name??current.title,knowledgeSource:"files",monitoringAnswerAssetIds:[],subjectContext:{folderId:binding.folderId,generation:binding.generation??0,packVersionId:binding.kind==="pack"?(latest?.id??null):binding.packVersionId}}:null;
  const startupReview:ContentProductionDto|null=startupConfig?{
   mode:startupConfig.mode,enterpriseName:startupConfig.enterpriseName,workflowVersion:"input-review-only",
   workflowStatus:null,currentStage:null,jobKind:null,runnerRevision:0,pauseTitle:null,choices:[],productionStep:null,
   confirmation:null,progressPosition:0,completedConfirmations:[],
-  availableActions:binding?.kind==="pack"?["provide_reference_pack_inputs"]:["choose_question","provide_question_research_inputs"],
+  availableActions:binding?.kind==="article"?["choose_question","provide_reference_pack_inputs"]:["provide_reference_pack_inputs"],
   knowledgeBase:null,source:"awaiting_runner",
  }:null;
 
@@ -115,7 +121,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   finally{writing.current=false;setSaving(false);}
  }
  const report=(operation:()=>Promise<unknown>)=>{void operation().catch(()=>{});};
- useEffect(()=>{setInspected(null);setNavigation(undefined);setTask(null);setTaskError("");setPreview(null);},[current?.id,current?.taskId]);
+ useEffect(()=>{setStartupMode("new_reference_pack");setInspected(null);setNavigation(undefined);setTask(null);setTaskError("");setPreview(null);},[current?.id,current?.taskId]);
  useEffect(()=>{const target=sourceNavigation.current;if(!target||current?.id!==target.conversationId)return;const anchor=contentCreationTranscriptAnchors(current.messages).get(target.stageIndex);if(!anchor)return;sourceNavigation.current=null;setInspected(target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:anchor,sequence:(previous?.sequence??0)+1}));},[current?.id,current?.messages]);
  useEffect(()=>{
   const id=current?.taskId,conversationId=current?.id;if(!id||api.activeTask!==undefined)return;
@@ -125,11 +131,11 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  },[current?.taskId,current?.id,client,api.activeTask===undefined]);
  useEffect(()=>{if(["positioning_ready","p0_ready","completed"].includes(progress?.workflowStatus??""))void readSubjects().catch(error=>setNotice(error.message));},[progress?.workflowStatus,progress?.runnerRevision,readSubjects]);
  const refreshAfterSend=async()=>{await api.refreshConversations?.();if(current?.taskId){const next=await client.task(current.taskId);if(currentRef.current===current.id)setTask(next);}await readSubjects();};
- const confirmationKey=turnFailed||intakeReceived?null:startupReview&&current&&binding?`${current.id}:input-review:${binding.folderId}:${binding.kind}:${binding.packVersionId??"none"}:${binding.generation}:${latest?.id??"none"}`:progress?.confirmation&&current?`${current.id}:${current.taskId}:${binding?.generation}:${binding?.packVersionId}:${progress.runnerRevision}:${progress.confirmation}`:null;
+ const confirmationKey=turnFailed||intakeReceived?null:startupReview&&current&&binding?`${current.id}:input-review:${binding.folderId}:${binding.kind}:${binding.packVersionId??"none"}:${binding.generation}:${latest?.id??"none"}`:(progress?.confirmation||progress?.workflowVersion==="16.25.1"&&progress.availableActions.includes("revise_advantages"))&&current?`${current.id}:${current.taskId}:${binding?.generation}:${binding?.packVersionId}:${progress.runnerRevision}:${progress.confirmation}`:null;
  const confirmation=useComposerConfirmation(confirmationKey,startupReview??progress,async(prompt,files,action)=>{
   if(turnFailed||binding?.restartRequired||currentRef.current!==current?.id)return false;
   const accepted=await sendMessage(prompt,files,!current?.taskId&&startupConfig
-   ?{contentProduction:startupConfig,contentWorkflowGeneration:binding?.generation??0}
+   ?{contentProduction:{...startupConfig,...(startupConfig.mode==="single_article"&&action.kind==="choose_question"?{question:action.selection}:{})},contentWorkflowGeneration:binding?.generation??0}
    :{contentProductionAction:action,contentWorkflowPosition:contentProductionStagePosition(progress?.currentStage??null,progress?.workflowStatus??null),contentWorkflowStatus:progress?.workflowStatus??undefined,contentWorkflowGeneration:generation,contentWorkflowKind:progress?.jobKind??undefined});
   if(accepted===false)return false;
   setNotice("");
@@ -143,9 +149,14 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  function openChat(id=folder?.id??"",kind:"pack"|"article"|""=""){setAssignConversation(null);setFormFolder(id);setChatKind(kind);setChatTitle(kind==="pack"?"资料包创建与修改":kind==="article"?"新文章书写":"");setName("");setModal("chat");setNotice("");}
  function openFolder(){setName("");setChatTitle("");setChatKind("");setModal("folder");setNotice("");}
  async function create(){
+  if(!modal||createLock.current)return;
+  createLock.current=true;setCreating(true);
   try{
    if(modal==="folder"){
-    const id=crypto.randomUUID();await changeSubjects(value=>createSubjectFolder(value,name,id));setFolderId(id);setFormFolder(id);api.setActive("");setName("");setChatKind("pack");setChatTitle("资料包创建与修改");setModal("chat");return;
+    const folderName=name.trim(),previous=pendingFolder.current;
+    const id=previous?.name===folderName?previous.id:crypto.randomUUID();pendingFolder.current={id,name:folderName};
+    await changeSubjects(value=>{const existing=value.folders.find(item=>item.id===id);if(existing){if(existing.name!==folderName)throw new Error("主体名称已变化，请重新核对。");return value;}return createSubjectFolder(value,folderName,id);});
+    pendingFolder.current=null;setFolderId(id);setFormFolder(id);api.setActive("");setName("");setChatKind("pack");setChatTitle("资料包创建与修改");setModal("chat");return;
    }
    if(!chatKind||!chatTitle.trim()||!formFolder)return;
    if(!api.saveConversation)throw new Error("当前宿主不能保存聊天。");
@@ -157,6 +168,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
    await changeSubjects(value=>bindSubjectChat(value,{conversationId:id,folderId:formFolder,kind:chatKind}));
    pendingCreate.current=null;setAssignConversation(null);setModal(null);setChatTitle("");setChatKind("");setFolderId(formFolder);api.setActive(id);
   }catch(error){setNotice(error instanceof Error?error.message:"创建失败，请重试。");}
+  finally{createLock.current=false;setCreating(false);}
  }
  async function switchPack(versionId:string){
   if(!current||!versionId||versionId===pack?.id||busy||confirmation.pending)return;
@@ -218,8 +230,10 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   if(attachmentError){setNotice(attachmentError);return false;}
   setInspected(null);setNavigation(previous=>({conversationId:current.id,latest:true,sequence:(previous?.sequence??0)+1}));
   if(!current.taskId)return confirmation.stage(prompt,files);
+  if(progress?.workflowVersion==="16.25.1"&&!progress.confirmation&&progress.availableActions.includes("revise_advantages"))return confirmation.stage(prompt,files);
   if(!progress?.confirmation){
    const deliveredManuscript=progress?.jobKind==="p0"&&progress.workflowStatus==="p0_ready"||progress?.jobKind==="article"&&progress.workflowStatus==="completed";
+   if(deliveredManuscript&&progress?.workflowVersion==="16.25.1"){setNotice("本篇已交付，原稿和记录保持不变。请新建文章聊天处理新的写作要求。");return false;}
    if(deliveredManuscript||resumableAssembly&&/^继续/u.test(prompt.trim()))return sendMessage(prompt,files,{contentWorkflowStatus:progress!.workflowStatus??undefined,contentWorkflowGeneration:generation,contentWorkflowKind:progress!.jobKind??undefined});
    setNotice("当前没有待确认的写作步骤，请先读取阶段。");return false;
   }
@@ -238,7 +252,7 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
  async function stageAction(action:import("../contracts/content-production").ContentProductionAction,prompt:string,files:File[]=[]){
   if(!current||busy||turnFailed||intakeReceived){setNotice("当前任务暂不可操作，请刷新状态后重试。");return false;}
   const attachmentError=files.map(file=>client.validateAttachment?.(file)).find(Boolean);if(attachmentError){setNotice(attachmentError);return false;}
-  if(!current.taskId){return stage(prompt,files);}
+  if(!current.taskId){return confirmation.stageAction(action,prompt,files);}
   setInspected(null);setNavigation(previous=>({conversationId:current.id,latest:true,sequence:(previous?.sequence??0)+1}));
   return confirmation.stageAction(action,prompt,files);
  }
@@ -267,7 +281,9 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
   {intakeReceived&&<p className="cp-subject-question">服务器已收件，生成尚未启动。</p>}
   {!intakeReceived&&client.attachmentHint&&(startupReview??progress)?.availableActions.some(kind=>kind==="provide_reference_pack_inputs"||kind==="provide_question_research_inputs")&&<p className="cp-subject-question">{client.attachmentHint}</p>}
   {!busy&&!confirmation.pending&&progress?.pauseTitle&&<div className="cp-subject-question"><span>当前需要确认</span><strong>{progress.pauseTitle}</strong></div>}
-  <ContentTaskActionDeck cards={mapContentTaskOperations(progress,{busy,failed:turnFailed,pendingConfirmation:Boolean(confirmation.pending),taskId:current?.taskId,startupConfig:Boolean(!current?.taskId&&startupConfig&&!intakeReceived),retryStartup:!progress?.confirmation?retryStartup?.content:undefined,resumeExecution,resumableAssembly:!progress?.confirmation&&resumableAssembly,handoff:!progress?.confirmation&&handoff})} busy={busy||Boolean(confirmation.pending)} onSelect={(card,files=[],instructions)=>{if(card.id==="retry-startup"||card.id==="resume-execution"){void recoverExecution();return;}if(card.id==="handoff"){void continueWriting();return;}if(card.action)void stageAction(card.action,card.prompt,files);else if(card.id==="revise-current-step"&&progress?.runnerRevision!=null&&instructions?.trim())void stageAction({kind:"revise_current_step",revision:progress.runnerRevision,instructions:instructions.trim()},`修改：${instructions.trim()}`);else void stage(card.prompt,files);}} />
+  {startupConfig&&binding&&!current?.taskId&&!intakeReceived&&<TwoStageStart key={current?.id} kind={binding.kind} mode={selectedStartupMode} onMode={setStartupMode} busy={busy||Boolean(confirmation.pending)} onNotice={setNotice} onStart={(prompt,files)=>stageAction({kind:"provide_reference_pack_inputs",revision:0},prompt,files)}/>}
+  {progress?.workflowVersion==="16.25.1"&&(progress.confirmation||progress.availableActions.includes("revise_advantages"))&&!intakeReceived&&<TwoStageConfirmation key={`${current?.id}:${progress.runnerRevision}:${progress.confirmation}`} progress={progress} busy={busy||Boolean(confirmation.pending)} onAction={stageAction} onNotice={setNotice}/>}
+  {!startupConfig&&!(progress?.workflowVersion==="16.25.1"&&(progress.confirmation||progress.availableActions.includes("revise_advantages")))&&<ContentTaskActionDeck cards={mapContentTaskOperations(progress,{busy,failed:turnFailed,pendingConfirmation:Boolean(confirmation.pending),taskId:current?.taskId,startupConfig:Boolean(!current?.taskId&&startupConfig&&!intakeReceived),retryStartup:!progress?.confirmation?retryStartup?.content:undefined,resumeExecution,resumableAssembly:!progress?.confirmation&&resumableAssembly,handoff:!progress?.confirmation&&handoff})} busy={busy||Boolean(confirmation.pending)} onSelect={(card,files=[],instructions)=>{if(card.id==="retry-startup"||card.id==="resume-execution"){void recoverExecution();return;}if(card.id==="handoff"){void continueWriting();return;}if(card.action)void stageAction(card.action,card.prompt,files);else if(card.id==="revise-current-step"&&progress?.runnerRevision!=null&&instructions?.trim())void stageAction({kind:"revise_current_step",revision:progress.runnerRevision,instructions:instructions.trim()},`修改：${instructions.trim()}`);else void stage(card.prompt,files);}} />}
   {api.activeTask===undefined&&current?.taskId&&["running","pending"].includes(observedTask?.status??current.status)&&<button className="cp-live-stop" type="button" disabled={stopping} onClick={()=>void stopExecution()}>{stopping?"正在请求停止…":"停止当前执行"}</button>}
   {confirmation.pending&&<section className="cp-subject-confirmation" aria-label="输入确认卡片"><strong>{startupReview?"核对本次输入":contentConfirmationActionLabel(confirmation.pending.action)}</strong>{startupReview&&<span>仅核对输入，生成尚未启动。</span>}<p>{confirmation.pending.prompt}</p>{confirmation.pending.files.map((file,i)=><span key={i}>{file.name}</span>)}<div className="cp-subject-actions"><button type="button" className="cp-subject-primary" disabled={confirmation.submitting} onClick={()=>report(confirmation.confirm)}>{confirmation.submitting?"正在提交…":"确认提交"}</button><button type="button" className="cp-subject-action" disabled={confirmation.submitting} onClick={confirmation.cancel}>返回修改</button></div></section>}
  </div>;
@@ -322,9 +338,9 @@ export default function ContentSubjectWorkspace({client}:{client:ContentBusiness
    <ContentProductionFailureNotice failure={progress?.executionFailure}/>
    {current?(missing?<div className="cp-subject-empty"><p>{latest?`本主体已有已确认资料包 v${latest.version}，请引用后继续。`:"当前主体还没有已确认的资料包。请先完成资料包，再继续这篇文章。"}</p>{latest?<button type="button" className="cp-subject-primary" onClick={()=>report(()=>switchPack(latest.id))}>引用资料包 v{latest.version} 继续</button>:<button type="button" className="cp-subject-primary" onClick={()=>openPack()}>前往资料包聊天</button>}</div>:<div className="cp-subject-dialogue"><Home embedded operatorWorkspace hideComposer hideSidebar hidePortalNavigation showKnowledgeBaseStarter={false} showAccountMenu={false} showSettings={false} purpose="content_production" knowledgeEditingBlocked={Boolean(binding?.restartRequired)||Boolean(historical&&!current?.taskId)} transcriptNavigation={navigation} onReturnToLatest={()=>setInspected(null)} onComposerSubmit={stage} conversationFooter={footer}/></div>):<div className="cp-subject-empty"><p>{loaded?"请选择聊天，或在主体文件夹中新建聊天。":"正在读取主体与聊天…"}</p><button type="button" className="cp-subject-primary" onClick={()=>folder?openChat(folder.id):openFolder()} disabled={!loaded}>{folder?"新建聊天":"新建主体文件夹"}</button></div>}
   </main>
-  <aside className="cp-subject-right"><ContentCreationLane progress={progress} executing={Boolean(api.submittingIds?.has(current?.id??""))||["running","pending"].includes(current?.status??"")||["running","pending"].includes(observedTask?.status??"")} messages={(current?.messages??[]).filter(message=>!binding||(message.contentWorkflowGeneration??0)===binding.generation)} packIncludesP0={Boolean(pack?.includesP0)} conversationId={current?.id??""} kind={chatKindForDisplay} boundPack={historical||Boolean(current?.taskId&&!pack)?undefined:Boolean(pack)} inspectedStage={inspected} onOpenPack={pack?openPack:undefined} onNavigate={target=>{if(!current)return;setInspected(target.latest?null:target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:target.messageId,latest:target.latest,sequence:(previous?.sequence??0)+1}));}}/>{outputs.length>0&&<details className="cp-subject-files"><summary>交付文件（{new Set(outputs.map(contentOutputIdentity)).size}）</summary>{[...new Map(outputs.map(file=>[contentOutputIdentity(file),file])).values()].map(file=><FilePreview key={file.fileUrl} file={{id:file.fileUrl,type:"file",name:file.fileName,blobUrl:file.fileUrl}}/>)}</details>}</aside>
+  <aside className="cp-subject-right"><ContentCreationLane progress={progress} executing={Boolean(api.submittingIds?.has(current?.id??""))||["running","pending"].includes(current?.status??"")||["running","pending"].includes(observedTask?.status??"")} messages={(current?.messages??[]).filter(message=>!binding||(message.contentWorkflowGeneration??0)===binding.generation)} packIncludesP0={Boolean(pack?.includesP0)} conversationId={current?.id??""} kind={chatKindForDisplay} boundPack={historical||Boolean(current?.taskId&&!pack)?undefined:Boolean(pack)} inspectedStage={inspected} onOpenPack={pack?openPack:undefined} onNavigate={target=>{if(!current)return;setInspected(target.latest?null:target.stageIndex);setNavigation(previous=>({conversationId:current.id,messageId:target.messageId,latest:target.latest,sequence:(previous?.sequence??0)+1}));}}/><ContentDeliverables files={outputs}/></aside>
   <Dialog open={pendingDelete!==null} onOpenChange={value=>{if(!value)setPendingDelete(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{pendingDelete?.kind==="folder"?"确认删除文件夹":"确认删除聊天"}</DialogTitle><DialogDescription>{pendingDelete?.kind==="folder"?`确定删除空文件夹「${pendingDelete.name}」？`:`确定删除聊天「${pendingDelete?.name??""}」？此操作不可撤销。`}</DialogDescription><div className="cp-subject-modal-actions"><button type="button" className="cp-subject-action" onClick={()=>setPendingDelete(null)}>取消</button><button type="button" className="cp-subject-primary" disabled={saving} onClick={()=>void (pendingDelete?.kind==="folder"?confirmDeleteFolder():confirmDeleteConversation())}>确认删除</button></div></DialogContent></Dialog>
-  <Dialog open={modal!==null} onOpenChange={value=>{if(!value)setModal(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{modal==="folder"?"新建主体文件夹":"新建聊天"}</DialogTitle><DialogDescription>{modal==="folder"?"输入企业、品牌或产品名称。":"选择所属主体和聊天类型，资料包将按主体自动引用。"}</DialogDescription>{modal==="folder"?<label>主体名称<input autoFocus value={name} onChange={event=>setName(event.target.value)} maxLength={40} placeholder="例如：示例品牌"/></label>:<><label>所属文件夹<select value={formFolder} onChange={event=>setFormFolder(event.target.value)}>{subjects.folders.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><fieldset><legend>聊天类型 · 必选</legend>{(["pack","article"] as const).map(kind=><label className="cp-subject-radio" key={kind}><input type="radio" name="subject-chat-kind" checked={chatKind===kind} onChange={()=>{setChatKind(kind);setChatTitle(kind==="pack"?"资料包创建与修改":"新文章书写");}}/><span>{kind==="pack"?"资料包创建与修改":"文章书写"}<small>{kind==="pack"?"整理资料、确认定位，创建或更新本主体资料包。":"自动引用同一主体的已确认资料包，在对话中完成写作。"}</small></span></label>)}</fieldset><label>聊天名称<input value={chatTitle} onChange={event=>setChatTitle(event.target.value)} maxLength={50}/></label>{chatKind==="article"&&<p>{(()=>{const item=subjects.folders.find(value=>value.id===formFolder),version=item?latestSubjectPack(subjects,item.id):null;return version?`将自动引用 ${item?.name}资料包 · v${version.version}`:"本主体尚无资料包。创建文章后，需先完成同主体的资料包。";})()}</p>}</>}{notice&&<p role="alert">{notice}</p>}<div className="cp-subject-modal-actions"><button type="button" className="cp-subject-action" onClick={()=>setModal(null)}>取消</button><button type="button" className="cp-subject-primary" disabled={saving||(modal==="folder"?!name.trim():!formFolder||!chatKind||!chatTitle.trim())} onClick={()=>report(create)}>{saving?"正在保存…":modal==="folder"?"创建文件夹":"创建聊天"}</button></div></DialogContent></Dialog>
+  <Dialog open={modal!==null} onOpenChange={value=>{if(!value&&!creating)setModal(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{modal==="folder"?"新建主体文件夹":"新建聊天"}</DialogTitle><DialogDescription>{modal==="folder"?"输入企业、品牌或产品名称。":"选择所属主体和聊天类型，资料包将按主体自动引用。"}</DialogDescription>{modal==="folder"?<label>主体名称<input autoFocus disabled={creating} value={name} onChange={event=>setName(event.target.value)} maxLength={40} placeholder="例如：示例品牌"/></label>:<><label>所属文件夹<select disabled={creating} value={formFolder} onChange={event=>setFormFolder(event.target.value)}>{subjects.folders.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label><fieldset disabled={creating}><legend>聊天类型 · 必选</legend>{(["pack","article"] as const).map(kind=><label className="cp-subject-radio" key={kind}><input type="radio" name="subject-chat-kind" checked={chatKind===kind} onChange={()=>{setChatKind(kind);setChatTitle(kind==="pack"?"资料包创建与修改":"新文章书写");}}/><span>{kind==="pack"?"资料包创建与修改":"文章书写"}<small>{kind==="pack"?"整理资料、确认定位，创建或更新本主体资料包。":"自动引用同一主体的已确认资料包，在对话中完成写作。"}</small></span></label>)}</fieldset><label>聊天名称<input disabled={creating} value={chatTitle} onChange={event=>setChatTitle(event.target.value)} maxLength={50}/></label>{chatKind==="article"&&<p>{(()=>{const item=subjects.folders.find(value=>value.id===formFolder),version=item?latestSubjectPack(subjects,item.id):null;return version?`将自动引用 ${item?.name}资料包 · v${version.version}`:"本主体尚无资料包。创建文章后，需先完成同主体的资料包。";})()}</p>}</>}{notice&&<p role="alert">{notice}</p>}<div className="cp-subject-modal-actions"><button type="button" className="cp-subject-action" disabled={creating} onClick={()=>setModal(null)}>取消</button><button type="button" className="cp-subject-primary" disabled={saving||creating||(modal==="folder"?!name.trim():!formFolder||!chatKind||!chatTitle.trim())} onClick={()=>report(create)}>{creating?"正在创建…":saving?"正在保存…":modal==="folder"?"创建文件夹":"创建聊天"}</button></div></DialogContent></Dialog>
   <Dialog open={Boolean(previewPack)} onOpenChange={value=>{if(!value)setPreview(null);}}><DialogContent className="cp-subject-modal"><DialogTitle>{folder?.name}资料包 · v{previewPack?.version}</DialogTitle><DialogDescription>已确认的资料包版本与原始交付。</DialogDescription>{previewPack&&<><p>来源聊天：{api.state.conversations.find(item=>item.id===previewPack.sourceConversationId)?.title??previewPack.sourceConversationId}</p><p>{previewPack.includesP0?"含品牌长文 P0":"主体资料与已确认定位"}</p><FilePreview file={{id:previewPack.file.fileUrl,type:"file",name:previewPack.file.fileName,blobUrl:previewPack.file.fileUrl}}/><button type="button" className="cp-subject-action" disabled={!api.state.conversations.some(item=>item.id===previewPack.sourceConversationId)} onClick={()=>{setPreview(null);navigate(previewPack.sourceConversationId);}}>查看来源聊天</button></>}</DialogContent></Dialog>
  </section>;
 }

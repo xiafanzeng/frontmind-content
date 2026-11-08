@@ -1,0 +1,56 @@
+{
+  "additional_entities": [],
+  "additional_placements": [],
+  "candidates": [
+    {
+      "candidate_id": "p1",
+      "entity_id": "e1",
+      "display_name": "主体／对应产品或方案",
+      "offer_name": "具体产品，未知明确待核",
+      "category_id": "已选category_id",
+      "segment_id": "已选segment_id或null",
+      "relationship": "direct/adjacent/cross_category/undetermined",
+      "evidence_status": "supported/pending/conflicting",
+      "intended_use": "对应用途",
+      "fit_reason": "和自家产品的客户任务与替代关系",
+      "boundary_checks": [
+        {
+          "dimension_id": "已确认的关键产品维度",
+          "value_id": "候选对应值，未知null",
+          "status": "match/mismatch/unknown",
+          "basis": "product_source/enterprise_statement/answer_observation/not_available",
+          "evidence_role": "product_boundary/scenario_only/uncertain",
+          "source": "具体产品原件/URL或观察ID，缺失留空",
+          "quote": "可回查原句，缺失留空",
+          "reason": "为何满足、不满足或仍未定；场景相同不能代替产品边界"
+        }
+      ],
+      "discovery_observations": [
+        "q000001:p000001:0001"
+      ],
+      "sources": [
+        {
+          "source": "原件路径或URL",
+          "quote": "可回查原句，AI观察不当产品事实"
+        }
+      ],
+      "scope_evidence": [
+        {
+          "category_id": "已选大类",
+          "segment_id": null,
+          "source": "具体产品用途的独立来源",
+          "quote": "原句"
+        }
+      ],
+      "unknowns": []
+    }
+  ],
+  "not_comparable_entities": [
+    {
+      "entity_id": "e2",
+      "reason": "软件/模块/背景实体或其他不适合直接比较的原因"
+    }
+  ],
+  "conflicts": [],
+  "selection_note": "展示统计，用户决定范围；不按可见度自动选最高两家"
+}

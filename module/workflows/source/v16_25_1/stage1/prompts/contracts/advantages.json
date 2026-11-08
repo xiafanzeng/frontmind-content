@@ -1,0 +1,13 @@
+{
+  "advantages": [
+    {
+      "id": "adv1",
+      "title": "根据材料概括的差异化优势或卖点",
+      "customer_value": "对客户有什么用，为什么值得选择",
+      "reference_material": "可选：参考材料、来源或用户补充原话",
+      "suggested_wording": "建议文章怎样表达这个优势",
+      "product_scope": "可选：适用产品、服务或版本"
+    }
+  ],
+  "summary": "系统先总结，再由用户确认排序、增删或补充"
+}

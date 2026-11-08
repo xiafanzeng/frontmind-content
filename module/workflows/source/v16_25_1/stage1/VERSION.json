@@ -1,0 +1,32 @@
+{
+  "version": "16.25.1",
+  "flow": 1,
+  "entry": "scripts/workflow.py",
+  "reference_pack_files": [
+    "定位.md",
+    "核心差异化优势.md",
+    "知识库.zip"
+  ],
+  "knowledge_input": "complete_markdown_archive",
+  "p0_structure": "confirmed_advantages_in_order",
+  "next_flow": "02_FrontMind_QuestionWriting_v16_25_1",
+  "writer": "gemini-4-argon",
+  "reasoning_effort": "high",
+  "research": "kimi-k3.1-pro",
+  "research_transport": "kimi_hosted_agents_rest",
+  "session_scope": "analysis_session_and_isolated_style_session_per_workspace",
+  "writer_transport": "http",
+  "max_targeted_edits": 1,
+  "prose_skill": "frontmind-anti-defensive-writing",
+  "provider_e2e_executed": false,
+  "analysis_provider": "kimi_hosted",
+  "analysis_model": "kimi-k3.1-pro",
+  "analysis_effort": "high",
+  "writer_provider": "xty",
+  "writer_model": "gemini-4-argon",
+  "provider_transport_smoke_executed": true,
+  "business_flow_e2e_executed": false,
+  "editorial_policy": "style-only anti-defensive check; no fact verification; 0 or 1 Gemini light style edit",
+  "provider_transport_smoke_origin": "inherited unchanged from v16.25; no new live call in v16.25.1",
+  "new_live_calls_in_this_patch": 0
+}

@@ -1,0 +1,22 @@
+{
+  "rows": [
+    {
+      "media": "实际媒体组",
+      "priority": "首批候选/补充候选/暂不匹配",
+      "evidence": [
+        {
+          "article_id": "a000001",
+          "basis": "全文或仅标题证据；与当前稿的具体关系",
+          "read_level": "fulltext/title_only",
+          "scope_fit": "same/mixed/cross/undetermined",
+          "scope_basis": "与用户已选类别/用途及当前稿的具体关系"
+        }
+      ],
+      "reason": "综合具体依据；不把全站引用数当本篇表现"
+    }
+  ],
+  "exclusions": [
+    "内部排除记录，不补零引用行"
+  ],
+  "availability_note": "具体资源可购性未核实或用户可投名单映射情况"
+}

@@ -1,3 +1,11 @@
+# 应用版本入口：v16.25.1
+
+网站新任务使用 `python scripts/frontmind_v16251.py`，业务引擎位于 `v16_25_1/stage1`、`v16_25_1/stage2`。读取对应 README/START_HERE 及上级 [接入说明](../V16251_INTEGRATION.md)。两个阶段使用 Kimi Hosted high 和 XTY Gemini high，经明确定位/优势/文章模式/任务/约稿选择交付；不加载以下旧版 SDK/DeepSeek、P05 或五加五标题规则。
+
+以下 v16.8 说明及源码保留给历史冻结任务。用户当前委托和冻结的工作流版本决定实际入口，不能给历史任务换包或把新版套到旧 Job。
+
+---
+
 # FrontMind 通用 Workflow v16.8
 
 当前用户委托决定品牌、问题、体裁、范围和篇幅。历史案例及旧授权不构成当前执行要求。通用入口参见README；不要把客户案例写死到新Prompt。

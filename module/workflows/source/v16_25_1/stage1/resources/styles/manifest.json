@@ -1,0 +1,10 @@
+{
+  "P0": {
+    "original_url": "https://m.tech.china.com/hea/articles/20260521/202605211874473.html",
+    "text_sha256": "90377f8652a463c894318c9473de8ce35b008eb5c89d77704f272f62cf510a9b",
+    "acquired_at": "2026-11-05T03:43:44.041801+00:00",
+    "integrity_note": "保留原文标题、完整正文、企业简介及官网联系电话地址；删除网页来源日期、A+/A-字号控件、免责声明、责任编辑及投诉信息。正文没有改写。原文URL和采集时间留在本索引，不混入作者例文。",
+    "original_extracted_text_sha256": "5b835243d851e41000907f2fcef99d52c0e45b452b342e7815045ceaf9c1513a",
+    "cleanup_version": "16.20.2"
+  }
+}

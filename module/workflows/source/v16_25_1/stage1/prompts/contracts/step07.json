@@ -1,0 +1,17 @@
+{
+  "brief": "精简媒体约稿：题目、读者、主体、重心与有用关系。不预写章节、开头、转场、结尾",
+  "facts": [
+    {
+      "statement": "本篇自然事实素材",
+      "source": "原件或已核验来源",
+      "quote": "原句",
+      "conditions": "范围"
+    }
+  ],
+  "example_use": "两篇构思例文具体借鉴什么；完整文风例文独立提供",
+  "length_suggestion": "建议篇幅，不凑字",
+  "writing_material_markdown": "把本篇选用的本品牌资料整理成连续自然话术，不含来源台账、审阅过程或缺口清单",
+  "subject_materials_markdown": {
+    "本篇其他选定品牌": "P02该对象的自然语言材料；P01为空对象"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "brand": "企业名",
+  "knowledge": [
+    {
+      "id": "k001",
+      "statement": "原件事实",
+      "source": "inputs/materials/中的相对路径",
+      "quote": "可在原件定位的摘录",
+      "status": "documented/uncertain",
+      "conditions": "日期范围与边界"
+    }
+  ],
+  "gaps": [
+    "尚待核实事项"
+  ],
+  "overview": "知识库是事实；Reference Pack另外封装来源、版本和后续定位等任务产物"
+}

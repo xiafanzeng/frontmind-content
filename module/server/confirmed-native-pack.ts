@@ -98,6 +98,28 @@ function verifyConfirmedNativePack(input: ConfirmedNativePackInput): ContentSubj
   const parsed = parseContentRunnerState(stateArtifact.bytes);
   if (!parsed || canonical(parsed) !== canonical(observation.state)) reject("CONTENT_NATIVE_PACK_STATE_IDENTITY_MISMATCH");
   const state = object(JSON.parse(stateArtifact.bytes.toString("utf8")));
+  if(context.contentWorkflow?.runtime==="native_content_v2"){
+    const delivery=object(object(state.metadata).reference_pack_delivery), facts=object(input.pack.manifest),validation=object(input.pack.validation);
+    const current=context.subjectContext;
+    if(context.contentWorkflow.version!=="16.25.1"||state.workflow_version!=="16.25.1"
+      ||(current&&(current.folderId!==folder.id||current.generation!==binding.generation))
+      ||state.status!=="positioning_ready"||!["reference_pack","reference_pack_refresh"].includes(state.job_kind)||state.current_pause!==null||state.pending_action!==null
+      ||delivery.format!=="frontmind-confirmed-three-item-pack/16.25.1"||delivery.status!=="created"
+      ||delivery.positioning_confirmed!==true||delivery.advantages_confirmed!==true
+      ||delivery.brand_name!==facts.brand_name||![facts.brand_name,...(Array.isArray(facts.aliases)?facts.aliases:[])].includes(folder.name.trim())||facts.format!=="three_item_v16251"
+      ||delivery.portable_zip_sha256!==`sha256:${packArtifact.contentSha256}`||delivery.knowledge_sha256!==object(facts.hashes)["知识库.zip"]
+      ||validation.source!=="three_item_zip_validation"||validation.workflowSha256!==context.contentWorkflow.sha256
+      ||validation.stateArtifactSha256!==stateArtifact.contentSha256||validation.zipSha256!==packArtifact.contentSha256
+      ||input.pack.validatedZipSha256!==packArtifact.contentSha256
+      ||delivery.pack_id!==`rp_${packArtifact.contentSha256.slice(0,16)}`||delivery.pack_version!==1){
+      return reject("CONTENT_THREE_ITEM_PACK_DELIVERY_MISMATCH");
+    }
+    const id=`native-pack-${sha(Buffer.from([scope.ownerUserId,scope.projectId,folder.id,delivery.pack_id,packArtifact.contentSha256].join("|")))}`;
+    if(folder.versions.some(version=>version.id===id))return input.workspace;
+    return publishSubjectPack(input.workspace,{folderId:folder.id,sourceConversationId:conversation.id,sourceTaskId:task.id,
+      file:{fileUrl:`/api/frontmind/v2/artifacts/${packArtifact.id}/content`,fileName:packArtifact.filename,mimeType:"application/zip"},
+      includesP0:false,packFormat:"three_item_v16251",confirmed:true,id,createdAt:state.updated_at});
+  }
   const p0 = state.status === "p0_ready" && state.job_kind === "p0";
   const positioning = state.status === "positioning_ready" && ["reference_pack", "reference_pack_refresh"].includes(state.job_kind);
   if ((!p0 && !positioning) || state.stage !== "reference_pack" || state.pending_action !== null || state.current_pause !== null) {

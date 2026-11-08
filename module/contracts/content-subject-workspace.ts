@@ -17,6 +17,7 @@ export const ReferencePackVersionSchema = z.object({
   file: ReferencePackFileSchema,
   createdAt: z.string().datetime({ offset: true }),
   includesP0: z.boolean(),
+  packFormat:z.literal("three_item_v16251").optional(),
 });
 
 export const SubjectFolderSchema = z.object({
@@ -171,6 +172,7 @@ export function publishSubjectPack(state: ContentSubjectWorkspace, input: {
   sourceTaskId?: string;
   file: ReferencePackFile;
   includesP0: boolean;
+  packFormat?:"three_item_v16251";
   confirmed: true;
   id: string;
   createdAt: string;
@@ -195,6 +197,7 @@ export function publishSubjectPack(state: ContentSubjectWorkspace, input: {
     id: input.id, folderId: folder.id, version: (latestSubjectPack(next, folder.id)?.version ?? 0) + 1,
     sourceConversationId: input.sourceConversationId, sourceTaskId: input.sourceTaskId,
     file, includesP0: input.includesP0, createdAt: input.createdAt,
+    ...(input.packFormat?{packFormat:input.packFormat}:{}),
   });
   folder.versions.push(version);
   next.revision += 1;

@@ -1,3 +1,4 @@
+import {TwoStageConfirmation} from "./TwoStageConfirmation";
 import { useContentWorkspaceHost } from "./host";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
@@ -187,6 +188,7 @@ return function ContentProductionConfirmation({
     has("provide_question_research_inputs");
   const isBlueprint = has("confirm_blueprint") || has("confirm_p0_blueprint");
 
+  if(progress.workflowVersion==="16.25.1") return <TwoStageConfirmation progress={progress} busy={busy} onAction={(action,prompt,files)=>onAction(prompt,files??[],action)} onNotice={onNotice}/>;
   return (
     <section className={`cp-confirmation${cardBody ? " cp-confirmation--card-body" : ""}`} aria-label="当前内容确认">
       {!cardBody && <strong>

@@ -49,12 +49,12 @@ it("阶段接续指令只对新的应用修订启用，历史冻结任务不改�
   expect(contentProductionSystemContext({...current,contentWorkflow:{...current.contentWorkflow,version:"4.13.2-v16.8"}})).not.toContain("--next-task p0");
 });
 
-it("v16.8.7 冻结阶段接续能力，同时保留上游编辑规则和历史原生任务",()=>{
+it("v16.8.7 冻结阶段接续能力，保留编辑规则、失败停止与历史原生任务",()=>{
   const current:FrozenContentTaskContext={...context,contentWorkflow:{...context.contentWorkflow!,
-    version:release.version,runtime:"native_content_v1",capabilities:["structured_article","editorial_v16_8","session_phases"]}};
+    version:"4.13.2-v16.8.7",runtime:"native_content_v1",capabilities:["structured_article","editorial_v16_8","session_phases"]}};
   const system=contentProductionSystemContext(current);
   expect(contentProductionPublicDto(current)?.sessionPhases).toBe(true);
-  expect(release.version).toBe("4.13.2-v16.8.7");
+  expect(workflowCatalog.isNativeContentWorkflowVersion("4.13.2-v16.8.7")).toBe(true);
   expect(workflowCatalog.isNativeContentWorkflowVersion("4.13.2-v16.8.6")).toBe(true);
   expect(contentWorkflowRuntimeFor(current)).toBe("native_content_v1");
   expect(system).toContain("--next-task p0");

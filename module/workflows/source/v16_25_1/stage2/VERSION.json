@@ -1,0 +1,21 @@
+{
+  "version": "16.25.1",
+  "package": "02_FrontMind_QuestionWriting",
+  "entry": "scripts/workflow.py",
+  "input": "confirmed three-item Reference Pack",
+  "output": "one user-selected article + ten titles + source tables + 20 distinct recommended outlets in four visible columns + complete candidate and excluded-source lists + actual prompts and returns",
+  "writer_model": "gemini-4-argon",
+  "reasoning_effort": "high",
+  "provider_e2e_executed": false,
+  "analysis_provider": "kimi_hosted",
+  "analysis_model": "kimi-k3.1-pro",
+  "analysis_effort": "high",
+  "writer_provider": "xty",
+  "editorial_policy": "style only: no fact verification; current draft and short anti-defensive rules; zero or one Gemini polish",
+  "writer_transport": "http",
+  "provider_transport_smoke_executed": true,
+  "business_flow_e2e_executed": false,
+  "session_scope": "analysis_session_and_isolated_style_session_per_workspace",
+  "provider_transport_smoke_origin": "inherited unchanged from v16.25; no new live call in v16.25.1",
+  "new_live_calls_in_this_patch": 0
+}

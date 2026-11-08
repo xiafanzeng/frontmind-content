@@ -33,8 +33,8 @@ export type ContentWorkflowBinding = {
   sha256: string;
   rootDirectory: string;
   /** Frozen when the task starts, so future releases cannot change its execution route. */
-  runtime?: "native_content_v1";
-  capabilities?: ("structured_article" | "editorial_v16_8" | "session_phases")[];
+  runtime?: "native_content_v1" | "native_content_v2";
+  capabilities?: ("structured_article" | "editorial_v16_8" | "session_phases" | "two_stage_v16251")[];
 };
 
 export type SystemAttachment = {
