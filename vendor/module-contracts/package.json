@@ -59,6 +59,10 @@
     "./public-text": {
       "types": "./src/public-text.ts",
       "import": "./dist/public-text.js"
+    },
+    "./enterprise-qa-experience": {
+      "types": "./src/enterprise-qa-experience.ts",
+      "import": "./dist/enterprise-qa-experience.js"
     }
   },
   "scripts": {

@@ -424,11 +424,3 @@
   small {
   font-size: 12px;
 }
-
-.operator-account-tools {
-  padding: 0 12px 12px;
-}
-.operator-account-tools .operator-nav-entry {
-  width: 100%;
-  --module-accent: #7545a0;
-}

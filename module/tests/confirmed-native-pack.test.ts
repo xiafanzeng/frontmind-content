@@ -61,6 +61,27 @@ function replaceRawState(input: ConfirmedNativePackInput, edit: (state: any) => 
   const parsed = parseContentRunnerState(bytes); if (parsed) input.observation.state = parsed;
 }
 
+it("v16.25.1 登记独立三项包，不伪造 P0 或旧版 4.1 validator 证明",()=>{
+  const input=fixture();
+  input.task.context!.contentWorkflow={version:"16.25.1",runtime:"native_content_v2",filename:"new.zip",rootDirectory:"Workflow",sha256:"e".repeat(64),capabilities:["two_stage_v16251"]};
+  replaceRawState(input,state=>{
+    state.schema_version=state.workflow_version="16.25.1";
+    state.metadata.completed_phase_confirmations=["awaiting_positioning_selection","awaiting_advantages_confirmation"];
+    state.metadata.reference_pack_delivery={status:"created",format:"frontmind-confirmed-three-item-pack/16.25.1",brand_name:"合成样例主体",
+      portable_zip_sha256:`sha256:${input.packArtifact.contentSha256}`,knowledge_sha256:"f".repeat(64),
+      pack_id:`rp_${input.packArtifact.contentSha256.slice(0,16)}`,pack_version:1,positioning_confirmed:true,advantages_confirmed:true};
+  });
+  input.pack={validatedZipSha256:input.packArtifact.contentSha256,manifest:{format:"three_item_v16251",brand_name:"合成样例主体",aliases:[],hashes:{"知识库.zip":"f".repeat(64)}},
+    positioningConfirmation:{source:"confirmed_three_item_pack"},validation:{source:"three_item_zip_validation",workflowSha256:"e".repeat(64),stateArtifactSha256:input.stateArtifact.contentSha256,zipSha256:input.packArtifact.contentSha256}};
+  const saved=projectConfirmedNativePack(input);
+  expect(saved.folders[0].versions[0]).toMatchObject({packFormat:"three_item_v16251",includesP0:false,sourceTaskId:"task"});
+  (input.pack.validation as any).workflowSha256="d".repeat(64);
+  expect(projectConfirmedNativePack(input)).toBe(input.workspace);
+  (input.pack.validation as any).workflowSha256="e".repeat(64);
+  (input.pack.manifest as any).hashes["知识库.zip"]="0".repeat(64);
+  expect(projectConfirmedNativePack(input)).toBe(input.workspace);
+});
+
 describe("确认资料包的服务器纯证据投影", () => {
   it("定位确认及真实交付证据齐全才登记，保留来源和受鉴权下载路径", () => {
     const input = fixture(), original = structuredClone(input.workspace);

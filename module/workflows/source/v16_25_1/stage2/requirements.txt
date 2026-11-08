@@ -1,0 +1,6 @@
+# Python 3.10+; Hosted Agents and XTY use standard-library HTTP.
+openpyxl>=3.1,<4
+xlrd>=2,<3
+python-docx>=1.1,<2
+lxml>=5,<7
+pypdf>=5,<7

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const contentProductionModeSchema = z.enum([
   "new_reference_pack",
+  "import_reference_pack",
   "refresh_reference_pack",
   "p0",
   // Existing conversation metadata remains readable; new tasks use the P0 route.
@@ -12,6 +13,7 @@ export const contentProductionModeSchema = z.enum([
 export const contentProductionInputSchema = z
   .object({
     mode: contentProductionModeSchema,
+    workflowVersion:z.literal("16.25.1").optional(),
     enterpriseName: z.string().trim().min(1).max(200),
     knowledgeSource: z.enum(["published", "files"]),
     // 仅表示浏览器期望的主体版本；文件身份和归属由宿主在事务内重新核对。
@@ -64,6 +66,14 @@ export const contentProductionInputSchema = z
   });
 
 export const CONTENT_PRODUCTION_CONFIRMATIONS = [
+  "awaiting_positioning_selection",
+  "awaiting_advantages_confirmation",
+  "awaiting_question_answers",
+  "awaiting_question_sources",
+  "awaiting_writing_selection",
+  "awaiting_article_task_confirmation",
+  "awaiting_writing_brief_confirmation",
+  "awaiting_reference_fulltext",
   "awaiting_reference_pack_route",
   "awaiting_reference_pack_input",
   "awaiting_question_selection",
@@ -87,6 +97,15 @@ const revision = z.number().int().min(0);
 const text = z.string().trim().min(1).max(20_000);
 export const contentProductionActionSchema = z
   .discriminatedUnion("kind", [
+    z.object({kind:z.literal("choose_positioning"),revision,categoryId:text,note:text.optional()}).strict(),
+    z.object({kind:z.literal("revise_advantages"),revision,instructions:text}).strict(),
+    z.object({kind:z.literal("confirm_advantages"),revision,advantageIds:z.array(z.string().trim().min(1).max(128)).max(100),none:z.boolean().optional(),note:text.optional()}).strict(),
+    z.object({kind:z.literal("set_question_answers"),revision,noAnswers:z.boolean(),answerDate:z.string().max(100).optional(),note:text.optional()}).strict(),
+    z.object({kind:z.literal("provide_question_sources"),revision,sourceDate:z.string().max(100).optional()}).strict(),
+    z.object({kind:z.literal("choose_writing"),revision,category:z.enum(["行业排名","美誉舆情","产品场景"]),pattern:z.enum(["P01","P02","P03","P04","P06"]),subjects:z.array(z.string().trim().min(1).max(200)).max(30).default([]),requiredMedia:z.array(z.string().trim().min(1).max(200)).max(20).default([]),note:text}).strict(),
+    z.object({kind:z.literal("confirm_article_task"),revision,note:text.optional()}).strict(),
+    z.object({kind:z.literal("confirm_writing_brief"),revision,note:text.optional()}).strict(),
+    z.object({kind:z.literal("provide_reference_fulltext"),revision,rank:z.number().int().min(1).max(500)}).strict(),
     z.object({ kind: z.literal("resume_current_execution"), revision }).strict(),
     z
       .object({
@@ -220,6 +239,8 @@ export type ContentProductionKnowledgeSource = {
   sourceFileName: string;
   documentCount: number;
   contentHash: string;
+  /** Customer-visible identity frozen with newly created knowledge-backed tasks. */
+  companyName?: string;
 };
 export type ContentProductionDto = {
   mode: ContentProductionMode;
@@ -256,6 +277,14 @@ export const CONTENT_PRODUCTION_CONFIRMATION_ACTIONS: Record<
   ContentProductionConfirmation,
   ContentProductionAction["kind"][]
 > = {
+  awaiting_positioning_selection:["choose_positioning"],
+  awaiting_advantages_confirmation:["confirm_advantages","revise_advantages"],
+  awaiting_question_answers:["set_question_answers"],
+  awaiting_question_sources:["provide_question_sources"],
+  awaiting_writing_selection:["choose_writing"],
+  awaiting_article_task_confirmation:["confirm_article_task"],
+  awaiting_writing_brief_confirmation:["confirm_writing_brief"],
+  awaiting_reference_fulltext:["provide_reference_fulltext"],
   awaiting_reference_pack_route: [
     "choose_reference_pack_route",
     "revise_current_step",
@@ -306,6 +335,14 @@ export const CONTENT_PRODUCTION_CONFIRMATION_ACTIONS: Record<
 };
 
 const STATUS_POSITIONS: Record<string, number> = {
+  awaiting_positioning_selection:5,
+  awaiting_advantages_confirmation:6,
+  awaiting_question_answers:13,
+  awaiting_question_sources:13,
+  awaiting_writing_selection:15,
+  awaiting_article_task_confirmation:15,
+  awaiting_writing_brief_confirmation:18,
+  awaiting_reference_fulltext:16,
   awaiting_reference_pack_route: 1,
   awaiting_reference_pack_input: 1,
   running_reference_material_intake: 2,

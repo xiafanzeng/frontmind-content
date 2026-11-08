@@ -1210,3 +1210,62 @@
   scrollbar-width: thin;
   scrollbar-gutter: stable both-edges;
 }
+
+/* Knowledge review needs a full-height reader on phones. Keep both panes
+   mounted so switching the directory never discards edits or scroll state. */
+.knowledge-mobile-pane-switch {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 8px var(--workbench-gutter);
+  border-bottom: 1px solid #e7ebef;
+}
+.knowledge-mobile-pane-switch button {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f6f7f9;
+  color: #475467;
+  font-size: 14px;
+}
+.knowledge-mobile-pane-switch button[aria-pressed="true"] {
+  border-color: var(--module-accent, #7545a0);
+  color: var(--module-accent, #7545a0);
+  background: color-mix(in srgb, var(--module-accent, #7545a0) 8%, white);
+  font-weight: 600;
+}
+.knowledge-mobile-pane-switch button:focus-visible {
+  outline: 2px solid var(--module-accent, #7545a0);
+  outline-offset: 2px;
+}
+.agent-workbench-shell.layout-knowledge.is-stacked
+  .agent-workbench-shell__layout.has-outcomes {
+  grid-template-rows: minmax(0, 1fr);
+  row-gap: 0;
+}
+.agent-workbench-shell.layout-knowledge.is-stacked
+  .agent-workbench-shell__layout.has-outcomes
+  > :is(.agent-workbench-shell__main, .agent-workbench-shell__auxiliary) {
+  grid-row: 1;
+}
+.agent-workbench-shell.layout-knowledge.is-stacked
+  .agent-workbench-shell__layout.has-outcomes
+  > .agent-workbench-shell__auxiliary:not([hidden]) {
+  display: flex;
+  margin-top: 0;
+  height: 100%;
+  max-height: none;
+}
+.agent-workbench-shell.layout-knowledge.is-stacked
+  :is(.agent-workbench-shell__main, .agent-workbench-shell__auxiliary)[hidden] {
+  display: none;
+}
+.agent-workbench-shell.layout-knowledge.is-stacked .knowledge-composer {
+  /* Long confirmation help must not consume the native reader. Its controls
+     remain reachable in their own bounded scroller, including with a keyboard. */
+  max-height: 45%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block: 8px;
+}

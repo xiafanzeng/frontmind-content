@@ -1,0 +1,122 @@
+{
+  "product_boundary_review": {
+    "schema": "frontmind-product-boundaries/16.18",
+    "dimensions": [
+      {
+        "id": "d1",
+        "label": "改变替代关系的产品差异",
+        "kind": "product_nature/scenario/attribute",
+        "decisive": true,
+        "reason": "为什么改变或不改变产品替代关系",
+        "values": [
+          {
+            "id": "v1",
+            "label": "产品类型",
+            "definition": "纳入与排除边界"
+          }
+        ],
+        "answer_evidence": [
+          {
+            "observation_id": "实际ID",
+            "quote": "原句"
+          }
+        ]
+      }
+    ],
+    "no_decisive_product_boundary_reason": "仅在答案确不支持产品本质分界时说明，不得用场景替代已出现的产品分界",
+    "regulatory_status": {
+      "status": "documented/enterprise_stated/unverified/conflicting/not_applicable",
+      "statement": "自家具体产品法定属性的证据状态，与本轮商业/写作用途选择分开",
+      "sources": [
+        {
+          "source": "原件或URL",
+          "quote": "原句"
+        }
+      ]
+    }
+  },
+  "primary_split_axis": {
+    "id": "purpose",
+    "dimension_id": "关键产品维度ID",
+    "label": "产品本质与用途边界",
+    "reason": "从答案和本产品看，为什么这条分界影响实际选择"
+  },
+  "categories": [
+    {
+      "id": "c1",
+      "label": "答案支持的产品大类",
+      "scope": "纳入与排除的用途边界",
+      "axis_id": "purpose",
+      "boundary_values": {
+        "关键产品维度ID": "取值ID"
+      },
+      "scenario_tags": [
+        "同类产品可跨机构/家庭场景，不据场景判产品属性"
+      ],
+      "answer_evidence": [
+        {
+          "observation_id": "q000001:p000001:0001",
+          "quote": "答案原句"
+        }
+      ],
+      "brand_fit": {
+        "assessment": "recommended/possible/unlikely",
+        "reason": "本企业具体产品为什么适配",
+        "fact_ids": [
+          "k001"
+        ]
+      },
+      "segments": [
+        {
+          "id": "s1",
+          "label": "必要的细分",
+          "scope": "实际影响替代关系的细分",
+          "axis_id": "product_detail",
+          "boundary_values": {}
+        }
+      ]
+    }
+  ],
+  "entities": [
+    {
+      "id": "e1",
+      "name": "实际品牌或产品名",
+      "aliases": [
+        "确有对应关系的名称"
+      ],
+      "company": "主体，未知留空",
+      "entity_level": "brand/product/solution",
+      "is_own_brand": false
+    }
+  ],
+  "answer_analyses": [
+    {
+      "observation_id": "q000001:p000001:0001",
+      "category_contexts": [
+        {
+          "category_id": "c1",
+          "segment_id": "s1或null",
+          "quote": "支持此答案涉及该类的原句"
+        }
+      ],
+      "placements": [
+        {
+          "entity_id": "e1",
+          "category_id": "c1或null",
+          "segment_id": "s1或null",
+          "mention_kind": "recommended/neutral/excluded/background/unclassified",
+          "quote": "包含实体名称且支持局部分类的连续原文"
+        }
+      ],
+      "conflicts": [],
+      "note": "此份答案怎样分类；没有明确分类时如实说明"
+    }
+  ],
+  "attributes": {
+    "form_factor": [],
+    "commercial_options": [],
+    "geography_versions": [],
+    "supporting_claims": []
+  },
+  "unresolved": []
+}

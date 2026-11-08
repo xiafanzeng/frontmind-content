@@ -12,7 +12,7 @@ export type ZhipuThinkingCapture = {
 
 
 export type DashboardProviderIdentity = {
-  provider: "manus" | "zhipu";
+  provider: "manus" | "zhipu" | "kimi";
   accountUserId: number;
   credentialId: string;
   credentialVersion: number;
@@ -34,6 +34,8 @@ export type DashboardManagedMutation = {
 export type DashboardManagedFile = {
   id: string;
   filename: string;
+  /** Actual upstream upload name, separate from the customer evidence name. */
+  providerFilename?: string;
   bytes: number;
   sha256: string;
   contentType: string;
@@ -61,6 +63,7 @@ export type DashboardManagedCommand = {
 };
 
 export type DashboardManagedRuntime = {
+  editorContext?: {purpose:"node_edit"|"node_prose"|"progress_translation";parentTurnId?:string;nodeId?:string;policyHash?:string};
   revision: 1;
   generalIdentitySystem?: string;
   model: string;
@@ -68,6 +71,8 @@ export type DashboardManagedRuntime = {
   intentId: string;
   agentId?: string;
   environmentId?: string;
+  /** Shared definitions outlive every task and must never be archived by it. */
+  sharedDefinitions?: true;
   sessionId?: string;
   title?: string;
   deleted?: boolean;
@@ -77,6 +82,8 @@ export type DashboardManagedRuntime = {
   usage?: Record<string, unknown>;
   /** Actual provider thinking transcripts, isolated to the owning command/session. */
   thinkingCaptures?: ZhipuThinkingCapture[];
+  /** Explicit public process copy and its separately billed Chinese translation. */
+  publicProgress?: Record<string, {event:Record<string,unknown>;sourceHash:string;state:"pending"|"complete"|"failed";translated?:string;sessionId?:string}>;
   observedEventIds?: string[];
   eventCursor?: string;
   /** One internal formatting correction remains within its original billable user command. */

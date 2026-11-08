@@ -16,6 +16,7 @@ type ActivityItem = ExecutionDisplayEntry;
 
 function isLive(item: ActivityItem) {
   if (item.animate === false || item.isCurrent === false) return false;
+  if (item.kind === "status" && item.publicSummaryOrigin === "provider_native" && item.thinkingComplete) return false;
   if (item.kind === "tool")
     return item.status === "running" && item.finishedAt === undefined;
   return ["thinking", "running", "rescheduling", "retrying"].includes(
@@ -113,9 +114,10 @@ function ThinkingBlock({
       </span>
     </>
   );
-  if (display === "inline") {
+  if (display === "inline" || item.publicSummaryOrigin === "provider_native") {
     return (
       <div className="general-execution__thinking" aria-label="公开过程摘要" aria-live={live ? "polite" : undefined}>
+        {item.publicSummaryTitle && <strong className="general-execution__thinking-title">{item.publicSummaryTitle}</strong>}
         <MarkdownRenderer
           content={text}
           className="general-execution__thinking-text"
@@ -143,7 +145,7 @@ function ThinkingBlock({
       </button>
       {expanded && (
         <div id={detailsId} className="general-execution__details">
-          <p className="general-execution__thinking-text">{text}</p>
+          <MarkdownRenderer content={text} className="general-execution__thinking-text" allowCopy={false} generalChatLinks />
         </div>
       )}
     </section>
@@ -173,11 +175,15 @@ function TurnActivity({
   expandedGroups,
   onToggleGroup,
   thinkingDisplay,
+  hideSuccessfulResults,
+  hideToolDetails,
 }: {
   items: ActivityItem[];
   expandedGroups?: ReadonlySet<string>;
   onToggleGroup?: (id: string) => void;
   thinkingDisplay?: "disclosure" | "inline";
+  hideSuccessfulResults?: boolean;
+  hideToolDetails?: boolean;
 }) {
   const calls = [
     ...new Map(
@@ -197,9 +203,36 @@ function TurnActivity({
     calls[0]?.id ??
     start?.id ??
     (active && !thinkingText(active) ? active.id : undefined);
+  const nativeMessages = items.filter(item => item.kind === "status" && item.publicSummaryOrigin === "provider_native" && thinkingText(item));
+  const earlierNative = nativeMessages.slice(0, -3);
+  const earlierIds = new Set(earlierNative.map(item => item.id));
+  const nativeCalls = calls.filter(item => item.id.includes(":wma:"));
+  const nativeEntries = items.filter(item => item.id.includes(":wma:") ||
+    (item.kind === "status" && item.publicSummaryOrigin === "provider_native"));
+  const latestNativeAt = Math.max(0, ...nativeEntries.map(item =>
+    Math.max(item.timestamp, item.kind === "tool" ? item.finishedAt ?? 0 : 0)));
+  const hasNativeProgress = nativeEntries.length > 0;
+  // Animation is disabled on restored knowledge messages. It must not decide
+  // whether the authoritative business phase is still running.
+  const nativeRunning = hasNativeProgress && lastLifecycle?.isCurrent !== false &&
+    ["running", "rescheduling", "retrying"].includes(lastLifecycle?.status ?? "");
+  const timeLabel = (timestamp: number) => new Date(timestamp).toLocaleTimeString("zh-CN", { hour12: false });
   return (
     <>
+      {hasNativeProgress && <div className="general-execution__native-heading">
+        <strong>WMA 执行进展</strong>
+        {latestNativeAt > 0 && <span>最近记录 {timeLabel(latestNativeAt)}</span>}
+      </div>}
+      {nativeRunning && nativeMessages.length === 0 && <ActivityLine>
+        任务仍在执行，正在等待新的公开进展。
+      </ActivityLine>}
       {items.map((item) => {
+        if (earlierIds.has(item.id)) return item.id === earlierNative[0]?.id ? (
+          <details key="earlier-native" className="general-execution__native-history">
+            <summary>查看较早进展（{earlierNative.length} 条）</summary>
+            {earlierNative.map(entry => <ThinkingBlock key={entry.id} item={entry} display="inline" />)}
+          </details>
+        ) : null;
         const summary =
           !item.phase &&
           !(item.kind === "status" && item.publicSummary) &&
@@ -246,11 +279,11 @@ function TurnActivity({
             />
           );
         } else if (item.kind === "tool") {
-          if (
-            item.resultOnly ||
+          if (!hideToolDetails && (
+            (item.resultOnly && !(hideSuccessfulResults && ["completed", "returned"].includes(item.status))) ||
             ["failed", "unconfirmed"].includes(item.status) ||
             (item.status === "waiting" && item.isCurrent !== false)
-          )
+          ))
             detail = <ActivityLine>{activityTitle(item)}</ActivityLine>;
         } else if (
           item.status === "error" ||
@@ -276,6 +309,12 @@ function TurnActivity({
           </div>
         ) : null;
       })}
+      {nativeCalls.length > 0 && <details className="general-execution__native-history">
+        <summary>公开操作记录（{nativeCalls.length} 项）</summary>
+        <ol className="general-execution__native-operations">
+          {nativeCalls.map(item => <li key={item.id}><time dateTime={new Date(item.timestamp).toISOString()}>{timeLabel(item.timestamp)}</time><span>{safeToolLabel(item)}</span></li>)}
+        </ol>
+      </details>}
     </>
   );
 }
@@ -286,12 +325,16 @@ export function GeneralExecutionActivity({
   onToggleGroup,
   placement = "before",
   thinkingDisplay = "disclosure",
+  hideSuccessfulResults = false,
+  hideToolDetails = false,
 }: {
   items?: ActivityItem[];
   expandedGroups?: ReadonlySet<string>;
   onToggleGroup?: (id: string) => void;
   placement?: "before" | "after";
   thinkingDisplay?: "disclosure" | "inline";
+  hideSuccessfulResults?: boolean;
+  hideToolDetails?: boolean;
 }) {
   if (
     !items?.some(
@@ -325,6 +368,8 @@ export function GeneralExecutionActivity({
           expandedGroups={expandedGroups}
           onToggleGroup={onToggleGroup}
           thinkingDisplay={thinkingDisplay}
+          hideSuccessfulResults={hideSuccessfulResults}
+          hideToolDetails={hideToolDetails}
         />
       ))}
     </div>

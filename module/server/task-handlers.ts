@@ -21,6 +21,9 @@ export async function freezeContentTaskContext(input:{
  const files=input.localAssetIds.length?await input.loadOwnedFiles(input.localAssetIds):[];
  if(files.length!==new Set(input.localAssetIds).size)throw new ContentTaskError("LOCAL_ASSET_NOT_FOUND",404);
  const workflow=(input.workflow??freezeContentWorkflow)();
+ if(input.input.workflowVersion&&workflow.version!==input.input.workflowVersion)throw new ContentTaskError("CONTENT_WORKFLOW_VERSION_CONFLICT",409);
+ if(workflow.runtime==="native_content_v2"&&input.input.mode==="new_reference_pack"&&(files.length!==1||!files[0].filename.toLowerCase().endsWith(".zip")))throw new ContentTaskError("MARKDOWN_KNOWLEDGE_ZIP_REQUIRED",400);
+ if(input.input.mode==="import_reference_pack"&&(workflow.runtime!=="native_content_v2"||files.length!==1||!files[0].filename.toLowerCase().endsWith(".zip")))throw new ContentTaskError("THREE_ITEM_REFERENCE_PACK_REQUIRED",400);
  if(input.input.genre==="industry_roundup"&&!hasContentWorkflowCapability(workflow,"structured_article"))throw new ContentTaskError("INDUSTRY_ROUNDUP_REQUIRES_V16_3",409);
  return {revision:1,accountUserId:input.userId,enterpriseProjectId:input.enterpriseProjectId,purpose:"content_production",knowledgeBase:knowledge?.knowledgeBase??null,knowledgeText:knowledge?.knowledgeText??null,contentProduction:input.input,contentWorkflow:workflow,inputFiles:files};
 }

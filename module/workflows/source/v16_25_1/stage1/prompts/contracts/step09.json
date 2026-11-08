@@ -1,0 +1,22 @@
+{
+  "ordered_ranks": [
+    1,
+    2
+  ],
+  "core_title_ranks": [
+    1,
+    2
+  ],
+  "relations": [
+    {
+      "rank": 1,
+      "relation": "same_form/nearby/other",
+      "reason": "与本篇的题式关系",
+      "scope_fit": "same/mixed/cross/undetermined"
+    }
+  ],
+  "core_reasons": [
+    "两条核心参考分别为什么最接近本篇"
+  ],
+  "distillation": "可采用的语序、问法和范围；不复制事实"
+}

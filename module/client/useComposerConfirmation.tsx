@@ -5,6 +5,15 @@ import {parseContentConfirmationInput,contentConfirmationInputHint} from "./cont
 type Pending={key:string;prompt:string;files:File[];action:ContentProductionAction;resolve:(accepted:boolean)=>void;submitting:boolean};
 export function contentConfirmationActionLabel(action:ContentProductionAction):string{
   switch(action.kind){
+    case "choose_positioning":return `选择定位：${action.categoryId}`;
+    case "revise_advantages":return "按具体要求修改优势草案";
+    case "confirm_advantages":return action.none?"本次暂无单独优势":`确认优势顺序：${action.advantageIds.join("、")}`;
+    case "set_question_answers":return action.noAnswers?"明确本次暂无回答":"关联本题完整回答";
+    case "provide_question_sources":return "关联本题逐条信源";
+    case "choose_writing":return `选择${action.category}，${action.pattern}；主体：${action.subjects.join("、")}`;
+    case "confirm_article_task":return "确认本篇写作任务";
+    case "confirm_writing_brief":return "确认本篇简要约稿";
+    case "provide_reference_fulltext":return `补充第${action.rank}篇完整参考原文`;
     case "choose_p0_route":return action.route==="create"?"新建品牌长文":"导入已有品牌长文";
     case "choose_reference_pack_route":return action.route==="create"?"创建品牌资料包":"采用已有品牌资料包";
     case "choose_question":return `选择问题：${action.selection}`;

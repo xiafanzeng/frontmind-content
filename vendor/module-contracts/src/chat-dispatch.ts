@@ -21,11 +21,20 @@ export const generalChatDispatchSchema = z
     localTaskId: z.string().uuid().nullable(),
     modelProfile: generalAgentModelProfileSchema.nullable(),
     purpose: z.enum(["enterprise_qa", "content_production"]).optional(),
+    /** Explicit per-turn opt-in. Never infer this from a conversation's purpose. */
+    evaluationIntent: z.literal("enterprise_rag_once").optional(),
     contentProduction: contentProductionInputSchema.optional(),
     contentProductionAction: contentProductionActionSchema.optional(),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.evaluationIntent && value.localTaskId === null && value.purpose !== "enterprise_qa") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["evaluationIntent"],
+        message: "automatic evaluation requires an enterprise QA turn",
+      });
+    }
     if (
       value.localTaskId !== null &&
       (value.purpose || value.contentProduction)

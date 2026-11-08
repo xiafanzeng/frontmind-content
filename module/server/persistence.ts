@@ -24,6 +24,7 @@ export async function persistObservations(
     let progress = previous ?? null;
     for (const observation of [...input.observations].sort((left, right) =>
       left.providerRank - right.providerRank || compareContentRunnerObservations(left, right))) {
+      if((observation.state.workflow_version==="16.25.1")!==(context.contentWorkflow?.version==="16.25.1"))continue;
       progress = reduceContentProductionProgress(progress, observation, context.contentProduction.mode);
     }
     if (progress === previous) return;

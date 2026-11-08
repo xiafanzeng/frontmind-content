@@ -7,6 +7,28 @@
   line-height: 1.6;
 }
 
+.general-execution__native-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.general-execution__native-heading span { color: var(--muted-foreground); }
+.general-execution__native-history {
+  margin-block: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--border);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.general-execution__native-history > summary { cursor: pointer; }
+.general-execution__native-operations { list-style: none; padding: 0; }
+.general-execution__native-operations li { display: flex; gap: 1rem; padding-block: 0.25rem; }
+.general-execution__native-operations time { font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+
 .workbench-reading-column > .general-chat-user-turn {
   margin-block-end: 0;
 }

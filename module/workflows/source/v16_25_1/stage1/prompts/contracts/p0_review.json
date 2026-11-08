@@ -1,0 +1,8 @@
+{
+  "article_sha256": "当前稿sha256",
+  "prose_review": {
+    "pass": true,
+    "issues": []
+  },
+  "notes": "仅文风。若有具体文字问题，issues中写quote、problem、direction；不核验事实、不核对来源、不重审已确认优势。"
+}

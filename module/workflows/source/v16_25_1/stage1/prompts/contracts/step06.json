@@ -1,0 +1,24 @@
+{
+  "distillations": [
+    {
+      "rank": 1,
+      "availability": "fulltext/title_only",
+      "form": "同类写法",
+      "angle": "角度",
+      "structure": "实际结构",
+      "quote": "全文可定位的例句，只有标题则留空",
+      "use": "可借鉴处",
+      "limits": "局限",
+      "scope_fit": "same/mixed/cross/undetermined",
+      "scope_use": "与已选类别的具体关系；混合稿如何只借鉴适配部分"
+    }
+  ],
+  "selected_ranks": [
+    1,
+    2
+  ],
+  "reasons": [
+    "分别说明当前题类、体裁与用途适配"
+  ],
+  "selection_policy": "自动选择；频次只用于确定候选池"
+}

@@ -3,6 +3,18 @@
 export type GeneralThinkingText = {
   /** Explicit provider-designated public summary; private thinkingText is not UI copy. */
   publicSummary?: string;
+  /** Native public response text, never private reasoning or a second model call. */
+  publicSummaryOrigin?: "provider_native";
+  publicSummaryProvider?: "tencent_wma" | "kimi";
+  publicSummaryTitle?: string;
+  /** Public analysis and short operation descriptions are distinct UI records. */
+  publicSummaryKind?: "analysis" | "operation";
+  publicSummaryTranslation?: "pending" | "complete" | "failed";
+  publicSummaryPhase?: "reading_knowledge_sources" | "researching" | "writing_knowledge_nodes" | "validating_knowledge_output";
+  publicSummarySourceHash?: string;
+  publicSummaryModel?: "gpt-6.1-sol" | "gpt-5.6-sol";
+  publicSummaryEffort?: "low";
+  publicSummaryFallback?: boolean;
   thinkingText?: string;
   thinkingSource?: "event" | "stream";
   thinkingComplete?: boolean;
@@ -60,6 +72,22 @@ export type GeneralExecutionEntry = {
     } & GeneralThinkingText)
 );
 
+/** Business-owned settlement; tool/model events cannot mark a turn complete. */
+export interface ExecutionTurnState {
+  buildId: string;
+  state: "running" | "waiting" | "completed" | "failed" | "cancelled" | "unknown";
+  phase: BusinessExecutionPhase;
+  label: string;
+  startedAt: number;
+  completedAt?: number;
+  observedAt: number;
+  generation: number;
+  stateEpoch: number;
+  processedNodes?: number;
+  totalNodes?: number;
+  proseRetryable?: boolean;
+}
+
 export interface GeneralExecutionDto {
   schemaVersion: 1;
   taskId: string;
@@ -68,9 +96,25 @@ export interface GeneralExecutionDto {
   phase?: string;
   coverage: "complete" | "partial" | "pending" | "unavailable";
   timeline: GeneralExecutionEntry[];
+  /** Present for knowledge runs; absence never proves completion. */
+  turnStates?: Record<string, ExecutionTurnState>;
+  /** Knowledge-only, bounded public activity window. Older text is read on demand. */
+  turnHistory?: Record<string, {totalEntries:number;hasMore:boolean;oldestEntryId?:string;pendingPublicRecords?:number}>;
 }
 
 const builtinLabels: Record<string, string> = {
+  shell: "运行分析脚本",
+  save_artifact: "交付知识库文件",
+  update_plan: "规划研究步骤",
+  image_search: "检索图片",
+  read_file: "读取文件",
+  write_file: "写入文件",
+  edit_file: "编辑文件",
+  web_open_url: "读取网页",
+  search_image_by_text: "检索图片",
+  ipython: "运行代码",
+  todo_write: "规划研究步骤",
+  todo_read: "查看研究计划",
   bash: "执行命令",
   read: "读取文件",
   write: "写入文件",
@@ -105,7 +149,30 @@ export function generalThinkingText(
     typeof value.publicSummary === "string" && value.publicSummary.trim()
       ? value.publicSummary.trim().slice(0, 8000)
       : undefined;
-  return publicSummary ? { publicSummary } : {};
+  if (!publicSummary) return {};
+  const generated = typeof value.publicSummarySourceHash === "string" &&
+    /^[a-f0-9]{64}$/.test(value.publicSummarySourceHash) &&
+    typeof value.publicSummaryTitle === "string" &&
+    value.publicSummaryTitle.length <= 40 && /[\u4e00-\u9fff]/.test(value.publicSummaryTitle) &&
+    ["gpt-6.1-sol", "gpt-5.6-sol"].includes(value.publicSummaryModel ?? "") &&
+    value.publicSummaryEffort === "low";
+  const native = value.publicSummaryOrigin === "provider_native" && (value.publicSummaryProvider === "tencent_wma" || value.publicSummaryProvider === "kimi");
+  return { publicSummary, ...(native ? {
+    publicSummaryOrigin: "provider_native" as const,
+    publicSummaryProvider: value.publicSummaryProvider,
+    ...(typeof value.publicSummarySourceHash === "string" && /^[a-f0-9]{64}$/.test(value.publicSummarySourceHash) ? { publicSummarySourceHash: value.publicSummarySourceHash } : {}),
+    ...(["analysis", "operation"].includes(value.publicSummaryKind ?? "") ? { publicSummaryKind: value.publicSummaryKind } : {}),
+    ...(["pending", "complete", "failed"].includes(value.publicSummaryTranslation ?? "") ? { publicSummaryTranslation: value.publicSummaryTranslation } : {}),
+    ...(["reading_knowledge_sources", "researching", "writing_knowledge_nodes", "validating_knowledge_output"].includes(value.publicSummaryPhase ?? "") ? { publicSummaryPhase: value.publicSummaryPhase } : {}),
+    ...(value.publicSummaryTitle && /^[\u4e00-\u9fff].{0,39}$/.test(value.publicSummaryTitle) ? { publicSummaryTitle: value.publicSummaryTitle } : {}),
+    thinkingComplete: value.thinkingComplete === true,
+  } : {}), ...(generated && !native ? {
+    publicSummaryTitle: value.publicSummaryTitle,
+    publicSummarySourceHash: value.publicSummarySourceHash,
+    publicSummaryModel: value.publicSummaryModel,
+    publicSummaryEffort: value.publicSummaryEffort,
+    publicSummaryFallback: value.publicSummaryFallback === true,
+  } : {}) };
 }
 
 /** Strict whitelist at both normalization and persisted-data read boundaries. */
@@ -205,10 +272,23 @@ export const generalExecutionStatusText: Record<
 /** Public business phases are an allowlist, never provider payload labels. */
 export const businessExecutionLabels = {
   uploading: "上传资料",
+  transferring_knowledge_inputs: "同步构建资料",
+  preparing_knowledge_session: "准备构建环境",
+  executing_knowledge_build: "研究并构建知识",
+  reading_knowledge_output: "读取知识工作包",
+  validating_knowledge_output: "校验知识工作包",
+  awaiting_knowledge_review: "已生成，待确认",
   staging: "校验资料",
   dispatching: "准备调研",
   researching: "采集公开资料",
   normalizing: "整理结果",
+  reading_knowledge_sources: "读取资料",
+  writing_knowledge_nodes: "编写节点",
+  editing_knowledge_prose: "整理文字",
+  saving_knowledge_nodes: "保存节点",
+  publishing_knowledge: "发布知识库",
+  knowledge_published: "已发布",
+  knowledge_revision_saved: "修改已保存，待更新",
   published: "生成知识库",
   submitting_question: "提交问题",
   loading_knowledge: "读取知识依据",

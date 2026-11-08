@@ -1,0 +1,51 @@
+{
+  "taxonomy": [
+    {
+      "id": "primary",
+      "overall_category": "已选大类名称",
+      "subcategory": "已选细分或大类名称",
+      "product_use_customer": "当前产品×已选用途×客户",
+      "brand_fit": "依据本品牌事实的适配说明",
+      "evidence_ids": [
+        "k001"
+      ],
+      "answer_evidence": [
+        {
+          "question_id": "q000001",
+          "period_id": "p000001",
+          "answer_index": 0,
+          "quote": "原文摘录"
+        }
+      ],
+      "competitors": [
+        {
+          "candidate_id": "用户选定ID",
+          "name": "选定对象名称",
+          "company": "对应主体",
+          "source": "来源或待核",
+          "fit_reason": "同类关系"
+        }
+      ]
+    }
+  ],
+  "question_map": [
+    {
+      "question_id": "q000001",
+      "category": "行业排名/美誉舆情/产品场景",
+      "branch_ids": [
+        "primary"
+      ],
+      "fit": "direct/adjacent/out_of_scope",
+      "reason": "题目对当前已选用途的适配"
+    }
+  ],
+  "excluded_questions": [],
+  "uncertainties": [],
+  "proposed_primary_positioning": "保持用户已选类别及用途，不能扩大到其他赛道",
+  "attributes": {
+    "form_factor": [],
+    "commercial_options": [],
+    "geography_versions": [],
+    "supporting_claims": []
+  }
+}

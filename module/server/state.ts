@@ -15,9 +15,9 @@ const runnerErrorSchema = z.unknown().transform((value) => {
   return { code: identifier(error.code) ?? "content_workflow_failed", attempt_id: identifier(error.attempt_id) };
 });
 const runnerStateSchema = z.object({
-  schema_version: z.literal("4.11"),
+  schema_version: z.enum(["4.11", "16.25.1"]),
   artifact_type: z.literal("frontmind_content_job_state"),
-  workflow_version: z.literal("4.11"),
+  workflow_version: z.enum(["4.11", "16.25.1"]),
   job_id: z.string().min(1).max(200),
   job_kind: z.enum([
     "reference_pack",
@@ -98,6 +98,7 @@ export function parseContentRunnerState(
     );
     if (!parsed.success) return null;
     const state = parsed.data;
+    if(state.schema_version!==state.workflow_version)return null;
     if (state.metadata && Object.keys(state.metadata).length === 0) delete state.metadata;
     const paused = contentProductionConfirmationSchema.safeParse(state.status);
     if (paused.success) {
@@ -139,8 +140,8 @@ export function parseContentRunnerState(
 function completedRunnerConfirmations(
   state: ContentRunnerObservation["state"],
 ): ContentProductionConfirmation[] {
-  const result: ContentProductionConfirmation[] = state.metadata?.session_phase_contract === "frontmind-session-phases/1"
-    ? [...(state.metadata.completed_phase_confirmations ?? [])] : [];
+  const result: ContentProductionConfirmation[] = (state.workflow_version === "16.25.1" || state.metadata?.session_phase_contract === "frontmind-session-phases/1")
+    ? [...(state.metadata?.completed_phase_confirmations ?? [])] : [];
   const decisions = state.decisions;
   if (decisions.reference_pack_route)
     result.push("awaiting_reference_pack_route");
@@ -198,7 +199,7 @@ export function reduceContentProductionProgress(
     lastObservation: observation,
     progressPosition: Math.max(
       current?.progressPosition ?? 0,
-      state.metadata?.session_phase_contract === "frontmind-session-phases/1"
+      (state.workflow_version==="16.25.1"||state.metadata?.session_phase_contract === "frontmind-session-phases/1")
         ? state.job_kind === "article" && state.status === "completed" ? 20 : Math.min(position, 19)
         : contentRunnerCompleted(state, mode) ? 20 : Math.min(position, 19),
     ),
@@ -207,13 +208,14 @@ export function reduceContentProductionProgress(
 }
 
 function contentRunnerCompleted(state: ContentRunnerObservation["state"], mode: ContentProductionMode): boolean {
-  if(state.metadata?.session_phase_contract === "frontmind-session-phases/1") {
+  if(state.workflow_version==="16.25.1"||state.metadata?.session_phase_contract === "frontmind-session-phases/1") {
     return (state.job_kind === "p0" && state.status === "p0_ready") ||
       (state.job_kind === "article" && state.status === "completed") ||
       (["reference_pack","reference_pack_refresh"].includes(state.job_kind) && state.status === "positioning_ready");
   }
   const expectedKind = [
     "new_reference_pack",
+    "import_reference_pack",
     "refresh_reference_pack",
   ].includes(mode)
     ? "reference_pack"
@@ -258,9 +260,10 @@ export function contentProductionPublicDto(
   // 执行器直接读取同一 Job 的原状态；不等待整轮回复或快照导出。
   // 实时读数只参与展示，不伪造不可变文件凭据，也不推进业务确认。
   const runtime = providerRuntime?.xtyCodex as {contentWorkflowRuntime?:unknown;contentWorkflowLiveState?:unknown}|undefined;
-  const rawLive = runtime?.contentWorkflowRuntime === "native_content_v1" ? runtime.contentWorkflowLiveState : null;
+  const rawLive = ["native_content_v1", "native_content_v2"].includes(String(runtime?.contentWorkflowRuntime)) ? runtime?.contentWorkflowLiveState : null;
   const live = rawLive ? parseContentRunnerState(Buffer.from(JSON.stringify(rawLive))) : null;
   if (live && (!state || (live.job_id === state.job_id && live.revision >= state.revision && compareContentRunnerObservations({state:live},{state}) > 0))) state = live;
+  if(state&&((state.workflow_version==="16.25.1")!==(context.contentWorkflow?.version==="16.25.1")))state=null;
   const parsed = contentProductionConfirmationSchema.safeParse(state?.status);
   const confirmation = parsed.success ? parsed.data : null;
   const factRepair = state?.status === "running_article_production" &&
@@ -316,7 +319,7 @@ export function contentProductionPublicDto(
     completedConfirmations: state ? completedRunnerConfirmations(state) : progress?.completedConfirmations ?? [],
     availableActions: running ? [] : resume ? ["resume_current_execution"] : confirmation
       ? CONTENT_PRODUCTION_CONFIRMATION_ACTIONS[confirmation]
-      : factRepair ? ["repair_article_facts"] : [],
+      : factRepair ? ["repair_article_facts"] : state?.workflow_version==="16.25.1"&&state.status==="positioning_ready"?["revise_advantages"]:[],
     knowledgeBase: context.knowledgeBase,
     source: state ? "runner_job_state" : "awaiting_runner",
   };

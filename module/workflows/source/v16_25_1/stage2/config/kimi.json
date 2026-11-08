@@ -1,0 +1,12 @@
+{
+  "base_url": "https://api.moonshot.cn",
+  "api_key": "",
+  "model": "kimi-k3.1-pro",
+  "reasoning_effort": "high",
+  "agent_id": "agent_host_managed",
+  "environment_id": "env_host_managed",
+  "agent_version": "1",
+  "api_version": "2026-09-01-beta",
+  "poll_interval_seconds": 3,
+  "request_timeout_seconds": 60
+}

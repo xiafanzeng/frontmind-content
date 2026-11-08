@@ -69,7 +69,8 @@ export function generalExecutionSlots(
   const activeUser = messages.findLast((message) => message.role === "user");
   for (const turn of byTurn.values()) {
     const lastLifecycle = turn.findLast((entry) => entry.kind === "status");
-    const activeTurn = Boolean(
+    const authoritative = execution.turnStates?.[turn[0]!.turnId];
+    const activeTurn = authoritative ? authoritative.state === "running" || authoritative.state === "waiting" : Boolean(
       running &&
         activeUser &&
         turn.some(
@@ -125,13 +126,20 @@ export function generalExecutionSlots(
                 ),
             };
       const next = nextAnchors.get(entry.id);
+      // One knowledge business turn has one authoritative process card. Keep
+      // late translations and history pages with its user request instead of
+      // splitting the card around the provider's final response.
+      const knowledgeAnchor = authoritative
+        ? usersBySequence.get(entry.userSequence) ?? (entry.userMessageId ? usersById.get(entry.userMessageId) : undefined)
+        : undefined;
       const anchor =
+        knowledgeAnchor ??
         next ??
         previous ??
         usersBySequence.get(entry.userSequence) ??
         (entry.userMessageId ? usersById.get(entry.userMessageId) : undefined);
       if (!anchor) continue;
-      const slots = next ? before : after;
+      const slots = knowledgeAnchor ? after : next ? before : after;
       const items = slots.get(anchor.id) ?? [];
       items.push(entry);
       slots.set(anchor.id, items);

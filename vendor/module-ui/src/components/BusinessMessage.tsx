@@ -606,6 +606,7 @@ export default function BusinessMessage({
   suppressKnowledgeArtifacts,
   onDelete,
   runtime: suppliedRuntime,
+  animateEntrance = true,
 }: {
   message: BusinessMessageData;
   isFinalReply?: boolean;
@@ -616,6 +617,7 @@ export default function BusinessMessage({
   suppressKnowledgeArtifacts?: boolean;
   onDelete?: () => void;
   runtime?: BusinessMessageRuntime;
+  animateEntrance?: boolean;
 }) {
   const host = { ...defaultRuntime, ...(suppliedRuntime ?? {}) };
   const Actions = host.MessageActions ?? ((props:any) => <>{props.children}</>);
@@ -763,7 +765,7 @@ export default function BusinessMessage({
         onDelete={onDelete}
       >
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={animateEntrance ? { opacity: 0, y: 12 } : false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ type: "spring", stiffness: 400, damping: 30 }}
           data-message-role={message.role}

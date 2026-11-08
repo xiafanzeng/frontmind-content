@@ -6,8 +6,8 @@ import type { ContentWorkflowBinding, FrozenContentTaskContext } from "../contra
 
 /** Only explicitly reviewed releases may receive the native provider transport. */
 export function isNativeContentWorkflowVersion(version: string): boolean {
-  return (version === release.version && release.runtime === "native_content_v1") ||
-    ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1", "4.13.2-v16.8.6"].includes(version);
+  return (version === release.version && ["native_content_v1", "native_content_v2"].includes(release.runtime)) ||
+    ["4.13.2-v16.2", "4.13.2-v16.3", "4.13.2-v16.4", "4.13.2-v16.8", "4.13.2-v16.8-app1", "4.13.2-v16.8.6", "4.13.2-v16.8.7"].includes(version);
 }
 
 export function supportsStructuredContentArticle(version: string): boolean {
@@ -22,6 +22,7 @@ export function hasContentWorkflowCapability(binding: ContentWorkflowBinding,
   capability: NonNullable<ContentWorkflowBinding["capabilities"]>[number]): boolean {
   if (binding.capabilities) return binding.capabilities.includes(capability);
   // Older tasks have no capability metadata: retain their original rules.
+  if (capability === "two_stage_v16251") return binding.version === "16.25.1";
   if (capability === "structured_article") return supportsStructuredContentArticle(binding.version);
   if (capability === "session_phases") return supportsContentSessionPhases(binding.version);
   return binding.version === "4.13.2-v16.8" || binding.version === "4.13.2-v16.8-app1";
@@ -36,9 +37,9 @@ function validateBinding(value: ContentWorkflowBinding): ContentWorkflowBinding 
       !/^[A-Za-z0-9._-]+\.zip$/u.test(value.filename) ||
       !/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value.rootDirectory) ||
       !/^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u.test(value.version) ||
-      (value.runtime !== undefined && value.runtime !== "native_content_v1") ||
+      (value.runtime !== undefined && !["native_content_v1", "native_content_v2"].includes(value.runtime)) ||
       (value.capabilities !== undefined && (!Array.isArray(value.capabilities) ||
-        value.capabilities.some(item => !["structured_article", "editorial_v16_8", "session_phases"].includes(item))))) {
+        value.capabilities.some(item => !["structured_article", "editorial_v16_8", "session_phases", "two_stage_v16251"].includes(item))))) {
     throw new Error("CONTENT_WORKFLOW_BINDING_INVALID");
   }
   return value;

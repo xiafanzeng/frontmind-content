@@ -451,6 +451,11 @@ export default function FilePreview({
     previewError?.code === "SOURCE_EXPIRED" ||
     downloadError?.code === "SOURCE_EXPIRED";
   const contentExpired = expired || serverExpired || readerExpired;
+  const availabilityMessage = file.availability === "verifying" ? "资料正在验证，请稍候"
+    : file.availability === "deleted" ? "原始资料已删除"
+    : file.availability === "missing" ? "无法定位原始资料，请重新读取"
+    : file.availability === "unavailable" ? "资料暂不可读取，请重新读取项目" : null;
+  const contentBlocked = contentExpired || Boolean(availabilityMessage);
   const previewSource = filePreviewSource(file);
 
   useEffect(() => {
@@ -469,12 +474,14 @@ export default function FilePreview({
   }, [expiryNow, file.expired, file.expiresAt]);
 
   useEffect(() => {
-    if (contentExpired) setIsOpen(false);
-  }, [contentExpired]);
+    if (contentBlocked) setIsOpen(false);
+  }, [contentBlocked]);
 
   useEffect(() => {
     setReaderExpired(false);
-  }, [file.expiresAt, file.fileId]);
+    setPreviewError(null);
+    setDownloadError(null);
+  }, [file.expiresAt, file.fileId, file.expired, file.availability]);
 
   // Load a blob URL only for non-PDF iframe previews.
   // Priority: blobUrl (in-memory) > File object > base64 (convert to blob) > API fileId
@@ -483,7 +490,7 @@ export default function FilePreview({
     let ownedBlobUrl: string | null = null;
     const controller = new AbortController();
     setBlobUrl(null);
-    if (!isOpen || !isPreviewable || isPdf || contentExpired) return;
+    if (!isOpen || !isPreviewable || isPdf || contentBlocked) return;
 
     setLoadingPreview(true);
     setPreviewError(null);
@@ -561,7 +568,7 @@ export default function FilePreview({
     };
   }, [
     displayFileName,
-    contentExpired,
+    contentBlocked,
     isOpen,
     isPdf,
     isPreviewable,
@@ -576,7 +583,7 @@ export default function FilePreview({
   ]);
 
   const handleDownload = useCallback(async () => {
-    if (contentExpired) return;
+    if (contentBlocked) return;
     if (isPdf) {
       // Remote PDFs must finish server-side brand replacement before download.
       // Opening the shared viewer starts/previews that preparation and exposes
@@ -663,26 +670,26 @@ export default function FilePreview({
     } finally {
       setIsDownloading(false);
     }
-  }, [contentExpired, displayFileName, file, isPdf, previewSource]);
+  }, [contentBlocked, displayFileName, file, isPdf, previewSource]);
 
   return (
     <>
       <div
         className={cn(
           "flex items-center gap-2.5 px-3 py-2.5 rounded-2xl bg-card/80 border border-border/70 shadow-sm",
-          contentExpired
+          contentBlocked
             ? "cursor-not-allowed opacity-65"
             : "hover:bg-secondary/70 hover:border-primary/25 transition-all cursor-pointer group",
           className,
         )}
         onClick={() => {
-          if (!contentExpired) setIsOpen(true);
+          if (!contentBlocked) setIsOpen(true);
         }}
         role="button"
-        aria-disabled={contentExpired}
-        tabIndex={contentExpired ? -1 : 0}
+        aria-disabled={contentBlocked}
+        tabIndex={contentBlocked ? -1 : 0}
         onKeyDown={(event) => {
-          if (!contentExpired && (event.key === "Enter" || event.key === " ")) {
+          if (!contentBlocked && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
             setIsOpen(true);
           }
@@ -695,15 +702,15 @@ export default function FilePreview({
           <p className="text-xs font-medium text-foreground/70 truncate">
             {displayFileName}
           </p>
-          {contentExpired ? (
-            <p className="text-xs text-amber-700">
-              文件已超过 30 天，请重新上传
-            </p>
+          {availabilityMessage ? (
+            <p className="text-xs text-muted-foreground">{availabilityMessage}</p>
+          ) : contentExpired ? (
+            <p className="text-xs text-amber-700">文件已超过 30 天，请重新上传</p>
           ) : fileSize ? (
             <p className="text-xs text-muted-foreground/50">{fileSize}</p>
           ) : null}
         </div>
-        {showDownload && !contentExpired && (
+        {showDownload && !contentBlocked && (
           <Button
             variant="ghost"
             size="icon"
@@ -724,8 +731,8 @@ export default function FilePreview({
       </div>
 
       <Dialog
-        open={isOpen && !contentExpired}
-        onOpenChange={(open) => setIsOpen(contentExpired ? false : open)}
+        open={isOpen && !contentBlocked}
+        onOpenChange={(open) => setIsOpen(contentBlocked ? false : open)}
       >
         <DialogContent
           showCloseButton={false}

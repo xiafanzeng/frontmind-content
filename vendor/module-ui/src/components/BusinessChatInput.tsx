@@ -498,7 +498,7 @@ export default function BusinessChatInput<ContentProductionInput = unknown, Resp
         : "修改已确认，请点击右上角“更新知识库”启用新版本。";
   const knowledgeEditingNotice = knowledgeBaseInitialDraft
     ? knowledgeBaseProgress?.contentAvailability === "complete"
-      ? "请先开始逐节点核验，再修改节点。"
+      ? "工作稿已生成，可直接确认当前节点。"
       : null
     : "请先完成右侧节点编辑。";
   const knowledgeLockedPlaceholder = (() => {
@@ -712,7 +712,7 @@ export default function BusinessChatInput<ContentProductionInput = unknown, Resp
           }
           if (!response.ok)
             throw new Error(
-              result.error?.message ?? "开始逐节点核验暂未完成，请重试",
+              result.error?.message ?? "工作稿状态暂未同步，请重新读取后重试",
             );
         }
         const sent = await sendMessage(

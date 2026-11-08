@@ -1,8 +1,10 @@
 {
-  "version": "4.13.2-v16.8.7",
-  "runtime": "native_content_v1",
-  "capabilities": ["structured_article", "editorial_v16_8", "session_phases"],
-  "rootDirectory": "FrontMind_Content_Workflow_v4.13.2",
+  "version": "16.25.1",
+  "runtime": "native_content_v2",
+  "capabilities": [
+    "two_stage_v16251"
+  ],
+  "rootDirectory": "FrontMind_Content_Workflow_v16_25_1",
   "legacy": {
     "version": "4.11.0",
     "rootDirectory": "FrontMind_Content_Workflow_v4.11.0",

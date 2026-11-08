@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -119,6 +120,8 @@ export function AgentWorkbenchShell({
   const [resourceContentWidth, setResourceContentWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [visibleHeight, setVisibleHeight] = useState<number | null>(null);
+  const [knowledgePane, setKnowledgePane] = useState<"main" | "auxiliary">("main");
+  const knowledgePaneId = useId();
   const root = useRef<HTMLElement>(null);
   const mainViewport = useRef<HTMLDivElement>(null);
   const layoutRoot = useRef<HTMLDivElement>(null);
@@ -129,6 +132,7 @@ export function AgentWorkbenchShell({
   const maxAux = paneGeometry.maxAux;
   const renderedWidth = fixedAuxWidth ?? paneGeometry.width;
   const narrow = viewportWidth < WORKBENCH_MIN_WIDTH;
+  const singleKnowledgePane = isKnowledge && narrow;
   const resourcePanes =
     independentResourceScroll && isWorkspace && resourceContentWidth >= 960;
   useEffect(() => {
@@ -188,13 +192,32 @@ export function AgentWorkbenchShell({
     (target ?? viewport)?.focus({ preventScroll: true });
   }, []);
   useEffect(() => {
+    setKnowledgePane("main");
+  }, [projectId, taskKey]);
+  useEffect(() => {
     if (!conversationFocusRequest) return;
-    focusMain();
-  }, [conversationFocusRequest, focusMain]);
+    if (!singleKnowledgePane) {
+      focusMain();
+      return;
+    }
+    setKnowledgePane("main");
+    // Reveal the existing reader before focusing it. Replacing either pane
+    // would lose node edits and the native conversation's reading position.
+    const frame = requestAnimationFrame(focusMain);
+    return () => cancelAnimationFrame(frame);
+  }, [conversationFocusRequest, focusMain, singleKnowledgePane]);
   useEffect(() => {
     if (!auxiliaryFocusRequest) return;
-    auxiliaryPanel.current?.focus({ preventScroll: true });
-  }, [auxiliaryFocusRequest]);
+    if (!singleKnowledgePane) {
+      auxiliaryPanel.current?.focus({ preventScroll: true });
+      return;
+    }
+    setKnowledgePane("auxiliary");
+    const frame = requestAnimationFrame(() =>
+      auxiliaryPanel.current?.focus({ preventScroll: true }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [auxiliaryFocusRequest, singleKnowledgePane]);
   const readingKey = `${projectId}:${moduleId}:${taskKey ?? "current"}`;
   const { showLatest, returnToLatest } = useChatReadingPosition(
     mainViewport,
@@ -317,11 +340,36 @@ export function AgentWorkbenchShell({
           ) : null}
         </div>
       </header>
+      {singleKnowledgePane && (
+        <div className="knowledge-mobile-pane-switch" role="group" aria-label="知识库视图">
+          <button
+            type="button"
+            aria-controls={`${knowledgePaneId}-main`}
+            aria-pressed={knowledgePane === "main"}
+            onClick={() => setKnowledgePane("main")}
+          >
+            当前内容
+          </button>
+          <button
+            type="button"
+            aria-controls={`${knowledgePaneId}-auxiliary`}
+            aria-pressed={knowledgePane === "auxiliary"}
+            onClick={() => setKnowledgePane("auxiliary")}
+          >
+            知识目录
+          </button>
+        </div>
+      )}
       <div
         ref={layoutRoot}
         className={`agent-workbench-shell__layout ${hasAux ? "has-outcomes" : "is-single-pane"}${isWorkspace ? " is-workspace" : ""}${fixedAuxWidth ? " is-fixed-auxiliary" : ""}`}
       >
-        <section className="agent-workbench-shell__main" aria-label="主工作区">
+        <section
+          id={`${knowledgePaneId}-main`}
+          className="agent-workbench-shell__main"
+          aria-label="主工作区"
+          hidden={singleKnowledgePane && knowledgePane !== "main"}
+        >
           <div
             ref={mainViewport}
             tabIndex={-1}
@@ -383,9 +431,11 @@ export function AgentWorkbenchShell({
             />
             <aside
               ref={auxiliaryPanel}
+              id={`${knowledgePaneId}-auxiliary`}
               tabIndex={-1}
               className={`agent-workbench-shell__auxiliary ${auxiliaryScroll ? "" : "has-native-auxiliary"}`}
               aria-label={isKnowledge ? "知识节点与资料" : "任务辅助区"}
+              hidden={singleKnowledgePane && knowledgePane !== "auxiliary"}
             >
               <div
                 className={`agent-workbench-shell__auxiliary-content ${auxiliaryScroll ? "" : "has-native-scroll"}`}

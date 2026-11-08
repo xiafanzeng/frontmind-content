@@ -1,0 +1,7 @@
+{
+  "base_url": "https://api.xty.app/v1",
+  "api_key": "",
+  "model": "gemini-4-argon",
+  "reasoning_effort": "high",
+  "timeout_seconds": 600
+}

@@ -1,0 +1,33 @@
+{
+  "branch_id": "branch1",
+  "category": "行业排名",
+  "form": "单品牌推荐",
+  "reader": "读者",
+  "focus": "本篇回答的重心",
+  "candidate_order": [
+    "本品牌"
+  ],
+  "subject_evidence": [
+    {
+      "name": "本品牌",
+      "facts": [
+        {
+          "statement": "本篇可用事实",
+          "source": "具体原件或公开URL",
+          "quote": "原句",
+          "verified": true
+        }
+      ]
+    }
+  ],
+  "requirements": "用户要求及篇幅建议；不重定义品牌品类",
+  "candidate_ids": [
+    "本篇使用的已选候选ID；单品牌为空数组"
+  ],
+  "positioning_snapshot_id": "当前定位快照ID",
+  "advantages_snapshot_id": "已确认优势快照ID",
+  "advantage_ids": [
+    "本篇相关的优势ID；可为空，不必每篇塞入全部优势"
+  ],
+  "materials_snapshot_id": "当前自然语言资料整合说明版本ID"
+}
