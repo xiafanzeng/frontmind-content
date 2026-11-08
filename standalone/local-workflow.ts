@@ -60,6 +60,7 @@ export function localActionArgs(action:ContentProductionAction,status:string):st
    return [...args,flags[status],action.instructions];
   }
  }
+ reject("此本地入口不支持该工作流操作，请使用与任务版本对应的入口。");
 }
 
 function localAttachmentArgs(action:ContentProductionAction,status:string,jobKind:string|null,files:string[]):string[]{
@@ -125,8 +126,9 @@ export function localWorkflowPlugin(options?:LocalWorkflowOptions):Plugin{
     const busy=processes.has(record.id)||Boolean(snap?.busy);
     const operationStatus=busy?"running":record.cancelled?"cancelled":record.error?"error":"completed";
     let dto=contentProductionPublicDto({revision:1,accountUserId:0,purpose:"content_production",knowledgeBase:null,knowledgeText:null,contentProduction:record.input},progress?{contentProductionProgress:progress}:null,{operationStatus});
-    // This bridge executes the local source tree, so it has no frozen ZIP binding.
-    if(dto)dto={...dto,workflowVersion:release.version,sessionPhases:release.capabilities.includes("session_phases")};
+    // run_managed.py still executes the legacy source tree. Its Jobs must keep
+    // the legacy confirmation UI when the production release becomes v2.
+    if(dto)dto={...dto,workflowVersion:release.runtime==="native_content_v2"?release.legacy.version:release.version,sessionPhases:release.runtime==="native_content_v2"||release.capabilities.includes("session_phases")};
     if(!busy&&dto&&snap?.factGate&&!snap.factGate.publishReady&&state?.pending_action?.action==="article_fact_repair")dto={...dto,factGate:snap.factGate,availableActions:["repair_article_facts"]};
     const status=contentProductionTaskStatus(dto,operationStatus);
     const done=status==="completed",cancelled=status==="cancelled",failed=status==="error";

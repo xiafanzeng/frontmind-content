@@ -70,6 +70,10 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); });
 
+it("rejects two-stage actions instead of sending them to the legacy local executor", () => {
+  expect(() => localActionArgs({kind:"choose_positioning",revision:7,categoryId:"c1",note:"用户确认"},"awaiting_positioning_selection")).toThrow("不支持该工作流操作");
+});
+
 it("polls snapshots without starting a model process or exposing local storage paths", async () => {
   const view = fixture();
   for (let i = 0; i < 3; i++) {
@@ -79,7 +83,7 @@ it("polls snapshots without starting a model process or exposing local storage p
     expect(response.text).not.toContain(view.root);
     expect(response.text).not.toContain("private-config");
     const task = await view.request("GET", "/api/frontmind/v2/tasks/job_1");
-    expect(task.body.contentProduction).toMatchObject({ runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation", workflowVersion: release.version, sessionPhases: true });
+    expect(task.body.contentProduction).toMatchObject({ runnerRevision: 7, confirmation: "awaiting_blueprint_confirmation", workflowVersion: release.legacy.version, sessionPhases: true });
   }
   expect(childProcess.read).toHaveBeenCalledTimes(1);
   expect(childProcess.read.mock.calls[0][1][1]).toMatch(/workflow_snapshot\.py$/);

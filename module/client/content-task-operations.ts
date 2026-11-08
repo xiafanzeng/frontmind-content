@@ -36,6 +36,14 @@ export type TaskOperationInput = {
 
 /** 每个暂停点的待确认内容与确认后的下一步，只说明原工作流已有的行为。 */
 export const CONTENT_PAUSE_GUIDE: Record<ContentProductionConfirmation, {pending:string;next:string}> = {
+ awaiting_positioning_selection:{pending:"审阅候选定位并选择本次采用的方向。",next:"按所选定位整理核心差异化优势，供你确认。"},
+ awaiting_advantages_confirmation:{pending:"确认保留的优势与顺序，或明确本次暂无单独优势。",next:"导出已确认定位、核心差异化优势和完整知识库。"},
+ awaiting_question_answers:{pending:"关联本题 AI 完整回答，或明确本次暂无回答。",next:"关联本题逐条引用信源。"},
+ awaiting_question_sources:{pending:"上传属于本题的逐条信源资料。",next:"展示本题媒体统计与参考文章，供选择写作类型。"},
+ awaiting_writing_selection:{pending:"选择问题类型、文章模式及需要纳入的主体与信源。",next:"生成本篇写作任务，供你确认。"},
+ awaiting_article_task_confirmation:{pending:"核对本篇写作任务。",next:"获取两篇完整参考原文，生成本篇简要约稿。"},
+ awaiting_writing_brief_confirmation:{pending:"审阅本篇简要约稿。",next:"开始正文写作、文风检查和标题生成，完成 Word 视觉验收后交付。"},
+ awaiting_reference_fulltext:{pending:"补充指定参考文章的完整原文。",next:"在具备两篇完整参考原文后继续生成本篇简要约稿。"},
  awaiting_reference_pack_route:{pending:"选择采用已有品牌资料包，或根据本轮材料新建。",next:"采用已有资料包时登记该资料包；新建时读取材料并开展公开研究。"},
  awaiting_reference_pack_input:{pending:"补充企业、品牌或产品材料，可附文字说明。",next:"读取材料并开展公开研究，生成比较范围预览。"},
  awaiting_competitor_selection:{pending:"核对比较范围预览中的候选对象，可保留、删除或新增名称。",next:"生成定位方向与核心定位确认稿。"},
