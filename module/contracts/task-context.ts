@@ -9,6 +9,8 @@ export type FrozenContentTaskContext = {
   knowledgeBase: ContentProductionKnowledgeSource | null;
   knowledgeText: string | null;
   contentProduction?: ContentProductionInput;
+  /** Host-frozen startup instructions; absent contexts retain their original transport prompt. */
+  contentStartupContractVersion?: 1;
   inputFiles?: { localAssetId: string; filename: string }[];
   contentWorkflow?: ContentWorkflowBinding;
   subjectContext?: FrozenContentSubjectContext;

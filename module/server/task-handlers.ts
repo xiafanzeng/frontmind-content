@@ -25,7 +25,8 @@ export async function freezeContentTaskContext(input:{
  if(workflow.runtime==="native_content_v2"&&input.input.mode==="new_reference_pack"&&(files.length!==1||!files[0].filename.toLowerCase().endsWith(".zip")))throw new ContentTaskError("MARKDOWN_KNOWLEDGE_ZIP_REQUIRED",400);
  if(input.input.mode==="import_reference_pack"&&(workflow.runtime!=="native_content_v2"||files.length!==1||!files[0].filename.toLowerCase().endsWith(".zip")))throw new ContentTaskError("THREE_ITEM_REFERENCE_PACK_REQUIRED",400);
  if(input.input.genre==="industry_roundup"&&!hasContentWorkflowCapability(workflow,"structured_article"))throw new ContentTaskError("INDUSTRY_ROUNDUP_REQUIRES_V16_3",409);
- return {revision:1,accountUserId:input.userId,enterpriseProjectId:input.enterpriseProjectId,purpose:"content_production",knowledgeBase:knowledge?.knowledgeBase??null,knowledgeText:knowledge?.knowledgeText??null,contentProduction:input.input,contentWorkflow:workflow,inputFiles:files};
+ return {revision:1,accountUserId:input.userId,enterpriseProjectId:input.enterpriseProjectId,purpose:"content_production",knowledgeBase:knowledge?.knowledgeBase??null,knowledgeText:knowledge?.knowledgeText??null,contentProduction:input.input,contentWorkflow:workflow,inputFiles:files,
+  ...(workflow.runtime==="native_content_v2"&&input.input.mode==="new_reference_pack"?{contentStartupContractVersion:1 as const}:{})};
 }
 export function assertContentConfirmation(input:{action?:ContentProductionAction;availableActions?:ContentProductionAction["kind"][];runnerRevision?:number|null}) {
  if(input.action&&(!input.availableActions?.includes(input.action.kind)||input.action.revision!==input.runnerRevision))throw new ContentTaskError("CONTENT_PRODUCTION_CONFIRMATION_CONFLICT",409);
