@@ -168,7 +168,7 @@ it("归档入口已移除，历史聊天行提供真实删除入口",async()=>{
 });
 
 it("历史项目无需归属和新资料包即可打开，原消息、附件、任务均不改写",async()=>{
-  const history:ContentConversation["messages"]=[{id:"legacy-user",role:"user",content:"原客户资料",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file",name:"原附件.pdf"}]},{id:"legacy-answer",role:"assistant",content:"原回答",timestamp:2,contentWorkflowPosition:3,contentWorkflowGeneration:4,outputFiles:[{fileUrl:"/original-output.md",fileName:"原交付.md",mimeType:"text/markdown"}]}];
+  const history:ContentConversation["messages"]=[{id:"legacy-user",role:"user",content:"原客户资料",timestamp:1,attachments:[{id:"original-asset",fileId:"original-asset",type:"file",name:"原附件.pdf"}]},{id:"legacy-answer",role:"assistant",content:"原回答",timestamp:2,contentWorkflowPosition:3,contentWorkflowGeneration:4,outputFiles:[{fileUrl:"/original-output.md",fileName:"问题1正文.md",mimeType:"text/markdown"}]}];
   const original=structuredClone(history);
   const view=await mount({unbound:true,emptyWorkspace:true,taskId:"original-task",messages:history});
   try{
@@ -208,7 +208,7 @@ it("没有任务的历史记录也直接显示，打开时不补建任务",async
 });
 
 it("旧聊天归入主体后保留原内容，不因尚未登记版本而重新被遮挡",async()=>{
-  const view=await mount({kind:"article",missingPack:true,messages:[{id:"existing",role:"assistant",content:"原有文章",timestamp:1,outputFiles:[{fileUrl:"/existing.md",fileName:"原文章.md",mimeType:"text/markdown"}]}]});
+  const view=await mount({kind:"article",missingPack:true,messages:[{id:"existing",role:"assistant",content:"原有文章",timestamp:1,outputFiles:[{fileUrl:"/existing.md",fileName:"正文.md",mimeType:"text/markdown"}]}]});
   try{expect(view.home()).toBeDefined();expect(view.container.textContent).toContain("交付文件1 份");expect(view.container.textContent).not.toContain("请先完成资料包，再继续这篇文章");expect(view.home().knowledgeEditingBlocked).toBe(true);expect(view.client.save).not.toHaveBeenCalled();expect(view.client.saveSubjectWorkspace).not.toHaveBeenCalled();}
   finally{await view.cleanup();}
 });
@@ -388,7 +388,7 @@ it("资料包新版本首轮携带当前版本基线和代际，不从浏览器�
 
 
 it("同一聊天重启后清除旧失败任务，不阻塞新首轮确认且保留历史交付",async()=>{
-  const history:ContentConversation["messages"]=[{id:"old-answer",role:"assistant",content:"历史交付",timestamp:1,outputFiles:[{fileUrl:"/historical-output.md",fileName:"历史文章.md",mimeType:"text/markdown"}]}];
+  const history:ContentConversation["messages"]=[{id:"old-answer",role:"assistant",content:"历史交付",timestamp:1,outputFiles:[{fileUrl:"/historical-output.md",fileName:"问题文章.md",mimeType:"text/markdown"}]}];
   const view=await mount({kind:"article",taskId:"old-failed-task",status:"error",messages:history});
   try{
     let rejected:boolean|void;
@@ -451,11 +451,11 @@ it("确认页已生成但外层执行失败时，先显式恢复原任务再提�
  finally{await view.cleanup();}
 });
 
-it("按真实内容哈希合并重复交付，保留同名修订稿",async()=>{
- const file={fileName:"定位.md",mimeType:"text/markdown",sha256:"a".repeat(64)};
+it("右侧交付按内容哈希合并重复文件，仅显示最新同名终稿",async()=>{
+ const file={fileName:"正文.md",mimeType:"text/markdown",sha256:"a".repeat(64)};
  const messages:ContentConversation["messages"]=[{id:"one",role:"assistant",content:"第一次交付",timestamp:1,outputFiles:[{...file,fileUrl:"/artifact-one"}]},{id:"two",role:"assistant",content:"重复导出与修订",timestamp:2,outputFiles:[{...file,fileUrl:"/artifact-two"},{...file,fileUrl:"/artifact-three",sha256:"b".repeat(64)}]}];
  const view=await mount({messages});
- try{expect(view.container.textContent).toContain("交付文件2 份");}finally{await view.cleanup();}
+ try{expect(view.container.textContent).toContain("交付文件1 份");}finally{await view.cleanup();}
 });
 
 
